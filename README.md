@@ -2,39 +2,52 @@
 
 **A Windows desktop assistant with a Dynamic Island-inspired interface.**
 
-Lyra is a desktop assistant built around a compact, interactive island interface. It brings assistant features and desktop tools into one experience.
+Lyra is a desktop assistant designed around a compact, interactive island interface. It brings assistant features and desktop tools together in one customizable desktop experience.
 
 ## ✨ Features
 
-- **Dynamic Island-inspired interface** — a compact interface designed to stay accessible on the desktop.
-- **Floating function launcher** — a visual launcher for accessing Lyra's available functions.
+- **Dynamic Island-inspired interface** — a compact interface designed to stay accessible on your desktop.
+- **Floating function launcher** — a visual constellation launcher for accessing Lyra's available functions.
 - **Activity interaction** — interact with the island to access the currently active feature.
 - **Voice interaction** — multiple voice activation modes.
 - **Music experience** — a dedicated interface for music playback and related information.
 - **Customisation** — different visual themes and island presentation options.
+- **Search experience** — integrated search interfaces for supported services.
 
-*Some features may still be under development.*
+*Features and availability may vary depending on the current version.*
 
 ## 🖥️ Screenshots
 
-<!-- Add actual screenshots inside docs/screenshots/ -->
+<!-- Add actual Lyra screenshots inside docs/screenshots/ -->
 
 <!--
 ![Lyra main interface](docs/screenshots/main-interface.png)
+
 ![Lyra function launcher](docs/screenshots/function-launcher.png)
+
 ![Lyra music interface](docs/screenshots/music-interface.png)
+
+![Lyra search interface](docs/screenshots/search-interface.png)
 -->
 
 ## 📁 Project Structure
 
 ```text
 Lyra/
-├── backend/       # Python backend
-├── ui/            # Tauri desktop interface
+│
+├── backend/                 # Python backend
+│   ├── main.py
+│   ├── requirements.txt
+│   └── requirements-optional.txt
+│
+├── ui/                      # Tauri desktop interface
+│   ├── package.json
+│   └── src-tauri/
+│
 ├── README.md
 └── .gitignore
 
-Lyra-AI/           # Optional companion AI service
+Lyra-AI/                     # Optional companion AI component
 ```
 
 ## ⚙️ Technologies
@@ -53,14 +66,19 @@ Lyra-AI/           # Optional companion AI service
 2. Click the green **Code** button.
 3. Select **Download ZIP**.
 4. Extract the downloaded ZIP file.
-5. Open the extracted `Lyra` folder.
+5. Open the extracted project folder.
 
 ### Option 2 — Clone the repository
 
-If Git is installed, open PowerShell and run:
+If Git is installed, open PowerShell in the directory where you want Lyra to be installed:
 
 ```powershell
 git clone https://github.com/lyrrme-gif/Lyra.git
+```
+
+Then open the project:
+
+```powershell
 cd Lyra
 ```
 
@@ -73,18 +91,20 @@ Before running Lyra, install:
 - [Rust](https://www.rust-lang.org/tools/install)
 - [Git](https://git-scm.com/downloads/) (optional, for cloning)
 
-Tauri development on Windows also requires the appropriate Microsoft C++ build tools and WebView2 runtime.
+For Tauri development on Windows, you also need the Microsoft C++ Build Tools and WebView2 runtime.
 
 ## 🚀 Installation and Running
 
-Open PowerShell in the location where you extracted Lyra.
+Open PowerShell in the directory containing the extracted `Lyra` folder.
+
+The following commands use relative paths, so you do not need to change them to match your personal Windows username or download directory.
 
 ### 1. Set up the Python backend
 
-Navigate to the backend folder:
+Navigate to the backend directory:
 
 ```powershell
-cd D:\App\Download\Lyra\backend
+cd Lyra\backend
 ```
 
 Create a Python virtual environment:
@@ -97,6 +117,11 @@ Install the required dependencies:
 
 ```powershell
 venv\Scripts\pip install -r requirements.txt
+```
+
+Install optional dependencies:
+
+```powershell
 venv\Scripts\pip install -r requirements-optional.txt
 ```
 
@@ -106,20 +131,16 @@ Start the backend:
 venv\Scripts\python main.py
 ```
 
-Alternatively, if the virtual environment is already created:
-
-```powershell
-cd D:\App\Download\Lyra\backend
-.\venv\Scripts\activate
-python main.py
-```
+Keep this terminal open while using Lyra.
 
 ### 2. Install and run the desktop interface
 
-Open a **second PowerShell window**:
+Open a **second PowerShell window**.
+
+Navigate to the UI directory:
 
 ```powershell
-cd D:\App\Download\Lyra\ui
+cd Lyra\ui
 ```
 
 Install the UI dependencies:
@@ -134,61 +155,80 @@ Start Lyra in development mode:
 npm run tauri dev
 ```
 
-If your `package.json` defines the `tauri:dev` script instead, use:
-
-```powershell
-npm run tauri:dev
-```
-
-Keep the backend running while using the desktop application.
+Keep both the backend and UI running while using the application.
 
 ### 3. Optional — Run Lyra-AI
 
-If you have the separate `Lyra-AI` component installed, open another PowerShell window:
+If you also have the separate `Lyra-AI` component, open another PowerShell window.
+
+Navigate to its directory:
 
 ```powershell
-cd D:\App\Download\Lyra-AI
+cd Lyra-AI
+```
+
+Start it:
+
+```powershell
 python main.py
 ```
 
+The `Lyra-AI` folder should be located alongside the `Lyra` folder for this relative path to work.
+
 ## 🏗️ Building Lyra
 
-To create a production build:
+To build the desktop application for production, follow these steps.
 
 ### 1. Prepare the backend
 
-Make sure the backend dependencies are installed:
+Open PowerShell in the directory containing `Lyra`:
 
 ```powershell
-cd D:\App\Download\Lyra\backend
+cd Lyra\backend
+```
 
+Create the virtual environment:
+
+```powershell
 py -3.13 -m venv venv
+```
 
+Install the dependencies:
+
+```powershell
 venv\Scripts\pip install -r requirements.txt
 venv\Scripts\pip install -r requirements-optional.txt
 ```
 
 ### 2. Install UI dependencies
 
-```powershell
-cd D:\App\Download\Lyra\ui
+Navigate to the UI directory:
 
+```powershell
+cd ..\ui
+```
+
+Install dependencies:
+
+```powershell
 npm install
 ```
 
-### 3. Build the desktop application
+### 3. Build the Tauri application
+
+Run:
 
 ```powershell
 npm run tauri build
 ```
 
-The generated installer and application files will be placed in the Tauri build output directory, usually under:
+After a successful build, generated application bundles are usually located under:
 
 ```text
 ui/src-tauri/target/release/bundle/
 ```
 
-*Note: The backend packaging and installer integration may require additional build steps depending on the project's current build configuration.*
+**Important:** The Tauri build command builds the desktop application. If your release installer also needs the Python backend packaged and included, run the project's backend packaging and installer-staging process as well. The exact steps depend on the current build configuration.
 
 ## 🔐 Configuration and API Keys
 
@@ -196,8 +236,8 @@ Some Lyra features may require external service credentials or API keys.
 
 - Configure your own API keys locally.
 - Never upload API keys, passwords, or private tokens to GitHub.
-- Keep `.env` files and other private configuration out of the repository.
-- Use an `.env.example` file to document required environment variables without including actual secrets.
+- Keep `.env` files and private configuration out of the repository.
+- Use an `.env.example` file to document required environment variables without exposing actual credentials.
 
 ## 🛠️ Development Status
 
@@ -207,11 +247,13 @@ Lyra is actively developed. Features, interface details, and internal architectu
 
 For published versions and ready-to-install Windows builds, visit:
 
-[**Lyra Releases**](https://github.com/lyrrme-gif/Lyra/releases)
+**[Lyra Releases](https://github.com/lyrrme-gif/Lyra/releases)**
 
-## 🐛 Bug Reports and Contributions
+## 🐛 Bug Reports and Suggestions
 
-If you encounter a bug or have a suggestion, you can open an issue in the GitHub repository.
+Found a bug or have an idea for improvement?
+
+You can report issues and share suggestions through the GitHub repository's Issues section.
 
 ## 📄 License
 
