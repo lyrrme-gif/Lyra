@@ -1,0 +1,58 @@
+/* Mochi reacts to files dropped on the Clipboard tab. See clipboardMochi.ts.
+   Only transform / opacity are animated. Nothing here changes the layout of the existing tab:
+   when the Mochi is switched off (or not loaded) the original "Drop to add" hint shows unchanged. */
+
+/* The drop hint keeps showing while Mochi eats the file and reacts (the drag itself is already over). */
+.cbx.feeding .cbx-drop-hint { opacity: 1; transform: none; }
+
+.cbx-drop-label { max-width: 88%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Themes with a slightly translucent island colour let whatever is under the hint (the empty state, or the
+   list with the file that was just saved) show faintly through it, right behind Mochi. While the hint is up
+   it is the only thing that should be visible. */
+.cbx:has(.cbx-drop-hint.has-mochi[data-phase]) > :not(.cbx-drop-hint) { visibility: hidden; }
+
+/* ── Stage: Mochi + badge. Hidden until the Mochi is actually in use. ── */
+.cbx-drop-hint .cbx-drop-stage { display: none; position: relative; flex: none; width: 76px; margin-top: 4px; }
+.cbx-drop-hint.has-mochi .cbx-drop-stage { display: block; }
+.cbx-drop-hint.has-mochi .cbx-drop-ic { display: none; }
+
+.cbx-drop-mochi { width: 100%; transform-origin: 50% 90%; will-change: transform; }
+.cbx-drop-stage.eager .cbx-drop-mochi { animation: cbxMochiBob .9s ease-in-out infinite; }
+.cbx-drop-stage.gulp .cbx-drop-mochi { animation: cbxMochiGulp .26s var(--spring-pop, cubic-bezier(.34, 1.4, .64, 1)); }
+.cbx-drop-stage.shake .cbx-drop-mochi { animation: cbxMochiShake .42s ease-in-out; }
+
+/* ── Result badge (✓ saved / ✕ could not save) ── */
+.cbx-drop-badge {
+  position: absolute; right: -8px; top: -4px; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; opacity: 0; transform: scale(.3);
+  pointer-events: none; box-shadow: 0 3px 10px rgba(0, 0, 0, .4);
+}
+.cbx-drop-badge.ok { background: #30d158; }
+.cbx-drop-badge.fail { background: #ff453a; }
+.cbx-drop-badge.on { animation: cbxBadgePop .42s var(--spring-pop, cubic-bezier(.34, 1.4, .64, 1)) forwards; }
+
+/* The dashed frame follows what is happening: dashed = waiting, solid = saving, green / red = result. */
+.cbx .cbx-drop-hint[data-phase="feeding"] { border-style: solid; border-color: color-mix(in srgb, var(--theme-text) 30%, transparent); }
+.cbx .cbx-drop-hint[data-phase="ok"] { border-style: solid; border-color: #30d158; }
+.cbx .cbx-drop-hint[data-phase="fail"] { border-style: solid; border-color: #ff453a; }
+
+/* ── The file(s) flying into Mochi ── */
+.cbx-drop-fly { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; }
+.cbx-chip {
+  position: absolute; width: 34px; height: 40px; margin: -20px 0 0 -17px; border-radius: 9px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  color: #6cb4ff; font: 700 8.5px var(--font); letter-spacing: .06em; opacity: 0; will-change: transform, opacity;
+  background: linear-gradient(160deg, color-mix(in srgb, #0a84ff 38%, #1c1c1e), color-mix(in srgb, #0a84ff 16%, #1c1c1e));
+  box-shadow: inset 0 0 0 1px rgba(108, 180, 255, .35), 0 6px 14px rgba(0, 0, 0, .4);
+}
+
+@keyframes cbxMochiBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px) rotate(-2deg); } }
+@keyframes cbxMochiGulp { 0% { transform: scale(1); } 40% { transform: scale(1.14, .86); } 100% { transform: scale(1); } }
+@keyframes cbxMochiShake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-5px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+@keyframes cbxBadgePop { 0% { opacity: 0; transform: scale(.3); } 60% { opacity: 1; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .cbx-drop-stage .cbx-drop-mochi { animation: none !important; }
+  .cbx-drop-badge.on { animation-duration: .01s; }
+}

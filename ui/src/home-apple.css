@@ -1,0 +1,29 @@
+/* Mochi tab (formerly Home): a quiet, layered macOS widget surface. Scoped to that tab only. */
+.hx-view {
+  --hx-hairline: color-mix(in srgb, var(--theme-text, #fff) 9%, transparent);
+  --hx-glass: color-mix(in srgb, var(--theme-text, #fff) 5.5%, var(--island-bg, #101114));
+  --hx-glass-hover: color-mix(in srgb, var(--theme-text, #fff) 9%, var(--island-bg, #101114));
+}
+.hx-card {
+  border-radius: 20px;
+  background-color: var(--hx-glass);
+  background-image: linear-gradient(145deg, rgba(255,255,255,.035), transparent 48%);
+  box-shadow: inset 0 0 0 1px var(--hx-hairline), 0 5px 16px rgba(0,0,0,.09);
+  transition: background-color .22s ease, box-shadow .28s ease, transform .4s var(--spring-pop);
+}
+button.hx-card:hover {
+  background-color: var(--hx-glass-hover);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-text, #fff) 13%, transparent), 0 8px 22px rgba(0,0,0,.15);
+  transform: translateY(-1px);
+}
+.hx-weather { background-image: radial-gradient(ellipse at 100% 0, rgba(90,180,255,.17), transparent 72%), linear-gradient(145deg, rgba(255,255,255,.04), transparent 55%); }
+.hx-eyebrow { letter-spacing: .055em; }
+.hx-clock { text-shadow: 0 2px 16px rgba(0,0,0,.16); font-weight: 580; }
+.hx-todo { background-image: linear-gradient(145deg, rgba(52,199,89,.07), transparent 72%); }
+.hx-todo-head { border-radius: 9px; transition: background-color .2s ease; }
+.hx-todo-head:hover { background: color-mix(in srgb, var(--theme-text, #fff) 6%, transparent); }
+.hx-check { box-shadow: inset 0 0 0 1.4px color-mix(in srgb, var(--theme-muted, #9398a1) 76%, transparent); }
+.hx-view :focus-visible { outline: 2px solid color-mix(in srgb, #0a84ff 82%, white); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .hx-view *, .hx-view *::before, .hx-view *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

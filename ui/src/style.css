@@ -1,0 +1,4750 @@
+:root {
+  color-scheme: dark;
+
+  --font: system-ui, "Segoe UI Variable Text", "Segoe UI", "Segoe UI Emoji", sans-serif;
+  --mono: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+
+  --ink: #f5f6f8;        /* primary text */
+  --ink-2: #f1f2f4;
+  --dim: #9398a1;
+  --dim-2: #8e939c;
+  --dim-3: #6b7079;
+  --dim-4: #5f646d;
+  --dim-5: #4b5563;
+  --card: transparent; /* no grey panel behind the views: content sits on the island */
+  --card-flat: #0e0f11;
+  --tab-on: #1d1f23;
+  --hairline: rgba(255, 255, 255, 0.035);
+  --red: #f4505e;
+  --red-text: #ff8d97;
+  --green: #22c55e;
+  --green-2: #34d399;
+  --amber: #f5a524;
+  --cyan: #22d3ee;
+  --indigo: #6366f1;
+  --pink: #f472b6;
+
+  --island-bg: rgba(4, 5, 7, 0.94);
+  --island-bg-2: rgba(13, 14, 17, 0.92);
+  --island-edge: rgba(255,255,255,.075);
+  --island-edge-soft: rgba(255,255,255,.028);
+  --island-accent: #8ea7ff;
+  --island-accent-rgb: 142, 167, 255;
+}
+
+#island[data-theme="midnight"] { --island-bg:rgba(4,5,7,.94); --island-bg-2:rgba(13,14,17,.92); --island-edge:rgba(255,255,255,.075); --island-accent:#9aaeff; --island-accent-rgb:154,174,255; }
+#island[data-theme="aurora"] { --island-bg:rgba(7,10,18,.90); --island-bg-2:rgba(18,16,31,.88); --island-edge:rgba(159,242,218,.12); --island-accent:#9ff2da; --island-accent-rgb:159,242,218; }
+#island[data-theme="pure-black"] { --island-bg:#000; --island-bg-2:#000; --island-edge:#111; --island-accent:#fff; --island-accent-rgb:255,255,255; background:#000 !important; backdrop-filter:none !important; -webkit-backdrop-filter:none !important; box-shadow:0 14px 32px rgba(0,0,0,.72), inset 0 0 0 1px #0d0d0d !important; }
+#island[data-theme="pure-black"]::before { display:none !important; }
+#island[data-theme="pure-black"]::after { background:#171717; opacity:.7; }
+#island[data-theme="dynamic"] { --island-bg:rgba(8,9,12,.90); --island-bg-2:rgba(18,20,25,.84); --island-edge:rgba(255,255,255,.11); --island-accent:#c1ccff; --island-accent-rgb:193,204,255; }
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: var(--font);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+#root {
+  position: fixed;
+  inset: 0;
+  transition: opacity 0.4s ease;
+}
+
+/* Invisible strip that wakes the island when it is hidden.
+   Nearly-transparent fill so Windows/WebView2 still hit-tests it (fully
+   transparent elements can drop mouseenter). Wider/taller for a natural top zone. */
+#wake-strip {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100vw;
+  height: 16px;
+  background: rgba(0, 0, 0, 0.01);
+  pointer-events: auto;
+  z-index: 9999;
+}
+
+/* ── Island ─────────────────────────────────────────────────────────────── */
+
+#island {
+  overflow: visible;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  background: linear-gradient(180deg, var(--island-bg), var(--island-bg-2));
+  border: 1px solid var(--island-edge);
+  border-radius: 18px;
+  overflow: visible;
+  box-shadow:
+    0 16px 34px rgba(0,0,0,.40),
+    0 3px 8px rgba(0,0,0,.52),
+    inset 0 1px 0 var(--island-edge-soft),
+    inset 0 0 0 1px rgba(0,0,0,.22);
+  backdrop-filter: blur(24px) saturate(135%);
+  -webkit-backdrop-filter: blur(24px) saturate(135%);
+  isolation: isolate;
+  transition: box-shadow .35s ease, background .35s ease, border-color .35s ease;
+}
+
+/* A very soft ambient halo makes the island feel suspended above the desktop. */
+#island::before {
+  content: "";
+  position: absolute;
+  inset: 4px -10px -12px;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at 50% 0%, rgba(var(--island-accent-rgb),.18), transparent 62%);
+  opacity: .32;
+  pointer-events: none;
+}
+
+/* The tiny top reflection is intentionally almost invisible — it is a glass cue, not a border. */
+#island::after {
+  content: "";
+  position: absolute;
+  left: 9%;
+  right: 9%;
+  top: 1px;
+  height: 1px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.12), transparent);
+  opacity: .75;
+  pointer-events: none;
+  z-index: 50;
+}
+
+#island-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+
+
+/* Spotify owns the compact notch while a track is active; never let the
+   regular Mochi canvas peek through during the hand-off. */
+
+
+/* Recognition keeps Mochi beside the dedicated scan card instead of letting
+   the page content paint over the bot. */
+
+
+
+/* The drop sequence. Sits under the header and takes over the island body; it
+   cross-fades in and out, so the last frame stays up while the views return. */
+#upload-layer {
+  position: absolute;
+  top: 0;
+  width: 640px;
+  height: 176px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease-in-out;
+}
+
+#upload-layer.on {
+  opacity: 1;
+}
+
+
+
+#upload-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+
+/* Invisible hit areas over the buttons the canvas paints. */
+.upload-hit {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  border-radius: 13px;
+  background: none;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* The ordinary views step aside while the sequence owns the body. */
+
+
+
+
+#countdown {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.35);
+  width: 0;
+}
+
+/* Voice bars: shown while Lyra speaks, centred on the compact island. */
+#voice-wave {
+  position: absolute;
+  z-index: 90;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: max-content;
+  height: 28px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+
+#voice-wave .vw-bar {
+  flex: 0 0 auto;
+  width: 3px;
+  min-height: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 7px rgba(255,255,255,.5);
+}
+
+/* While speaking, hide competing right-side chrome. Mochi stays visible on the left. */
+
+#island.lyra-speaking #voice-wave {
+  z-index: 90;
+  visibility: visible;
+}
+
+/* PTT listening is represented by the existing activity HUD. Do not add a
+   second "Listening…" pill here. */
+/* Compact 2×2 mini grid, to the right of the notch. */
+
+
+/* ── Dynamic-Island polish ─────────────────────────────────────────────── */
+#island[data-mode="compact"] { background: #020305; border-radius: 15px; box-shadow: 0 12px 28px rgba(0,0,0,.42), 0 3px 8px rgba(0,0,0,.45), inset 0 1px 0 var(--island-edge-soft); }
+#island[data-mode="expanded"] { border-radius: 24px; box-shadow: 0 16px 34px rgba(0,0,0,.40), 0 3px 8px rgba(0,0,0,.50), inset 0 1px 0 var(--island-edge-soft), inset 0 0 0 1px rgba(0,0,0,.18); }
+#island[data-mode="expanded"]::before { opacity: .20; }
+#island[data-theme="aurora"]::before { opacity: .58; background: radial-gradient(ellipse at 50% -15%, rgba(102,91,255,.28), rgba(55,190,255,.08) 36%, transparent 68%); }
+
+/* Spotify compact state replaces the mini Mochi grid without changing the notch. */
+#spotify-compact {
+  position: absolute; inset: 0; z-index: 4;
+  /* This layer fills the whole pill and the compact theme rule gives it a faint tint,
+     so it must follow the pill's rounded corners or a square tinted box shows behind them. */
+  border-radius: inherit;
+  display: flex; align-items: center; gap: 12px; padding: 4px 14px; overflow: hidden;
+  opacity: 0; transform: translateY(7px) scale(0.97);
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+#spotify-compact.on { opacity: 1; transform: translateY(0) scale(1); }
+#spotify-compact-art { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 8px; object-fit: cover; opacity: 0; background: #1b1c20; transition: opacity .18s ease; }
+#spotify-compact.has-art #spotify-compact-art { opacity: 1; }
+#spotify-compact-text { min-width: 0; flex: 1 1 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; line-height: 1.05; }
+#spotify-compact-title, #spotify-compact-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#spotify-compact-title { font: 700 11.5px var(--font); color: #fff; }
+#spotify-compact-artist { margin-top: 2px; font: 600 9.5px var(--font); color: #aeb2ba; }
+/* The current synced lyric takes the artist's place; each new line fades in. */
+#spotify-compact-artist.lyric { color: #fff; }
+#spotify-compact-artist.swap { animation: compact-lyric-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes compact-lyric-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+#spotify-compact-eq { width: 20px; height: 20px; flex: 0 0 20px; display: flex; align-items: center; justify-content: center; gap: 3px; }
+#spotify-compact-eq i { width: 3px; height: 6px; border-radius: 2px; background: #fff; transform-origin: center; animation: spotify-compact-eq .8s ease-in-out infinite; }
+#spotify-compact-eq i:nth-child(2) { animation-duration: .58s; animation-delay: -.22s; }
+#spotify-compact-eq i:nth-child(3) { animation-duration: .95s; animation-delay: -.4s; }
+#spotify-compact-eq i:nth-child(4) { animation-duration: .68s; animation-delay: -.12s; }
+#spotify-compact.paused #spotify-compact-eq i { animation-play-state: paused; transform: scaleY(.65); }
+/* Keep Spotify artwork/title/artist visible while a download uses the right-side circle. */
+#island.download-active #spotify-compact-eq { display: none !important; }
+#island.download-active #spotify-compact { padding-right: 48px; }
+@keyframes spotify-compact-eq { 0%,100% { transform: scaleY(.45); } 50% { transform: scaleY(1.7); } }
+
+/* Volume HUD: replaces the compact content for a moment when the speaker volume changes. */
+
+#volume-hud {
+  position: absolute; inset: 0; z-index: 12;
+  display: flex; align-items: center; gap: 12px; padding: 0 20px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+#volume-hud.on { opacity: 1; }
+#volume-hud.nobar #volume-hud-track { display: none; }
+#volume-hud.nobar #volume-hud-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+
+/* Activity HUD (app launch etc.): icon left, bold white label, no bar. */
+#volume-hud.activity { z-index: 20; }
+#volume-hud.activity .activity-app-icon { width: 24px; height: 24px; flex: 0 0 24px; object-fit: contain; display: block; border-radius: 5px; }
+#volume-hud.activity #volume-hud-label {
+  font: 700 13px var(--font);
+  color: #fff;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#volume-hud.recognition-result { z-index: 9; padding: 0 12px 0 16px; gap: 10px; pointer-events: none; }
+#volume-hud.recognition-result #volume-hud-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+#volume-hud-spotify { display:none; width:30px; height:30px; flex:0 0 30px; border:1px solid rgba(255,255,255,.12); border-radius:50%; background:rgba(255,255,255,.07); color:#fff; padding:0; place-items:center; cursor:pointer; pointer-events:auto; }
+#volume-hud-spotify.on { display:grid; }
+#volume-hud-spotify:hover { background:rgba(255,255,255,.14); transform:scale(1.04); }
+#volume-hud-spotify:active { transform:scale(.96); }
+#volume-hud-icon { display: flex; align-items: center; color: #fff; flex: 0 0 22px; }
+#volume-hud-label { font: 700 13px var(--font); color: #fff; white-space: nowrap; flex: 0 0 auto; min-width: 62px; }
+#volume-hud-track { position: relative; flex: 1 1 0; height: 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.22); }
+#volume-hud-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: #fff; transition: width 0.08s linear; }
+#volume-hud-thumb {
+  position: absolute; top: 50%; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px;
+  border-radius: 50%; background: #fff; box-shadow: 0 0 6px rgba(255, 255, 255, 0.55);
+  transition: left 0.08s linear;
+}
+/* Microphone in use: tiny privacy dot beside the notch. */
+#privacy-dots {
+  position: absolute; top: 12px; right: -15px; z-index: 120;
+  display: flex; flex-direction: column; gap: 5px; opacity: 0; pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease; transform: translateX(-2px);
+}
+#privacy-dots.on { opacity: 1; transform: translateX(0); }
+#privacy-dots i { width: 7px; height: 7px; border-radius: 50%; display:block; }
+#privacy-dots i.mic { background: #ff9f0a; box-shadow: 0 0 7px rgba(255, 159, 10, 0.82); }
+#island[data-mode="compact"] #privacy-dots { top: 7px; right: -13px; flex-direction:row; gap:4px; }
+
+/* Game mode badge: a game is running and Lyra's key shortcuts are off. Sits to the left of the island. */
+#game-badge {
+  position: absolute; top: 7px; right: calc(100% + 8px); z-index: 120;
+  display: flex; align-items: center; gap: 5px; white-space: nowrap;
+  font: 600 10px var(--font); color: #d6f5df; padding: 3px 8px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72); opacity: 0; pointer-events: none; transform: translateX(2px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+#game-badge.on { opacity: 1; transform: translateX(0); }
+#game-badge i { width: 6px; height: 6px; border-radius: 50%; background: #30d158; box-shadow: 0 0 6px rgba(48, 209, 88, 0.8); }
+#game-badge em { font-style: normal; color: #8e939c; }
+
+
+/* Live timer countdown in the compact notch. This is intentionally a chip, not a tab. */
+#timer-chip {
+  position: absolute; top: 0; right: 14px; height: 40px; z-index: 5;
+  display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  opacity: 0; transform: translateY(5px); pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+#timer-chip.on.show { opacity: 1; transform: translateY(0); }
+#timer-chip.paused { opacity: 0.55 !important; }
+#timer-chip-icon { display: flex; align-items: center; flex: 0 0 15px; }
+#timer-chip-label { font: 700 12px var(--font); color: #aeb2ba; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+#timer-chip-time { font: 700 13px var(--font); color: #fff; font-variant-numeric: tabular-nums; letter-spacing: 0.2px; }
+#timer-chip-more { font: 700 10px var(--font); color: #aeb2ba; }
+#timer-chip-more:empty { display: none; }
+#timer-chip.with-music #timer-chip-label { display: none; }
+
+/* Notification toast: covers the compact notch for a few seconds (message / call / reminder). */
+#notify-toast {
+  position: absolute; inset: 0; z-index: 9;
+  display: flex; align-items: center; gap: 12px; padding: 4px 14px; overflow: hidden;
+  background: #000; border-radius: inherit;
+  opacity: 0; transform: translateY(7px) scale(0.97);
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+#notify-toast.on { opacity: 1; transform: translateY(0) scale(1); }
+#notify-toast-tile { width: 32px; height: 32px; flex: 0 0 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: #fff; }
+#notify-toast-col { min-width: 0; flex: 1 1 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; line-height: 1.05; }
+#notify-toast-sender, #notify-toast-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#notify-toast-sender { font: 700 12.5px var(--font); color: #fff; }
+#notify-toast-text { margin-top: 3px; font: 600 10.5px var(--font); color: #aeb2ba; }
+/* A mini Mochi: the slot is the body, the canvas is larger and overflows it so
+   hands, badges and particles are not cut off. */
+.mini {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.mini canvas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+
+/* ── Minimal tab dock: three visible, the rest scroll horizontally ───────── */
+#tab-dock {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  width: 184px;
+  height: 30px;
+  overflow: hidden;
+  padding: 3px;
+  z-index: 1000;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 999px;
+  background: rgba(5,6,8,.78);
+  box-shadow: 0 10px 24px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.045);
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease, transform .22s cubic-bezier(.2,.8,.2,1);
+}
+#tab-dock.visible { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+ .tab-dock-scroll {
+  width: 100%; height: 100%; display: flex; align-items: center; gap: 4px;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain;
+  scroll-behavior: smooth; scroll-snap-type: x mandatory; padding: 0;
+  touch-action: pan-x;
+}
+.tab-dock-scroll::-webkit-scrollbar { display:none; }
+ .dock-tab {
+  width: 56px; height: 23px; flex: 0 0 56px; scroll-snap-align: start; display:grid; place-items:center;
+  border: 0; border-radius: 999px; background: transparent; color: #737983;
+  cursor: pointer; -webkit-app-region: no-drag;
+  transition: background .16s ease, color .16s ease, transform .16s ease;
+}
+.dock-tab:hover { color:#d8dbe0; background:rgba(255,255,255,.055); }
+.dock-tab.on { color:#fff; background:rgba(255,255,255,.105); box-shadow:inset 0 1px 0 rgba(255,255,255,.055); }
+.dock-tab:active { transform:scale(.94); }
+#tab-dock.switching .dock-tab.on {
+  animation: lyraTabPill .34s cubic-bezier(.22,1,.36,1);
+}
+@keyframes lyraTabPill {
+  0% { transform:scale(.92); opacity:.72; }
+  55% { transform:scale(1.045); opacity:1; }
+  100% { transform:scale(1); opacity:1; }
+}
+
+/* ── Content shell (expanded) ───────────────────────────────────────────── */
+
+#content {
+  position: absolute;
+  inset: 0;
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  transition: opacity 0.2s ease-in-out;
+}
+
+#header {
+  height: 30px;
+  flex: 0 0 30px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 0 -10px;
+  position: relative;
+  z-index: 30;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.tabs { display:none; }
+
+.tab {
+  width: 32px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  border-radius: 13px;
+  color: var(--dim-2);
+  cursor: pointer;
+  position: relative;
+  z-index: 31;
+  -webkit-app-region: no-drag;
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #b0b5be;
+}
+
+.tab.on {
+  background: var(--tab-on);
+  color: var(--ink);
+}
+
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 12px;
+  position: relative;
+  z-index: 31;
+}
+
+.header-actions button {
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dim-2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  position: relative;
+  z-index: 32;
+  transition: background .14s ease, color .14s ease, transform .14s ease;
+  -webkit-app-region: no-drag;
+}
+
+.header-actions button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.header-actions button:active {
+  transform: scale(.94);
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.header-actions button.on {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+#header {
+  position: relative;
+  height: 30px;
+  flex: 0 0 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  z-index: 80;
+}
+.header-status-left, .header-status-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.header-status-left button, .header-status-right button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(255,255,255,.72);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: color .15s ease, background .15s ease, transform .15s ease;
+}
+.header-status-left button:hover, .header-status-right button:hover {
+  color: #fff;
+  background: rgba(255,255,255,.07);
+}
+.header-status-left button:active, .header-status-right button:active { transform: scale(.94); }
+
+
+
+
+
+
+
+
+
+
+
+/* Battery chip — pure black/white notch theme, bold. */
+
+
+
+
+
+/* Lightning intentionally omitted — charging is shown only in the tooltip title. */
+
+
+#views {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  isolation: isolate;
+}
+
+/* Smooth tab-to-tab handoff: the old view drifts away while the new one
+   settles in.  Keep the effect short so navigation still feels instant. */
+.view {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateX(10px) scale(.985);
+  filter: none;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity .18s ease,
+    transform .28s cubic-bezier(.22,.8,.24,1),
+    filter .20s ease,
+    visibility 0s linear .28s;
+}
+
+/* Layer hints only while a tab change is actually animating (JS adds/removes these classes). */
+.view.is-entering, .view.is-leaving { will-change: opacity, transform, filter; }
+/* Hidden tabs keep no GPU layers (equalizer bars etc. carry their own will-change). */
+#island .view:not(.on) * { will-change: auto !important; }
+#island .view:not(.on) .m-ambience { filter: none; }
+
+.view.on {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity .24s ease-out,
+    transform .34s cubic-bezier(.22,1,.36,1),
+    filter .24s ease-out,
+    visibility 0s;
+}
+
+.view.is-entering {
+  opacity: 0 !important;
+  transform: translate3d(12px, 0, 0) scale(.982) !important;
+  filter: blur(4px) !important;
+}
+
+.view.is-leaving {
+  /* Never let the previous tab paint a frame over the incoming tab.
+     Visibility is immediate; the incoming tab still gets its normal fade/slide. */
+  visibility: hidden !important;
+  opacity: 0 !important;
+  transform: translate3d(-8px, 0, 0) scale(.99) !important;
+  filter: blur(2px) !important;
+  transition:
+    opacity .12s ease-in,
+    transform .16s cubic-bezier(.4,0,1,1),
+    filter .12s ease-in;
+}
+
+/* The compact Spotify presentation belongs only to the compact notch.
+   While an expanded tab is changing, it must never flash over the tab content. */
+#island[data-mode="expanded"] #spotify-compact {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* A view that is not on is only transparent, not gone: an infinite animation
+   inside it (the drop frame's marching dashes) would keep the webview
+   repainting every frame for as long as the app runs, island hidden or not. */
+.view:not(.on) * {
+  animation-play-state: paused;
+}
+
+/* Settings is a scrollable surface so API/status controls remain reachable. */
+#island[data-view="settings"] .settings-view { overflow-y:auto; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.18) transparent; }
+#island[data-view="settings"] .settings-view::-webkit-scrollbar { width:5px; }
+#island[data-view="settings"] .settings-view::-webkit-scrollbar-thumb { background:rgba(255,255,255,.16); border-radius:999px; }
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+
+.card {
+  position: relative;
+  height: 100%;
+  border-radius: 20px;
+  background: var(--card);
+  border: 1px solid transparent;
+  overflow: hidden;
+}
+
+.card.wash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    280px 280px at 50% 130%,
+    var(--wash) 0%,
+    rgba(0, 0, 0, 0) 70%
+  );
+  pointer-events: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot {
+  display: inline-block;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.btn {
+  font: 500 12.5px var(--font);
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 999px;
+  cursor: default;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: transform 0.08s ease-out, background 0.12s ease-out;
+}
+
+.btn:active {
+  transform: scale(0.94);
+}
+
+.btn.primary {
+  background: var(--ink);
+  color: #0b0c0e;
+}
+
+.btn.secondary {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--ink-2);
+}
+
+.btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn .kbd {
+  font-size: 10.5px;
+  padding: 0 4px;
+  border-radius: 4px;
+  opacity: 0.55;
+}
+
+.btn.primary .kbd {
+  border: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+.btn.secondary .kbd {
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.link-btn {
+  border: 0;
+  background: transparent;
+  font: 500 11px var(--font);
+  cursor: default;
+}
+
+.icon-btn {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--dim-4);
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+
+/* ── Overview ───────────────────────────────────────────────────────────── */
+
+.overview {
+  display: flex;
+  gap: 10px;
+  height: 100%;
+}
+
+.overview > .left {
+  flex: 0 0 322px;
+  width: 322px;
+}
+
+.overview > .right {
+  flex: 1 1 auto;
+}
+
+.card-body {
+  position: relative;
+  z-index: 1;
+  padding-top: 10px;
+}
+
+.who {
+  padding: 0 16px 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.who .name {
+  font: 600 12px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.who .tool {
+  font: 600 12px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+}
+
+.who .count {
+  font: 600 12.5px var(--font);
+  color: var(--dim-3);
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.jump {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
+}
+
+/* Ticker */
+
+.ticker {
+  position: relative;
+  height: 44px;
+  margin: 6px 12px 0 108px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 12%,
+    #000 85%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 85%, transparent 100%);
+}
+
+.ticker-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transform-origin: left center;
+}
+
+.ticker-row .tick-icon {
+  width: 12px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 12px;
+  color: var(--dim-2);
+}
+
+.ticker-row .tick-text {
+  font: 500 13px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Shimmer sweep, 2.2 s — same as TickerShimmerText / ShimmeringText */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    #7c818a 0%,
+    #f2f3f5 40%,
+    #7c818a 70%
+  );
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -130% 0;
+  }
+}
+
+/* ── Agent pills ────────────────────────────────────────────────────────── */
+
+.pills {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 28px;
+  gap: 4px;
+  align-content: center;
+  padding: 0 8px;
+}
+
+.pill {
+  position: relative;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--card-flat);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  cursor: default;
+  transition: transform 0.2s cubic-bezier(0.3, 1.2, 0.4, 1), background 0.18s, border-color 0.18s,
+    box-shadow 0.18s, filter 0.18s;
+}
+
+.pill .mini {
+  margin-left: 7px;
+}
+
+.pill .lbl {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font: 600 10px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 6px;
+  pointer-events: none;
+}
+
+.pill:hover {
+  transform: scale(1.04);
+  filter: brightness(1.06);
+}
+
+.pill-badge {
+  position: absolute;
+  top: -3px;
+  right: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0b0c0e;
+  display: grid;
+  place-items: center;
+}
+
+.pill-badge i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #000;
+}
+
+.pill-badge svg {
+  width: 6px;
+  height: 6px;
+}
+
+/* ── Generic text blocks ────────────────────────────────────────────────── */
+
+.title {
+  font: 600 15px var(--font);
+}
+
+.sub {
+  font: 400 13px var(--font);
+  color: var(--dim);
+}
+
+.detail {
+  font: 400 12px var(--font);
+  color: var(--red-text);
+}
+
+.who-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: 400 12px var(--font);
+  color: var(--dim-2);
+}
+
+.who-row .n {
+  font: 600 12px var(--font);
+  color: var(--ink);
+}
+
+.code {
+  font: 400 12px var(--mono);
+  color: #e8e9ec;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 5px 10px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+}
+
+.stack {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+}
+
+/* ── Settings view (in-island) ──────────────────────────────────────────── */
+
+.settings-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 400 12.5px var(--font);
+  color: #c5c8cd;
+}
+
+.switch {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.15);
+  flex: 0 0 32px;
+  transition: background 0.18s;
+  cursor: default;
+  border: 0;
+}
+
+.switch.on {
+  background: var(--green);
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.18s;
+}
+
+.switch.on::after {
+  transform: translateX(14px);
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  width: 72px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.seg {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.seg button {
+  font: 400 11px var(--font);
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim-3);
+  cursor: default;
+}
+
+.seg button.on {
+  background: #252830;
+  color: var(--ink);
+}
+
+/* ── Utility ────────────────────────────────────────────────────────────── */
+
+.grow {
+  flex: 1 1 auto;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+/* ── Chat (prompt view) ─────────────────────────────────────────────────── */
+
+.chat-card {
+  overflow: hidden;
+}
+
+/* Expanded Chat keeps the original panel size. Only the message viewport is
+   strengthened so its scrollbar is always visible and no edge fade is applied. */
+#island[data-view="prompt"][data-mode="expanded"] .chat-log {
+  scrollbar-width: auto;
+  scrollbar-color: rgba(255,255,255,.42) rgba(255,255,255,.06);
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+}
+
+/* Rich search is a temporary tall Chat presentation, with the same full-history
+   scrolling behavior as normal Chat when the content is taller than the panel. */
+#island.search-results-open[data-view="prompt"] .chat-log {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: auto !important;
+  scrollbar-color: rgba(255,255,255,.42) rgba(255,255,255,.06) !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+}
+#island.search-results-open[data-view="prompt"] .chat-log::-webkit-scrollbar {
+  width: 9px;
+  display: block !important;
+}
+#island.search-results-open[data-view="prompt"] .chat-log::-webkit-scrollbar-track {
+  background: rgba(255,255,255,.06);
+  border-radius: 999px;
+}
+#island.search-results-open[data-view="prompt"] .chat-log::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.42);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+#island.search-results-open[data-view="prompt"] .chat-log::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,.58);
+  background-clip: padding-box;
+}
+
+#island[data-view="prompt"][data-mode="expanded"] .chat-log::-webkit-scrollbar {
+  width: 9px;
+}
+
+#island[data-view="prompt"][data-mode="expanded"] .chat-log::-webkit-scrollbar-track {
+  background: rgba(255,255,255,.06);
+  border-radius: 999px;
+}
+
+#island[data-view="prompt"][data-mode="expanded"] .chat-log::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.42);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+#island[data-view="prompt"][data-mode="expanded"] .chat-log::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,.58);
+  background-clip: padding-box;
+}
+
+.chat-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 12px 72px;
+}
+
+/* Expanded Chat has a floating tab dock below/overlapping the lower edge on
+   Windows at some DPI scales. Reserve a little room inside the island so the
+   composer always stays fully above that dock instead of being clipped. */
+#island[data-view="prompt"][data-mode="expanded"] .chat-body {
+  padding-bottom: 54px;
+}
+
+/* Rich search uses the temporarily tall Chat panel, so the result cards and
+   composer share the full expanded surface instead of being squeezed into the
+   normal 140–280px chat viewport. */
+#island.search-results-open[data-view="prompt"][data-mode="expanded"] .chat-body {
+  padding-top: 16px;
+  padding-bottom: 18px;
+}
+#island.search-results-open[data-view="prompt"][data-mode="expanded"] .chat-log {
+  gap: 8px;
+}
+#island.search-results-open[data-view="prompt"][data-mode="expanded"] .search-results-block {
+  margin-top: 2px;
+  margin-bottom: 8px;
+}
+
+/* Chat should keep the same rounded Dynamic-Island silhouette even when the
+   global island position is set to attached. */
+#island[data-view="prompt"][data-mode="expanded"],
+#island[data-view="prompt"][data-mode="expanded"] #island-clip {
+  border-radius: 24px !important;
+}
+
+.chip-row:empty {
+  display: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font: 400 11.5px var(--font);
+  color: var(--ink-2);
+  border: 1.5px solid rgba(255, 255, 255, 0.75);
+  transform: scale(1.06);
+  transition: border-color 0.3s ease-out 0.45s, transform 0.3s ease-out 0.45s;
+}
+
+.chip.settled {
+  border-color: rgba(255, 255, 255, 0);
+  transform: scale(1);
+}
+
+.chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff6b5b, #f7b32b, #2dd4a7, #38bdf8, #a78bfa);
+}
+
+.chat-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.chat-row {
+  display: flex;
+}
+
+.chat-row.user {
+  justify-content: flex-end;
+  padding-left: 32px;
+}
+
+.bubble {
+  background: rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  padding: 6px 10px;
+  font: 400 12.5px var(--font);
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.reply {
+  font: 400 12.5px var(--font);
+  color: #b0b5be;
+  white-space: pre-wrap;
+  padding-right: 8px;
+  user-select: text;
+}
+
+.typing {
+  display: flex;
+  gap: 4px;
+  padding: 4px 2px;
+}
+
+.typing i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dim-3);
+  animation: typing 0.9s ease-in-out infinite;
+}
+
+.typing i:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.typing i:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+@keyframes typing {
+  0%, 100% { transform: scale(0.6); }
+  50% { transform: scale(1.2); }
+}
+
+.chat-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+}
+
+.chat-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 400 13px var(--font);
+  outline: none;
+  cursor: text;
+}
+
+.chat-input::placeholder {
+  color: var(--dim-3);
+}
+
+.send-btn {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #0b0c0e;
+  display: grid;
+  place-items: center;
+  cursor: default;
+  transition: transform 0.08s ease-out;
+}
+
+.send-btn:active {
+  transform: scale(0.94);
+}
+
+
+/* ── Creative Chat pass ─────────────────────────────────────────────────── */
+.chat-state-line {
+  min-height: 14px;
+  padding: 0 2px;
+  color: rgba(255,255,255,.38);
+  font: 700 9px var(--font);
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+.chat-empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 4px 26px 0;
+  pointer-events: none;
+}
+.chat-empty[hidden], .chat-quick-row[hidden], .chat-state-line[hidden] { display:none; }
+
+
+.chat-empty-title { margin-top:10px; color:#f4f6f8; font:800 16px var(--font); }
+.chat-empty-sub { margin-top:4px; max-width:300px; color:rgba(255,255,255,.43); font:500 10px/1.45 var(--font); }
+.chat-quick-row {
+  display:flex; flex-wrap:wrap; justify-content:center; gap:6px;
+  padding: 0 4px 7px;
+}
+.chat-quick {
+  height:27px; padding:0 10px; border-radius:999px;
+  border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.045);
+  color:rgba(255,255,255,.72); font:700 9.5px var(--font); cursor:pointer;
+  transition:transform .16s ease, background .16s ease, border-color .16s ease;
+}
+.chat-quick:hover { transform:translateY(-1px); background:rgba(255,255,255,.085); border-color:rgba(255,255,255,.14); color:#fff; }
+.chat-quick:active { transform:scale(.97); }
+.chat-latest-wrap {
+  position:absolute; right:18px; bottom:52px; z-index:4;
+  opacity:0; transform:translateY(6px) scale(.92); pointer-events:none;
+  transition:opacity .16s ease, transform .16s ease;
+}
+.chat-latest-wrap.visible { opacity:1; transform:none; pointer-events:auto; }
+.chat-latest-btn {
+  width:30px; height:30px; border-radius:50%; display:grid; place-items:center;
+  border:1px solid rgba(255,255,255,.13); background:rgba(20,21,24,.9); color:#fff;
+  box-shadow:0 8px 22px rgba(0,0,0,.32); cursor:pointer;
+}
+.chat-latest-btn:hover { background:rgba(255,255,255,.12); }
+
+@keyframes chatOrbit { 0%,100% { transform:translateY(0) scale(1); } 50% { transform:translateY(-2px) scale(1.035); } }
+
+.search-results-block { gap:8px; }
+.search-results-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:1px 2px; }
+.search-results-heading { display:flex; align-items:center; gap:7px; min-width:0; }
+.search-results-kicker {
+  display:inline-grid; place-items:center; min-width:28px; height:17px; padding:0 6px;
+  border-radius:999px; background:rgba(75,145,255,.13); color:#9fc5ff;
+  font:800 8px var(--font); letter-spacing:.08em;
+}
+.search-results-head .search-results-label { padding:0; }
+.search-results-count { color:rgba(255,255,255,.32); font:700 8.5px var(--font); }
+.search-query-pill {
+  display:flex; align-items:center; gap:6px; max-width:100%; min-height:25px; box-sizing:border-box;
+  padding:0 9px; border-radius:9px; border:1px solid rgba(255,255,255,.055);
+  background:rgba(255,255,255,.025); color:rgba(255,255,255,.48); font:600 9px var(--font);
+  overflow:hidden;
+}
+.search-query-pill > span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.search-query-icon { color:#fff; opacity:.65; font-size:13px; line-height:1; }
+.search-card { position:relative; }
+.search-card::before {
+  content:attr(data-index); position:absolute; left:-18px; top:50%; transform:translateY(-50%);
+  color:rgba(255,255,255,.2); font:800 8px var(--font);
+}
+.search-card:hover::before { color:rgba(150,195,255,.7); }
+
+
+/* ── Drop zone ──────────────────────────────────────────────────────────── */
+
+.drop-card {
+  background: var(--card-flat);
+  border: 0;
+}
+
+.drop-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.drop-frame rect {
+  stroke: rgba(255, 255, 255, 0.13);
+  animation: dash-march 1.1s linear infinite, dash-breathe 7s ease-in-out infinite;
+}
+
+.drop-card.over {
+  background: radial-gradient(200px 200px at 50% 100%, rgba(34, 197, 94, 0.13), transparent 70%),
+    var(--card-flat);
+}
+
+.drop-card.over .drop-frame rect {
+  stroke: rgba(34, 197, 94, 0.65);
+  animation: dash-march 1.1s linear infinite;
+}
+
+@keyframes dash-march {
+  to { stroke-dashoffset: -11; }
+}
+
+@keyframes dash-breathe {
+  0%, 100% { stroke: rgba(255, 255, 255, 0.11); }
+  50% { stroke: rgba(255, 255, 255, 0.15); }
+}
+
+.drop-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding-left: 196px;
+}
+
+.drop-title {
+  font: 500 13px var(--font);
+  color: #d5d7db;
+  transition: color 0.2s;
+}
+
+.drop-card.over .drop-title {
+  color: var(--green-2);
+}
+
+.drop-tags {
+  display: flex;
+  gap: 6px;
+}
+
+.drop-tags span {
+  font: 400 11px var(--font);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #b9bdc4;
+}
+
+/* ── Uploading ──────────────────────────────────────────────────────────── */
+
+.up-card {
+  background: radial-gradient(260px 260px at 50% 140%, rgba(52, 211, 153, 0.14), transparent 70%),
+    var(--card);
+}
+
+.up-card.done {
+  background: radial-gradient(260px 260px at 50% 140%, rgba(52, 211, 153, 0.28), transparent 70%),
+    var(--card);
+}
+
+.up-row {
+  position: absolute;
+  left: 26px;
+  top: 36px;
+  width: 526px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font: 400 12.5px var(--font);
+  color: #a9adb5;
+}
+
+.up-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.up-name.done {
+  color: var(--green-2);
+  font-weight: 600;
+}
+
+.up-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  flex: 0 0 auto;
+}
+
+.up-track {
+  position: absolute;
+  left: 26px;
+  top: 58px;
+  width: 526px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.up-fill {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #1fa87a, #34d399);
+}
+
+.up-glow {
+  position: absolute;
+  left: 0;
+  top: -3px;
+  width: 28px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(110, 231, 183, 0.45);
+  filter: blur(5px);
+  pointer-events: none;
+}
+
+/* ── Integration cards (overview, left card) ────────────────────────────── */
+
+.left-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+}
+
+.int-card {
+  padding: 10px 12px 0 108px;
+  display: flex;
+  flex-direction: column;
+}
+
+.int-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-right: 24px;
+}
+
+.int-head b {
+  font: 600 12px var(--font);
+  color: var(--ink);
+}
+
+.int-head > span {
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+}
+
+.int-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+}
+
+.int-total span {
+  font: 500 11px var(--font);
+  color: #c5c8cd;
+  font-variant-numeric: tabular-nums;
+}
+
+.pulse {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+
+.int-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-top: 4px;
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+}
+
+.int-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.int-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 5px;
+}
+
+.int-rows.tight {
+  gap: 2px;
+  padding-top: 4px;
+}
+
+.int-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  min-width: 0;
+}
+
+.int-name {
+  font: 500 11px var(--font);
+  color: #9398a1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.int-row.first .int-name {
+  color: #c5c8cd;
+}
+
+.int-ago {
+  font: 400 10px var(--font);
+  color: var(--dim-3);
+  flex: 0 0 auto;
+}
+
+.int-sub {
+  font: 400 10px var(--font);
+  color: #4d5159;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.int-amount {
+  font: 500 11px var(--mono);
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.int-time {
+  font: 500 10px var(--mono);
+  color: #c9956a;
+  flex: 0 0 auto;
+}
+
+.int-more,
+.int-back {
+  border: 0;
+  background: transparent;
+  color: var(--dim-3);
+  display: grid;
+  place-items: center;
+  cursor: default;
+  flex: 0 0 auto;
+}
+
+.int-more {
+  width: 18px;
+  height: 18px;
+}
+
+.int-back {
+  width: 28px;
+  height: 28px;
+}
+
+.int-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 8px;
+  padding-right: 12px;
+}
+
+.int-stat {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.int-stat-icon {
+  width: 14px;
+  display: grid;
+  place-items: center;
+}
+
+.int-stat-label {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+}
+
+.int-stat-value {
+  margin-left: auto;
+  font: 600 12px var(--font);
+  color: #c5c8cd;
+  font-variant-numeric: tabular-nums;
+}
+
+.int-balance {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  padding-top: 4px;
+}
+
+.int-balance span {
+  font: 700 20px var(--mono);
+  color: var(--ink);
+}
+
+.int-balance i {
+  font: 600 9px var(--font);
+  font-style: normal;
+  color: var(--dim-3);
+}
+
+.int-page {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: default;
+  min-width: 0;
+}
+
+.int-page:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 5px;
+}
+
+.int-emoji {
+  width: 14px;
+  font-size: 10px;
+  color: var(--dim-3);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  font-style: normal;
+}
+
+.int-empty {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+  padding-left: 8px;
+}
+
+.int-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--dim-3);
+  cursor: default;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.int-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.int-detail-head b {
+  font: 600 11px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.int-badge {
+  font: 500 10px var(--font);
+  padding: 2px 6px;
+  border-radius: 999px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.int-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.int-commit {
+  font: 400 10.5px var(--font);
+  color: #c5c8cd;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.int-meta {
+  display: flex;
+  gap: 8px;
+  font: 400 10px var(--font);
+  color: var(--dim-3);
+}
+
+.int-link {
+  border: 0;
+  background: transparent;
+  font: 400 10px var(--mono);
+  color: #7c5cffd9;
+  text-align: left;
+  cursor: default;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.int-detail-text {
+  font: 400 10.5px/1.5 var(--mono);
+  color: var(--dim);
+  margin-top: 8px;
+  max-height: 88px;
+  overflow: auto;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.int-card.detail {
+  padding-top: 8px;
+}
+
+
+/* ── Lyra chat panel ───────────────────────────────────────────────────── */
+.lyra-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 120px;
+  padding: 4px 2px;
+}
+.lyra-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 160px;
+  padding-right: 4px;
+}
+.lyra-msg {
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 6px 10px;
+  border-radius: 10px;
+  max-width: 95%;
+}
+.lyra-msg.user {
+  align-self: flex-end;
+  background: rgba(107, 140, 255, 0.25);
+  color: #e8eaf0;
+}
+.lyra-msg.lyra {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.06);
+  color: #d0d2da;
+}
+.lyra-chat-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.lyra-chat-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: #f0f0f5;
+  padding: 8px 10px;
+  font-size: 12px;
+  outline: none;
+}
+.lyra-chat-input:focus {
+  border-color: rgba(107, 140, 255, 0.5);
+}
+.lyra-chat-send {
+  background: rgba(107, 140, 255, 0.35);
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.lyra-chat-send:hover {
+  background: rgba(107, 140, 255, 0.5);
+}
+
+/* ── Music tab (Spotify controls inside the island) ─────────────────────── */
+
+.music {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  /* 78px on the left keeps clear of Mochi (botX 50, 38px wide). */
+  padding: 6px 18px 6px 72px;
+  transform: translateY(-2px);
+}
+
+.m-art {
+  position: relative;
+  flex: 0 0 auto;
+  width: 68px;
+  height: 68px;
+  border-radius: 13px;
+  background: #1b1c20;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.m-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.25s ease-out;
+}
+
+.m-art.has-art img {
+  opacity: 1;
+}
+
+.m-ph {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--dim-4);
+}
+
+.m-art.has-art .m-ph {
+  display: none;
+}
+
+.m-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+
+.m-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.m-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.m-title {
+  font: 600 15px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.m-artist {
+  margin-top: 2px;
+  font: 400 12.5px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Wave: same look as the notch voice bars (white, tall in the middle, dots at the
+   ends). Moves while playing, rests as dots while paused, hidden otherwise. */
+.m-eq {
+  flex: 0 0 auto;
+  height: 22px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.m-eq i {
+  width: 3px;
+  height: 3px;
+  border-radius: 2px;
+  background: #fff;
+}
+
+.music-view[data-mode="playing"] .m-eq,
+.music-view[data-mode="paused"] .m-eq {
+  display: flex;
+}
+
+.music-view[data-mode="paused"] .m-eq {
+  opacity: 0.5;
+}
+
+@keyframes m-wave {
+  from { height: 3px; }
+  to { height: calc(3px + var(--amp, 1) * 19px); }
+}
+
+.music-view[data-mode="playing"] .m-eq i {
+  animation: m-wave 0.8s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .music-view[data-mode="playing"] .m-eq i {
+    animation: none;
+  }
+}
+
+/* Progress */
+.m-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 700 13.5px var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+}
+
+ .m-progress span {
+  flex: 0 0 auto;
+  min-width: 36px;
+  color: #fff;
+  font-weight: 800;
+  opacity: 1;
+}
+
+.m-progress span:last-child {
+  text-align: right;
+}
+
+.m-progress.none {
+  opacity: 0.3;
+}
+
+.m-bar {
+  position: relative;
+  flex: 1 1 auto;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.m-bar i {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: #fff;
+  transform-origin: left;
+  transform: scaleX(0);
+}
+.m-bar i::after {
+  content:""; position:absolute; right:-4px; top:50%; width:10px; height:10px; margin-top:-5px;
+  border-radius:50%; background:#fff; box-shadow:0 1px 5px rgba(0,0,0,.35);
+}
+
+/* Transport */
+.m-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  transform: translateY(-1px);
+}
+
+.m-btn {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink);
+  cursor: default;
+  transition: background 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+}
+
+.m-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.m-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.m-btn:disabled {
+  opacity: 0.45;
+}
+
+.m-btn.main {
+  width: 42px;
+  height: 42px;
+  background: transparent;
+  color: #fff;
+}
+
+.m-btn.main svg { color: #fff !important; }
+
+.m-btn svg { color:#fff; opacity:1; width:19px; height:19px; }
+.m-btn.main svg { width:22px; height:22px; }
+
+.m-btn.main:hover:not(:disabled) {
+  background: rgba(255,255,255,.08);
+}
+
+/* States where there is nothing to control: no transport, no bar. */
+.music-view[data-mode="preview"] .m-controls,
+.music-view[data-mode="preview"] .m-progress,
+.music-view[data-mode="loading"] .m-controls,
+.music-view[data-mode="loading"] .m-progress,
+.music-view[data-mode="closed"] .m-controls,
+.music-view[data-mode="closed"] .m-progress {
+  display: none;
+}
+
+.m-open {
+  display: none;
+  align-self: flex-start;
+}
+
+.music-view[data-mode="closed"] .m-open {
+  display: inline-flex;
+}
+
+/* ── Lyrics (Music tab) ─────────────────────────────────────────────────── */
+.m-lyr-btn {
+  flex: 0 0 auto;
+  display: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.m-lyr-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.m-lyr-btn.on { background: rgba(167, 139, 250, 0.2); color: #c4b5fd; }
+.music-view[data-mode="playing"] .m-lyr-btn,
+.music-view[data-mode="paused"] .m-lyr-btn { display: grid; }
+
+.m-lyrics {
+  display: none;
+  position: relative;
+  height: 120px; /* exactly 5 lines of 24px */
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(transparent, #000 28%, #000 72%, transparent);
+  mask-image: linear-gradient(transparent, #000 28%, #000 72%, transparent);
+}
+.music-view.lyrics-on .m-lyrics { display: block; }
+.music-view.lyrics-on .m-controls { display: none; }
+
+/* Lyrics open: only the lyrics and the lyrics icon remain. */
+.music-view.lyrics-on .m-text,
+.music-view.lyrics-on .m-progress,
+.music-view.lyrics-on[data-mode] .m-eq { display: none; }
+.music-view.lyrics-on .m-head { display: contents; }
+.music-view.lyrics-on .m-lyr-btn {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 2;
+}
+.music-view.lyrics-on .m-lyrics { padding-right: 34px; box-sizing: border-box; }
+
+/* Synced: padding lets the first/last line reach the middle of the window. */
+.m-lyr-inner { padding: 48px 0; }
+.m-lyr-line {
+  height: 24px;
+  line-height: 24px;
+  font: 500 14px var(--font);
+  color: rgba(255, 255, 255, 0.32);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.25s ease-out;
+}
+.m-lyr-line.cur { color: #fff; font-weight: 600; }
+
+/* Synced lyric changes: move the 3-line window smoothly instead of popping to the
+   next line. The active line stays crisp while the previous/next lines glide past it. */
+@keyframes m-lyr-shift-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes m-lyr-shift-down {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.m-lyr-line.lyric-up {
+  animation: m-lyr-shift-up 0.32s cubic-bezier(.2,.8,.2,1) both;
+}
+.m-lyr-line.lyric-down {
+  animation: m-lyr-shift-down 0.32s cubic-bezier(.2,.8,.2,1) both;
+}
+.m-lyr-line.lyric-up:nth-child(1),
+.m-lyr-line.lyric-down:nth-child(1) { animation-delay: 0.02s; }
+.m-lyr-line.lyric-up:nth-child(2),
+.m-lyr-line.lyric-down:nth-child(2) { animation-delay: 0s; }
+.m-lyr-line.lyric-up:nth-child(3),
+.m-lyr-line.lyric-down:nth-child(3) { animation-delay: 0.02s; }
+
+/* Status text ("Finding lyrics…", "No lyrics found"): dead centre of the lyrics panel. */
+.m-lyr-msg {
+  height: 24px;
+  margin-top: 0; /* .m-lyr-inner's 48px padding already centres a 24px line in the 120px panel */
+  line-height: 24px;
+  font: 600 14px var(--font);
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+}
+
+/* Unsynced: ordinary scrolling text. */
+.m-lyrics.plain {
+  overflow-y: auto;
+  -webkit-mask-image: none;
+  mask-image: none;
+  scrollbar-width: thin;
+}
+.m-lyrics.plain .m-lyr-inner { padding: 0 6px 0 0; }
+.m-lyrics.plain .m-lyr-line {
+  height: auto;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.78);
+  white-space: pre-wrap;
+  font-weight: 400;
+}
+
+/* Lyrics open / close animation (classes are added briefly by music.ts). */
+@keyframes m-lyr-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); filter: blur(5px); }
+  to   { opacity: 1; transform: none; filter: blur(0); }
+}
+@keyframes m-player-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes m-lyr-line-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.music-view.m-anim-in .m-lyrics {
+  animation: m-lyr-in 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.music-view.m-anim-in .m-lyr-line {
+  animation: m-lyr-line-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.music-view.m-anim-in .m-lyr-line:nth-child(2) { animation-delay: 0.03s; }
+.music-view.m-anim-in .m-lyr-line:nth-child(3) { animation-delay: 0.06s; }
+.music-view.m-anim-in .m-lyr-line:nth-child(4) { animation-delay: 0.09s; }
+.music-view.m-anim-in .m-lyr-line:nth-child(5) { animation-delay: 0.12s; }
+.music-view.m-anim-out .m-text,
+.music-view.m-anim-out .m-progress,
+.music-view.m-anim-out .m-controls {
+  animation: m-player-in 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.music-view.m-anim-out .m-progress { animation-delay: 0.04s; }
+.music-view.m-anim-out .m-controls { animation-delay: 0.08s; }
+@media (prefers-reduced-motion: reduce) {
+  .music-view.m-anim-in .m-lyrics,
+  .music-view.m-anim-in .m-lyr-line,
+  .m-lyr-line.lyric-up,
+  .m-lyr-line.lyric-down,
+  .music-view.m-anim-out .m-text,
+  .music-view.m-anim-out .m-progress,
+  .music-view.m-anim-out .m-controls { animation: none; }
+}
+
+
+/* Notification tile: pops in with the toast, then wiggles by kind. */
+#notify-toast-tile { position: relative; }
+#notify-toast-tile svg { transform-origin: 50% 50%; }
+#notify-toast.on #notify-toast-tile { animation: nt-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+#notify-toast.on #notify-toast-tile[data-kind="message"] svg { animation: nt-nudge 0.6s ease-out 0.35s both; }
+#notify-toast.on #notify-toast-tile[data-kind="call"] { animation: nt-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both, nt-ring 0.9s ease-in-out 0.5s infinite; }
+#notify-toast.on #notify-toast-tile[data-kind="reminder"] svg { animation: nt-swing 0.9s ease-in-out 0.35s 2 both; transform-origin: 50% 12%; }
+#notify-toast-badge {
+  position: absolute; right: -4px; bottom: -4px; width: 14px; height: 14px; border-radius: 50%;
+  display: grid; place-items: center; background: #34c759; color: #fff; box-shadow: 0 0 0 2px #000;
+}
+#notify-toast-badge svg { animation: none !important; }
+@keyframes nt-pop { 0% { transform: scale(0.4) rotate(-12deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+@keyframes nt-nudge { 0%, 100% { transform: translateY(0) scale(1); } 40% { transform: translateY(-2px) scale(1.12); } 70% { transform: translateY(0) scale(0.97); } }
+@keyframes nt-ring { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(-12deg); } 30% { transform: rotate(10deg); } 45% { transform: rotate(-8deg); } 60% { transform: rotate(5deg); } 75% { transform: rotate(0); } }
+@keyframes nt-swing { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(18deg); } 75% { transform: rotate(-18deg); } }
+@media (prefers-reduced-motion: reduce) { #notify-toast.on #notify-toast-tile, #notify-toast.on #notify-toast-tile svg { animation: none !important; } }
+
+/* Toast while the big panel is open: a small card at the top centre, clear of the tabs. */
+#notify-toast.in-panel {
+  inset: auto; top: 6px; left: 50%; width: 320px; height: 40px; margin-left: -160px;
+  border-radius: 20px; background: #1c1d21; pointer-events: none; /* invisible card must not cover the tabs */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 22px rgba(0, 0, 0, 0.55);
+}
+#notify-toast.in-panel.on { pointer-events: auto; }
+
+
+/* ── Volume tab (per-app mixer) ─────────────────────────────────────────── */
+.volume-view .vol-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px 14px 12px 14px;
+  min-height: 0;
+  box-sizing: border-box;
+}
+.vol-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.2) transparent;
+  max-height: 100%;
+}
+.vol-list::-webkit-scrollbar { display: none; }
+.vol-empty {
+  font: 600 12px var(--font);
+  color: var(--dim-2);
+  padding: 18px 4px;
+}
+.vol-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 7px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.vol-row.active {
+  background: rgba(255, 255, 255, 0.055);
+}
+.vol-row.muted {
+  opacity: 0.55;
+}
+.vol-ic {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  border-radius: 7px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+.vol-ic img {
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+  display: block;
+}
+.vol-ic svg {
+  width: 16px;
+  height: 16px;
+}
+.vol-meta {
+  flex: 0 0 88px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vol-name {
+  font: 700 12px var(--font);
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vol-pct {
+  font: 600 10px var(--font);
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.vol-slider {
+  flex: 1 1 auto;
+  min-width: 60px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+}
+.vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.4);
+}
+.vol-slider:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+.vol-mute {
+  flex: 0 0 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim-2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.vol-mute:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+.vol-mute.on { color: #fff; }
+
+
+/* Music recognition — compact, Island-native control card. */
+.recognition-view .recognition-body { height:100%; display:flex; flex-direction:column; align-items:stretch; padding:12px 14px 10px; box-sizing:border-box; }
+.recognition-title { font:800 15px var(--font); color:#fff; margin:0; text-align:left; }
+.recognition-sub { font:500 10px var(--font); color:var(--dim); margin:2px 0 0; text-align:left; }
+.recognition-scan-card { width:min(100%,560px); min-height:60px; margin:5px 0 3px; padding:7px 10px; box-sizing:border-box; display:flex; align-items:center; gap:11px; border:1px solid rgba(255,255,255,.09); border-radius:16px; background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.025)); box-shadow:inset 0 1px 0 rgba(255,255,255,.035); }
+.recognition-scan-icon { width:34px; height:34px; flex:0 0 34px; display:grid; place-items:center; border-radius:50%; color:#fff; background:rgba(255,255,255,.065); border:1px solid rgba(255,255,255,.10); }
+.recognition-scan-copy { min-width:0; flex:1; }
+.recognition-scan-title { font:750 12px var(--font); color:#fff; }
+.recognition-scan-sub { margin-top:3px; font:500 10px var(--font); color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.recognize-circle { width:44px; height:44px; flex:0 0 44px; border-radius:50%; border:1px solid rgba(255,255,255,.16); background:radial-gradient(circle at 50% 40%,rgba(255,255,255,.14),rgba(255,255,255,.045)); color:#fff; display:grid; place-items:center; cursor:pointer; box-shadow:0 0 0 0 rgba(255,255,255,.10); transition:transform .16s ease,box-shadow .2s ease,background .2s ease; }
+.recognize-circle:hover { transform:scale(1.04); background:radial-gradient(circle at 50% 40%,rgba(255,255,255,.19),rgba(255,255,255,.055)); }
+.recognize-circle:active { transform:scale(.96); }
+.recognize-circle.busy { animation:recognition-pulse 1.15s ease-in-out infinite; }
+.recognition-spotify-button { width:38px; height:38px; flex:0 0 38px; display:none; place-items:center; border-radius:50%; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.055); color:#fff; cursor:pointer; transition:transform .16s ease,background .16s ease; }
+.recognition-spotify-button.on { display:grid; }
+.recognition-spotify-button:hover { transform:scale(1.04); background:rgba(255,255,255,.11); }
+.recognition-spotify-button:active { transform:scale(.96); }
+@keyframes recognition-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(255,255,255,.10); } 50% { box-shadow:0 0 0 10px rgba(255,255,255,0); } }
+.recognition-history { width:min(100%,540px); margin-top:4px; flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:4px; }
+.recognition-history::-webkit-scrollbar { display:none; }
+.recognition-history-head { font:700 10px var(--font); color:var(--dim-2); text-transform:uppercase; letter-spacing:.08em; margin:2px 2px 4px; }
+.recognition-history-row { display:flex; align-items:center; gap:8px; padding:5px 7px; border-radius:8px; background:rgba(255,255,255,.025); }
+.recognition-history-row img { width:28px; height:28px; border-radius:5px; object-fit:cover; background:rgba(255,255,255,.07); }
+.recognition-history-row .rh-main { min-width:0; flex:1; }
+.recognition-history-row .rh-title { font:700 11px var(--font); color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.recognition-history-row .rh-artist { font:500 10px var(--font); color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.recognition-history-row .rh-time { font:500 10px var(--font); color:var(--dim-2); }
+
+/* Recognition result stays inside the main Island card instead of becoming a
+   second, low card. The album artwork doubles as the result icon. */
+.recognition-scan-card.has-result {
+  min-height: 76px;
+  background: linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.035));
+  border-color: rgba(255,255,255,.12);
+}
+.recognition-scan-card.has-result .recognition-scan-icon {
+  width: 42px;
+  height: 42px;
+  flex-basis: 42px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255,255,255,.08);
+}
+.recognition-scan-art {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.recognition-scan-card.has-result .recognition-scan-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+.recognition-scan-card.has-result .recognition-scan-sub {
+  font-size: 10px;
+}
+.recognition-scan-card.has-error .recognition-scan-title { color: #fff; }
+.recognition-scan-card.has-error .recognition-scan-sub { color: var(--dim); }
+.recognition-scan-card.has-result .recognize-circle {
+  width: 46px;
+  height: 46px;
+  flex-basis: 46px;
+}
+.recognition-history { margin-top: 4px; padding-right: 4px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+
+/* Recognition result polish: keep the result visually inside the Island. */
+.recognition-scan-card.has-result { min-height:70px; background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.035)); }
+.recognition-scan-card.has-result .recognition-scan-copy { padding-right:4px; }
+.recognition-scan-art { width:40px; height:40px; border-radius:10px; object-fit:cover; display:block; }
+.recognition-empty { width:100%; text-align:center; padding:8px 0; color:var(--dim-2); font:500 10px var(--font); }
+
+/* Recognition history actions — tiny Spotify affordance without making the
+   history rows feel like a separate app panel. */
+.recognition-history-spotify {
+  width:24px;
+  height:24px;
+  flex:0 0 24px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:50%;
+  background:rgba(255,255,255,.035);
+  color:#fff;
+  cursor:pointer;
+}
+.recognition-history-spotify:hover { background:rgba(255,255,255,.09); }
+
+
+
+/* v21 polish: Apple-like status controls and tab spacing. */
+.header-status-left { gap: 8px; }
+
+
+.settings-view { overflow-y: auto; overscroll-behavior-y: contain; }
+.settings-view .stack { padding-bottom: 24px !important; }
+.theme-picker { padding-bottom: 4px; }
+
+/* v22: floating-vs-attached presentation. Floating gets breathing room above the glass;
+   attached recreates the older Mac-style top-stuck silhouette. */
+#island[data-position="floating"] { margin-top: 0; }
+#island[data-position="attached"] { margin-top: 0; }
+/* Compact notch uses the exact same theme material as the expanded island. */
+#island[data-mode="compact"] { background:var(--island-bg) !important; border-color:var(--island-edge) !important; color:var(--theme-text, var(--ink)); }
+#island[data-mode="compact"] #header,
+#island[data-mode="compact"] #content,
+#island[data-mode="compact"] #countdown { color:var(--theme-text, var(--ink)); }
+#island[data-mode="compact"] .mini-pill,
+#island[data-mode="compact"] .compact-chip,
+#island[data-mode="compact"] .timer-chip,
+#island[data-mode="compact"] #spotify-compact { background:var(--theme-surface-2, rgba(255,255,255,.055)) !important; border-color:var(--theme-border, var(--island-edge)) !important; color:var(--theme-text, var(--ink)) !important; }
+#island[data-mode="compact"] #spotify-compact-title,
+#island[data-mode="compact"] #spotify-compact-artist,
+#island[data-mode="compact"] #timer-chip-label,
+#island[data-mode="compact"] #timer-chip-time,
+#island[data-mode="compact"] #timer-chip-more { color:var(--theme-text, var(--ink)) !important; }
+#island[data-mode="compact"] #spotify-compact-artist,
+#island[data-mode="compact"] #timer-chip-label,
+#island[data-mode="compact"] #timer-chip-more { color:var(--theme-muted, var(--dim)) !important; }
+#island[data-mode="compact"] #spotify-compact-eq i { background:var(--theme-text, #fff) !important; }
+
+#island[data-mode="compact"] { border-radius: 15px; }
+#island[data-mode="compact"][data-position="floating"] { box-shadow: 0 18px 36px rgba(0,0,0,.48), 0 4px 12px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.035); }
+#island[data-position="attached"] { border-top-left-radius: 0; border-top-right-radius: 0; }
+#island[data-mode="expanded"][data-position="attached"] { border-top-left-radius: 0; border-top-right-radius: 0; }
+#island[data-mode="expanded"][data-position="floating"] { box-shadow: 0 28px 58px rgba(0,0,0,.40), 0 10px 24px rgba(0,0,0,.38), inset 0 1px 0 var(--island-edge-soft), inset 0 0 0 1px rgba(0,0,0,.18); }
+
+
+/* v24: attached mode rises through the top edge like a Mac-style notch. The
+   top is intentionally clipped by the screen while the lower corners stay rounded. */
+#island[data-position="attached"] {
+  border-radius: 0 0 28px 28px !important;
+  box-shadow: 0 22px 46px rgba(0,0,0,.38), 0 8px 18px rgba(0,0,0,.42), inset 0 -1px 0 rgba(255,255,255,.025);
+}
+#island[data-position="attached"] #island-clip { border-radius: 0 0 28px 28px; }
+#island[data-position="attached"]::after { top: auto; bottom: 1px; opacity: .28; }
+
+/* v24: settings gets a real scroll viewport; the card/content is allowed to
+   exceed the Island height instead of being clipped by the absolute view. */
+#island[data-view="settings"] .settings-view {
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+#island[data-view="settings"] .settings-view > .card {
+  min-height: max-content;
+  height: max-content;
+}
+#island[data-view="settings"] .settings-view .stack { padding-bottom: 68px !important; }
+
+/* v25: attached mode keeps the notch visually clipped at the top, but shifts
+   its readable content down into the extra space so titles are not swallowed. */
+#island[data-position="attached"] #header,
+#island[data-position="attached"] #content {
+  transform: translateY(10px);
+}
+
+/* The dock may sit over the lower edge of the tall settings/recognition surfaces. */
+#island[data-view="settings"] ~ #tab-dock,
+#island[data-view="recognition"] ~ #tab-dock { z-index: 3000; }
+
+/* v26: attached mode gets a little more visible notch body, while the lower
+   edge stays fully rounded. Keep the navigation dock above the glass. */
+#island[data-position="attached"] + #tab-dock { z-index: 4000; }
+#island[data-position="attached"] #content { padding-bottom: 38px; }
+
+/* v28: navigation dock is a first-class surface, not part of the view content. */
+#tab-dock { z-index: 9000 !important; }
+#island[data-view="settings"] ~ #tab-dock,
+#island[data-view="recognition"] ~ #tab-dock { z-index: 9001 !important; }
+#island[data-position="attached"] + #tab-dock { z-index: 9002 !important; }
+
+/* v29 — Screen Watch / visual context surface. Keep it deliberately minimal. */
+.screen-mode-row { margin-top:12px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.screen-mode-row > span { font:700 11px var(--font); color:#aeb2ba; }
+.screen-mode { min-width:132px; height:30px; padding:0 9px; border-radius:10px; border:1px solid rgba(255,255,255,.09); background:#0b0c0f; color:#fff; outline:none; font:700 11px var(--font); }
+.screen-status { margin-top:9px; min-height:30px; padding:8px 10px; border-radius:10px; background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.055); color:#dfe2e6; font:600 10px/1.35 var(--font); }
+.screen-actions { display:flex; gap:6px; margin-top:9px; }
+.screen-action { height:29px; padding:0 10px; border-radius:10px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.055); color:#fff; display:flex; align-items:center; gap:6px; cursor:pointer; font:700 10px var(--font); -webkit-app-region:no-drag; }
+.screen-action:hover { background:rgba(255,255,255,.10); }
+.screen-action:disabled { opacity:.45; cursor:default; }
+.screen-question-row { margin-top:8px; }
+.screen-question { width:100%; height:30px; border-radius:10px; border:1px solid rgba(255,255,255,.08); background:#090a0c; color:#fff; padding:0 10px; outline:none; font:600 10.5px var(--font); }
+.screen-question::placeholder { color:#6f747d; }
+.screen-hint { margin-top:8px; color:#737983; font:500 9.5px/1.35 var(--font); max-width:470px; }
+
+/* v29 — privacy indicators sit outside the Island, never inside content. */
+#privacy-dots { right:-16px; }
+#island[data-mode="compact"] #privacy-dots { right:-14px; }
+
+/* v29 — the dock is a stable three-slot pager. A page is always exactly three buttons. */
+#tab-dock { width:184px; }
+.tab-dock-scroll { scroll-snap-type:x mandatory; overscroll-behavior-x:none; }
+.dock-tab { user-select:none; }
+
+/* v29 — Pure Black remains absolutely flat even on visual-context surfaces. */
+
+/* v30 — bulletproof three-tab pager. Each page is exactly the dock width, so
+   the final page can never expose a partial fourth tab. */
+#tab-dock { width: 184px; height: 30px; }
+#tab-dock .tab-dock-scroll {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior: none;
+  scroll-behavior: smooth;
+  touch-action: pan-x;
+}
+#tab-dock .tab-dock-page {
+  width: 176px;
+  min-width: 176px;
+  height: 100%;
+  flex: 0 0 176px;
+  display: grid;
+  grid-template-columns: repeat(3, 56px);
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: start;
+}
+#tab-dock .dock-tab-spacer { visibility: hidden; pointer-events: none; }
+#tab-dock[data-pager="attached"] { margin-top: 0; }
+
+/* v30 — attached mode: the dock belongs to the lower interior edge rather than
+   floating underneath the clipped notch. The island itself still rises through
+   the screen edge, preserving the Apple-style attached silhouette. */
+#island[data-position="attached"] + #tab-dock {
+  transform: translateX(-50%) translateY(0);
+}
+#island[data-position="attached"] + #tab-dock.visible {
+  transform: translateX(-50%) translateY(0);
+}
+
+
+/* v31 — tab pager: native horizontal swipe/drag, with no accidental selection. */
+#tab-dock .tab-dock-scroll { cursor: grab; user-select: none; -webkit-user-select: none; }
+#tab-dock .tab-dock-scroll:active { cursor: grabbing; }
+#tab-dock .dock-tab { touch-action: pan-x; }
+
+/* Music: Apple-like album atmosphere stays subtle and behind the content. */
+.music-view .card { position: relative; overflow: hidden; }
+.m-ambience { position:absolute; inset:-24px; z-index:0; background-position:center; background-size:cover; background-repeat:no-repeat; filter:blur(28px) saturate(1.25); opacity:0; transform:scale(1.06); transition:opacity .35s ease, transform .45s ease; pointer-events:none; }
+.music-view.has-ambience .m-ambience { opacity:.16; transform:scale(1.02); }
+.m-ambience::after { content:""; position:absolute; inset:0; background:rgba(0,0,0,.72); }
+.music { z-index:1; }
+#island[data-theme="pure-black"] .m-ambience { display:none; }
+.m-bar { cursor:pointer; outline:none; }
+.m-bar:hover { height:5px; }
+.m-bar:focus-visible { box-shadow:0 0 0 2px rgba(255,255,255,.22); }
+.m-bar::after { content:""; position:absolute; left:var(--seek-preview, -100%); top:50%; width:8px; height:8px; margin:-4px 0 0 -4px; border-radius:50%; background:#fff; opacity:0; transition:opacity .12s; }
+.m-bar[style*="--seek-preview"]::after { opacity:.95; }
+
+/* v31 — activity cards can carry a quiet second line without making the notch busy. */
+#volume-hud-text { min-width:0; flex:1 1 auto; display:flex; flex-direction:column; justify-content:center; gap:1px; overflow:hidden; }
+#volume-hud.activity #volume-hud-label { flex:none; }
+#volume-hud-subtitle { display:none; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:500 9px/1.15 var(--font); color:#9ca1aa; }
+#volume-hud.activity[data-activity-kind="rich"] #volume-hud-subtitle { display:block; }
+@media (prefers-reduced-motion: reduce) { .m-ambience { transition:none; } }
+
+/* ── Session Clipboard tab ───────────────────────────────────────────────── */
+.clipboard-view { overflow:auto; padding:12px 14px 14px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.18) transparent; box-sizing:border-box; height:100%; }
+.clipboard-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.clipboard-title { font:800 18px var(--font); color:var(--ink); }
+.clipboard-count { min-width:18px; height:18px; padding:0 6px; border-radius:999px; display:grid; place-items:center; background:rgba(255,255,255,.08); color:var(--dim); font:700 9px var(--font); }
+.clipboard-empty { padding:16px 4px; color:var(--dim); font:600 10px/1.45 var(--font); }
+.clipboard-list { display:flex; flex-direction:column; gap:6px; }
+.clipboard-item { width:100%; min-height:48px; border:1px solid rgba(255,255,255,.07); border-radius:12px; background:rgba(255,255,255,.035); color:var(--ink); display:flex; align-items:center; gap:9px; padding:8px 10px; text-align:left; cursor:pointer; }
+.clipboard-item:hover { background:rgba(255,255,255,.065); border-color:rgba(255,255,255,.11); }
+.clipboard-icon { width:28px; height:28px; border-radius:8px; display:grid; place-items:center; flex:0 0 auto; background:rgba(255,255,255,.07); color:var(--ink); }
+.clipboard-copy { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.clipboard-label { color:var(--dim); font:700 8px var(--font); text-transform:uppercase; letter-spacing:.06em; }
+.clipboard-body { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-2); font:600 10px var(--font); }
+
+.clipboard-add{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.055);color:#fff;border-radius:9px;padding:6px 9px;font:700 9px var(--font);cursor:pointer}.clipboard-add:hover{background:rgba(255,255,255,.09)}
+
+
+/* The "Too many hits" / confused view intentionally keeps Mochi visible. */
+
+
+/* Compact tabs: hide Mochi (Home + Chat keep it). */
+
+
+/* v34 — Music player matched to the supplied reference: compact 346×176 black card,
+   no Mochi, no header chrome, and the controls/artwork are laid out like the reference. */
+#island[data-view="music"] #header,
+#island[data-view="music"] #countdown,
+#island[data-view="music"] #privacy-dots{ display:none !important; }
+#island[data-view="music"] #content { padding:0; }
+#island[data-view="music"] .music-view { position:absolute; inset:0; }
+
+#island[data-view="music"] .music { width:100%; height:100%; padding:18px 20px 14px 36px; gap:0; display:block; transform:none; }
+#island[data-view="music"] .m-art { position:absolute; left:22px; top:14px; width:58px; height:58px; border-radius:13px; }
+#island[data-view="music"] .m-main { position:absolute; inset:0; display:block; }
+#island[data-view="music"] .m-head { position:absolute; left:92px; right:16px; top:18px; height:40px; display:flex; align-items:flex-start; }
+#island[data-view="music"] .m-text { padding-right:0; }
+#island[data-view="music"] .m-title { font-size:14px; line-height:17px; font-weight:700; color:#fff; }
+#island[data-view="music"] .m-artist { margin-top:2px; font-size:11px; line-height:13px; color:#8c8c91; }
+#island[data-view="music"] .m-actions { margin-left:auto; display:flex; align-items:center; gap:16px; padding-top:3px; }
+#island[data-view="music"] .m-action { width:14px; height:18px; padding:0; display:grid; place-items:center; border:0; background:transparent; color:#bfc0c5; opacity:.92; }
+#island[data-view="music"] .m-action svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.55; stroke-linecap:round; stroke-linejoin:round; }
+#island[data-view="music"] .m-action.heart svg { fill:none; }
+#island[data-view="music"] .m-action.wave svg { fill:currentColor; stroke:none; }
+#island[data-view="music"] .m-eq { display:none !important; }
+#island[data-view="music"] .m-lyr-btn { display:none !important; }
+#island[data-view="music"] .m-progress { position:absolute; left:22px; right:22px; top:80px; height:20px; display:flex; align-items:center; gap:8px; color:#fff; font-size:11px; font-weight:700; }
+#island[data-view="music"] .m-progress span { min-width:27px; font-size:12px; font-weight:500; color:#fff; }
+#island[data-view="music"] .m-bar { height:4px; border-radius:99px; background:#262626; }
+#island[data-view="music"] .m-bar i { background:#f2f2f2; }
+#island[data-view="music"] .m-bar i::after { width:16px; height:16px; right:-8px; margin-top:-8px; background:#fff; box-shadow:0 1px 5px rgba(0,0,0,.45); }
+#island[data-view="music"] .m-controls { position:absolute; left:16px; right:16px; top:106px; height:42px; display:grid; grid-template-columns:1fr 1fr 1fr 1fr 1fr; align-items:center; justify-items:center; gap:4px; transform:none; }
+#island[data-view="music"] .m-btn { width:34px; height:34px; color:#fff; }
+#island[data-view="music"] .m-btn svg { width:17px; height:17px; }
+#island[data-view="music"] .m-btn.main { width:34px; height:34px; }
+#island[data-view="music"] .m-btn.main svg { width:22px; height:22px; }
+#island[data-view="music"] .m-action.transport-side { width:22px; height:28px; color:#fff; opacity:1; }
+#island[data-view="music"] .m-action.transport-side svg { width:15px; height:15px; }
+#island[data-view="music"] .m-open { display:none !important; }
+#island[data-view="music"] .m-ambience { display:none !important; }
+#island[data-view="music"] .m-ph { background:#111; }
+#island[data-view="music"] .m-art img { border-radius:inherit; }
+#island[data-view="music"] .m-lyrics { display:none !important; }
+#island[data-view="music"] ~ #tab-dock { z-index:4000; }
+
+/* v35 — Music player interaction polish: no top action row, stronger typography,
+   larger transport controls, and a real in-player Lyrics control. */
+#island[data-view="music"] .m-head {
+  left:106px;
+  right:18px;
+  top:24px;
+  height:38px;
+  align-items:flex-start;
+  z-index:12;
+}
+#island[data-view="music"] .m-title {
+  font-size:16px;
+  line-height:19px;
+  font-weight:800;
+  letter-spacing:-.01em;
+}
+#island[data-view="music"] .m-artist {
+  margin-top:2px;
+  font-size:12px;
+  line-height:14px;
+  font-weight:600;
+  color:#96969c;
+}
+#island[data-view="music"] .m-art {
+  width:58px;
+  height:58px;
+  left:22px;
+  top:14px;
+  border-radius:13px;
+  z-index:12;
+  box-shadow: 0 8px 22px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.06);
+}
+#island[data-view="music"] .m-progress {
+  left:22px;
+  right:22px;
+  top:80px;
+  height:20px;
+  gap:8px;
+  font-size:11px;
+  font-weight:700;
+  z-index:12;
+}
+#island[data-view="music"] .m-progress span {
+  min-width:31px;
+  font-size:13px;
+  font-weight:800;
+}
+#island[data-view="music"] .m-bar {
+  height:5px;
+  z-index:13;
+}
+#island[data-view="music"] .m-bar i::after {
+  width:17px;
+  height:17px;
+  right:-8.5px;
+  margin-top:-8.5px;
+}
+#island[data-view="music"] .m-controls {
+  left:16px;
+  right:16px;
+  top:106px;
+  height:42px;
+  grid-template-columns:repeat(5, 1fr);
+  gap:4px;
+  z-index:20;
+  pointer-events:auto;
+}
+#island[data-view="music"] .m-btn,
+#island[data-view="music"] .m-action,
+#island[data-view="music"] .m-lyr-btn {
+  pointer-events:auto;
+  cursor:pointer;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+  position:relative;
+  z-index:21;
+}
+#island[data-view="music"] .m-btn {
+  width:40px;
+  height:40px;
+}
+#island[data-view="music"] .m-btn svg { width:20px; height:20px; }
+#island[data-view="music"] .m-btn.main { width:44px; height:44px; }
+#island[data-view="music"] .m-btn.main svg { width:27px; height:27px; }
+#island[data-view="music"] .m-action.transport-side,
+#island[data-view="music"] .m-lyr-btn.transport-side {
+  display:grid !important;
+  width:40px;
+  height:40px;
+  padding:0;
+  border:0;
+  border-radius:50%;
+  background:transparent;
+  color:#fff;
+  opacity:1;
+}
+#island[data-view="music"] .m-action.transport-side svg,
+#island[data-view="music"] .m-lyr-btn.transport-side svg {
+  width:18px;
+  height:18px;
+  color:#fff;
+}
+#island[data-view="music"] .m-action.transport-side:hover,
+#island[data-view="music"] .m-lyr-btn.transport-side:hover,
+#island[data-view="music"] .m-btn:hover:not(:disabled) {
+  background:rgba(255,255,255,.10);
+}
+#island[data-view="music"] .m-lyr-btn.on {
+  background:rgba(255,255,255,.14);
+  color:#fff;
+}
+#island[data-view="music"] .m-lyr-btn:not(.transport-side) { display:none !important; }
+#island[data-view="music"] .m-actions { display:none !important; }
+#island[data-view="music"] .m-eq { display:none !important; }
+#island[data-view="music"] .m-lyrics {
+  position:absolute;
+  left:24px;
+  right:24px;
+  top:18px;
+  height:112px;
+  z-index:30;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-controls { display:none; }
+#island[data-view="music"] .music-view.lyrics-on .m-lyrics { display:block !important; }
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-btn.transport-side {
+  position:absolute;
+  right:8px;
+  top:-2px;
+  z-index:40;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-head { display:block; }
+
+/* Keep the Lyrics toggle reachable while the lyrics panel is open. */
+#island[data-view="music"] .music-view.lyrics-on .m-controls {
+  display:flex !important;
+  position:absolute;
+  left:auto;
+  right:18px;
+  top:auto;
+  bottom:8px;
+  width:46px;
+  height:40px;
+  z-index:45;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-controls > * { display:none !important; }
+#island[data-view="music"] .music-view.lyrics-on .m-controls > .lyrics-side { display:grid !important; }
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-btn.transport-side {
+  position:static;
+  width:40px;
+  height:40px;
+}
+
+
+/* v36 — animated music wave in front of the track title. */
+#island[data-view="music"] .m-head { display:flex; align-items:center; gap:9px; }
+#island[data-view="music"] .m-head .m-text { min-width:0; flex:1 1 auto; }
+#island[data-view="music"] .m-title { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#island[data-view="music"] .m-head .m-music-wave { flex:0 0 auto; width:25px; height:22px; display:flex; align-items:center; justify-content:center; gap:2px; pointer-events:none; }
+#island[data-view="music"] .m-head .m-music-wave i { display:block; width:2.5px; height:7px; border-radius:99px; background:#fff; opacity:.92; transform-origin:center; animation:lyraMusicWave .72s ease-in-out infinite alternate; }
+#island[data-view="music"] .m-head .m-music-wave i:nth-child(2){animation-delay:-.28s;height:13px}
+#island[data-view="music"] .m-head .m-music-wave i:nth-child(3){animation-delay:-.48s;height:18px}
+#island[data-view="music"] .m-head .m-music-wave i:nth-child(4){animation-delay:-.12s;height:11px}
+#island[data-view="music"] .m-head .m-music-wave i:nth-child(5){animation-delay:-.36s;height:15px}
+#island[data-view="music"] .m-head .m-music-wave.paused i { animation-play-state:paused; opacity:.55; }
+@keyframes lyraMusicWave { from { transform:scaleY(.45); } to { transform:scaleY(1.25); } }
+
+
+/* v37 — Music final polish: themed surface, smaller artwork, title wave placement,
+   one Lyrics control, and larger hit targets for reliable first-click activation. */
+#island[data-view="music"] .music-view .card {
+  background: linear-gradient(180deg, var(--island-bg), var(--island-bg-2)) !important;
+  color: var(--ink);
+  border: 1px solid var(--island-edge) !important;
+  backdrop-filter: inherit;
+  -webkit-backdrop-filter: inherit;
+}
+#island[data-view="music"] .music { padding: 16px 22px 12px 30px; }
+#island[data-view="music"] .m-art { width:60px; height:60px; left:30px; top:18px; border-radius:12px; }
+#island[data-view="music"] .m-head { left:104px; right:18px; top:23px; height:42px; display:block; }
+#island[data-view="music"] .m-text { min-width:0; width:100%; }
+#island[data-view="music"] .m-title-line { display:flex; align-items:center; gap:7px; min-width:0; width:100%; }
+#island[data-view="music"] .m-title { min-width:0; flex:1 1 auto; font-size:16px; line-height:20px; font-weight:850; color:var(--ink); }
+#island[data-view="music"] .m-artist { margin-top:1px; font-size:12px; line-height:15px; font-weight:650; color:var(--dim); }
+#island[data-view="music"] .m-head .m-music-wave { order:2; flex:0 0 24px; width:24px; height:20px; display:flex; align-items:center; justify-content:center; gap:2px; pointer-events:none; }
+#island[data-view="music"] .m-head .m-music-wave i { width:2.5px; background:var(--island-accent); opacity:.95; }
+#island[data-view="music"] .m-progress { left:30px; right:30px; top:106px; height:22px; color:var(--ink); }
+#island[data-view="music"] .m-progress span { color:var(--ink); font-size:13px; font-weight:850; }
+#island[data-view="music"] .m-bar { background:rgba(var(--island-accent-rgb),.20); height:5px; }
+#island[data-view="music"] .m-bar i { background:var(--island-accent); }
+#island[data-view="music"] .m-bar i::after { background:var(--island-accent); }
+#island[data-view="music"] .m-controls { left:26px; right:26px; top:157px; height:46px; grid-template-columns:repeat(5,1fr); gap:7px; }
+#island[data-view="music"] .m-btn,
+#island[data-view="music"] .m-action.transport-side,
+#island[data-view="music"] .m-lyr-btn.transport-side { width:44px; height:44px; color:var(--ink); }
+#island[data-view="music"] .m-btn svg,
+#island[data-view="music"] .m-action.transport-side svg,
+#island[data-view="music"] .m-lyr-btn.transport-side svg { width:20px; height:20px; stroke:currentColor; color:currentColor; }
+#island[data-view="music"] .m-btn.main { width:48px; height:48px; }
+#island[data-view="music"] .m-btn.main svg { width:28px; height:28px; }
+#island[data-view="music"] .m-action.transport-side:hover,
+#island[data-view="music"] .m-lyr-btn.transport-side:hover,
+#island[data-view="music"] .m-btn:hover:not(:disabled) { background:rgba(var(--island-accent-rgb),.12); }
+#island[data-view="music"] .m-btn:active,
+#island[data-view="music"] .m-action.transport-side:active,
+#island[data-view="music"] .m-lyr-btn.transport-side:active { transform:scale(.92); }
+#island[data-view="music"] .m-btn:focus-visible,
+#island[data-view="music"] .m-action.transport-side:focus-visible,
+#island[data-view="music"] .m-lyr-btn.transport-side:focus-visible { outline:2px solid rgba(var(--island-accent-rgb),.55); outline-offset:2px; }
+#island[data-view="music"] .m-action.shuffle svg,
+#island[data-view="music"] .m-lyr-btn svg { stroke-width:2.1; }
+#island[data-view="music"] .m-lyr-btn.transport-side { display:grid !important; }
+#island[data-view="music"] .m-lyrics { color:var(--ink); }
+#island[data-view="music"] .music-view.lyrics-on .m-controls { display:flex !important; }
+#island[data-view="music"] .music-view.lyrics-on .m-controls > * { display:none !important; }
+#island[data-view="music"] .music-view.lyrics-on .m-controls > .lyrics-side { display:grid !important; }
+#island[data-view="music"] .m-open { display:none !important; }
+
+
+/* v38 — Music/Lyrics reference polish: larger player, safe control zone, and a
+   compact 3-line lyrics stage with album art + a real close button. */
+#island[data-view="music"] .music-view .card { border-radius:inherit; }
+#island[data-view="music"] .music { padding:18px 26px 10px 30px; }
+#island[data-view="music"] .m-art { width:58px; height:58px; left:30px; top:18px; border-radius:12px; }
+#island[data-view="music"] .m-head { left:104px; right:22px; top:23px; height:48px; }
+#island[data-view="music"] .m-title-line { gap:8px; }
+#island[data-view="music"] .m-title { font-size:17px; line-height:21px; font-weight:850; }
+#island[data-view="music"] .m-artist { font-size:12px; line-height:15px; }
+#island[data-view="music"] .m-head .m-music-wave { flex-basis:25px; width:25px; }
+#island[data-view="music"] .m-progress { left:30px; right:30px; top:108px; height:22px; }
+#island[data-view="music"] .m-controls { left:26px; right:26px; top:158px; height:46px; gap:9px; }
+
+#island[data-view="music"] .music-view.lyrics-on .m-controls { display:none !important; }
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-btn { display:none !important; }
+#island[data-view="music"] .music-view.lyrics-on .m-lyrics {
+  display:block !important;
+  left:26px;
+  right:26px;
+  top:16px;
+  height:178px;
+  padding:0;
+  background:transparent !important;
+  background-image:none !important;
+  -webkit-mask-image:none;
+  mask-image:none;
+  overflow:hidden;
+}
+#island[data-view="music"] .m-lyr-top {
+  position:relative;
+  height:48px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+#island[data-view="music"] .m-lyr-art {
+  width:42px;
+  height:42px;
+  flex:0 0 42px;
+  object-fit:cover;
+  border-radius:9px;
+  background:rgba(var(--island-accent-rgb),.10);
+  box-shadow:0 4px 14px rgba(0,0,0,.22);
+}
+#island[data-view="music"] .m-lyr-meta { min-width:0; flex:1 1 auto; }
+#island[data-view="music"] .m-lyr-title {
+  color:var(--ink);
+  font:800 13px/16px var(--font);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#island[data-view="music"] .m-lyr-artist {
+  margin-top:1px;
+  color:var(--dim);
+  font:600 10px/13px var(--font);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#island[data-view="music"] .m-lyr-close {
+  width:30px;
+  height:30px;
+  flex:0 0 30px;
+  display:grid;
+  place-items:center;
+  border:0;
+  border-radius:50%;
+  background:rgba(var(--island-accent-rgb),.10);
+  color:var(--ink);
+  cursor:pointer;
+  z-index:50;
+  pointer-events:auto;
+}
+#island[data-view="music"] .m-lyr-close:hover { background:rgba(var(--island-accent-rgb),.18); }
+#island[data-view="music"] .m-lyr-close:active { transform:scale(.9); }
+#island[data-view="music"] .m-lyr-close svg { width:15px; height:15px; stroke:currentColor; color:currentColor; }
+#island[data-view="music"] .m-lyr-inner {
+  height:120px;
+  padding:10px 0 0;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:3px;
+  overflow:hidden;
+}
+#island[data-view="music"] .m-lyr-line {
+  height:31px;
+  line-height:31px;
+  font:700 14px/31px var(--font);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  text-align:left;
+  color:rgba(var(--island-accent-rgb),.28);
+  transition:none;
+}
+#island[data-view="music"] .m-lyr-line.cur {
+  color:var(--ink);
+  font-weight:850;
+  font-size:17px;
+}
+#island[data-view="music"] .m-lyr-line.side { color:rgba(var(--island-accent-rgb),.34); font-size:14px; }
+#island[data-view="music"] .m-lyr-line.empty { opacity:0; }
+#island[data-view="music"] .m-lyr-msg { margin:30px 0 0; font-size:13px; color:var(--dim); }
+#island[data-view="music"] .music-view.lyrics-on .m-text,
+#island[data-view="music"] .music-view.lyrics-on .m-progress,
+#island[data-view="music"] .music-view.lyrics-on .m-eq { display:none !important; }
+
+
+/* v38.1 — final music control placement + clean lyrics header */
+#island[data-view="music"] .m-controls {
+  left:28px;
+  right:28px;
+  top:154px;
+  height:48px;
+  grid-template-columns:repeat(5, 1fr);
+  gap:8px;
+  z-index:60;
+  align-items:center;
+}
+#island[data-view="music"] .m-btn,
+#island[data-view="music"] .m-action.transport-side,
+#island[data-view="music"] .m-lyr-btn.transport-side {
+  width:46px;
+  height:46px;
+}
+#island[data-view="music"] .m-btn.main { width:50px; height:50px; }
+#island[data-view="music"] .m-btn.main svg { width:29px; height:29px; }
+
+/* Lyrics uses only its compact album/title row; hide the normal player artwork/header. */
+#island[data-view="music"] .music-view.lyrics-on .m-art { display:none !important; }
+#island[data-view="music"] .music-view.lyrics-on .m-head { display:none !important; }
+#island[data-view="music"] .music-view.lyrics-on .m-lyrics {
+  left:34px;
+  right:34px;
+  top:17px;
+  height:178px;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-top {
+  height:40px;
+  gap:8px;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-art {
+  width:34px; height:34px; flex-basis:34px; border-radius:8px;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-title { font-size:12px; line-height:14px; font-weight:800; }
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-artist { font-size:9px; line-height:11px; }
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-close {
+  width:30px; height:30px; flex-basis:30px;
+  margin-left:auto;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-inner {
+  height:125px;
+  padding-top:6px;
+  gap:1px;
+  justify-content:center;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-line {
+  height:32px; line-height:32px;
+  font-size:13px;
+  font-weight:700;
+  color:rgba(var(--island-accent-rgb),.30);
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-line.cur {
+  font-size:16px; font-weight:850; color:var(--ink);
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-line.side {
+  font-size:13px; color:rgba(var(--island-accent-rgb),.34);
+}
+
+/* v40 — final music control spacing + forgiving lyrics close hit target */
+#island[data-view="music"] .m-controls {
+  top:143px;
+  height:46px;
+  left:28px;
+  right:28px;
+  gap:6px;
+}
+#island[data-view="music"] .m-btn,
+#island[data-view="music"] .m-action.transport-side,
+#island[data-view="music"] .m-lyr-btn.transport-side {
+  width:46px;
+  height:46px;
+}
+#island[data-view="music"] .m-btn.main { width:50px; height:50px; }
+
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-close {
+  width:44px;
+  height:44px;
+  flex:0 0 44px;
+  margin-left:auto;
+  padding:0;
+  display:grid;
+  place-items:center;
+  border:0;
+  border-radius:50%;
+  pointer-events:auto !important;
+  touch-action:manipulation;
+  cursor:pointer;
+  z-index:100;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-close svg {
+  width:17px;
+  height:17px;
+  pointer-events:none;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-top {
+  position:relative;
+  z-index:100;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyrics {
+  pointer-events:none;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-close {
+  pointer-events:auto !important;
+}
+
+/* v42 — keep the lyrics X visually small, but make its invisible hit target forgiving. */
+#island[data-view="music"] .music-view.lyrics-on .m-lyrics {
+  pointer-events:auto;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-close {
+  width:30px;
+  height:30px;
+  flex:0 0 30px;
+  position:relative;
+  padding:0;
+  margin-left:auto;
+  border:0;
+  border-radius:50%;
+  pointer-events:auto !important;
+  touch-action:manipulation;
+  -webkit-app-region:no-drag;
+  cursor:pointer;
+  user-select:none;
+  z-index:1000;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-close::before {
+  content:"";
+  position:absolute;
+  inset:-12px;
+  border-radius:50%;
+  pointer-events:auto;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-close svg {
+  width:17px;
+  height:17px;
+  pointer-events:none;
+  position:relative;
+  z-index:1;
+}
+
+/* Controls sit closer under the progress row. */
+#island[data-view="music"] .m-controls {
+  /* Keep the transport group visually centered, as in the original player.
+     Four controls should form one compact cluster instead of being spread
+     across five grid columns. */
+  left: 50%;
+  right: auto;
+  width: 226px;
+  top: 128px;
+  height: 46px;
+  grid-template-columns: repeat(4, 46px);
+  gap: 14px;
+  transform: translateX(-50%);
+}
+
+/* Lyrics close: solid, larger hit target so the X always receives the click. */
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-top {
+  position: relative;
+  z-index: 2000;
+  pointer-events: auto;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-close {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  position: relative;
+  margin-left: auto;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(var(--island-accent-rgb), 0.12);
+  color: var(--ink);
+  cursor: pointer;
+  pointer-events: auto !important;
+  touch-action: manipulation;
+  -webkit-app-region: no-drag;
+  user-select: none;
+  z-index: 2001;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-close::before {
+  content: "";
+  position: absolute;
+  /* Large invisible pad so clicks near the icon still hit the button */
+  inset: -16px;
+  border-radius: 50%;
+  pointer-events: auto;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-close svg {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  position: relative;
+  z-index: 1;
+}
+#island[data-view="music"] .music-view.lyrics-on .m-lyrics {
+  pointer-events: auto;
+  overflow: visible;
+}
+
+
+/* Compact utility tabs match music footprint (400×176) — full-bleed content. */
+#island[data-view="volume"] #header,
+#island[data-view="clipboard"] #header {
+  opacity: 0.92;
+}
+#island[data-view="volume"] #content,
+#island[data-view="clipboard"] #content {
+  padding: 0;
+}
+
+
+/* Dynamic Island utility panels — full-bleed, no Mochi gutter, music-like chrome. */
+#island[data-view="volume"] #header,
+#island[data-view="recognition"] #header,
+#island[data-view="clipboard"] #header {
+  display: none !important;
+}
+#island[data-view="volume"] #content,
+#island[data-view="recognition"] #content,
+#island[data-view="clipboard"] #content {
+  padding: 0 !important;
+}
+#island[data-view="volume"] .volume-view,
+#island[data-view="recognition"] .recognition-view,
+#island[data-view="clipboard"] .clipboard-view {
+  position: absolute;
+  inset: 0;
+}
+#island[data-view="volume"] .vol-body,
+#island[data-view="recognition"] .recognition-body {
+  height: 100%;
+}
+
+/* Volume rows — denser, island-native */
+#island[data-view="volume"] .vol-row {
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.045);
+  gap: 10px;
+}
+#island[data-view="volume"] .vol-ic {
+  width: 28px; height: 28px; flex-basis: 28px; border-radius: 8px;
+}
+#island[data-view="volume"] .vol-ic img { width: 28px; height: 28px; }
+#island[data-view="volume"] .vol-meta { flex: 0 0 96px; }
+#island[data-view="volume"] .vol-name { font-size: 12.5px; }
+#island[data-view="volume"] .vol-slider { height: 5px; }
+
+/* Recognition — centered compact card */
+#island[data-view="recognition"] .recognition-title {
+  font: 800 15px/1.1 var(--font); text-align: left; margin: 0 0 2px;
+}
+#island[data-view="recognition"] .recognition-sub {
+  text-align: left; margin: 0 0 8px; font-size: 10px;
+}
+#island[data-view="recognition"] .recognition-scan-card {
+  width: 100%; margin: 0 0 8px; min-height: 56px;
+  border-radius: 14px; padding: 8px 10px;
+}
+#island[data-view="recognition"] .recognition-history {
+  width: 100%; margin-top: 0;
+}
+#island[data-view="recognition"] .recognition-history-head {
+  margin: 0 0 4px;
+}
+
+/* Clipboard — tight list */
+#island[data-view="clipboard"] .clipboard-title {
+  font: 800 15px var(--font); color: #fff;
+}
+#island[data-view="clipboard"] .clipboard-status {
+  font: 500 10px var(--font); color: var(--dim); margin: 2px 0 8px;
+}
+#island[data-view="clipboard"] .clipboard-empty {
+  font: 500 11px var(--font); color: var(--dim-2); padding: 8px 2px;
+}
+#island[data-view="clipboard"] .clipboard-item {
+  min-height: 42px; border-radius: 12px; padding: 7px 10px;
+}
+
+
+
+/* Music player polish — tighter hierarchy, soft art glow, denser controls. */
+#island[data-view="music"] .m-art {
+  position: absolute; left: 22px; top: 16px; width: 58px; height: 58px; border-radius: 13px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.06);
+}
+#island[data-view="music"] .m-art img {
+  border-radius: inherit; width: 100%; height: 100%; object-fit: cover;
+}
+#island[data-view="music"] .m-head {
+  position: absolute; left: 92px; right: 18px; top: 20px; height: 40px;
+  display: flex; align-items: flex-start;
+}
+#island[data-view="music"] .m-title {
+  font-size: 15px; line-height: 18px; font-weight: 700; color: #fff;
+  letter-spacing: -0.01em;
+}
+#island[data-view="music"] .m-artist {
+  margin-top: 3px; font-size: 12px; line-height: 14px; color: #9a9aa0;
+}
+#island[data-view="music"] .m-progress {
+  position: absolute; left: 22px; right: 22px; top: 82px; height: 18px;
+  display: flex; align-items: center; gap: 8px; color: #fff;
+  font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+#island[data-view="music"] .m-progress span { min-width: 28px; color: #c8c8cc; font-size: 11px; }
+#island[data-view="music"] .m-bar {
+  flex: 1; height: 4px; border-radius: 99px; background: rgba(255,255,255,.16); position: relative;
+}
+#island[data-view="music"] .m-bar i {
+  display: block; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, #fff 0%, #f0f0f3 100%);
+  position: relative;
+}
+#island[data-view="music"] .m-bar i::after {
+  content: ""; position: absolute; right: -6px; top: 50%; width: 12px; height: 12px;
+  margin-top: -6px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 6px rgba(0,0,0,.4);
+}
+#island[data-view="music"] .m-controls {
+  position: absolute; left: 18px; right: 18px; top: 108px; height: 40px;
+  display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+  align-items: center; justify-items: center; gap: 4px;
+}
+#island[data-view="music"] .m-ctrl {
+  width: 36px; height: 36px; border: 0; border-radius: 50%;
+  background: transparent; color: #f2f2f4;
+  display: grid; place-items: center; cursor: pointer;
+  transition: transform .14s ease, background .14s ease, color .14s ease;
+}
+#island[data-view="music"] .m-ctrl:hover {
+  background: rgba(255,255,255,.08); transform: scale(1.06);
+}
+#island[data-view="music"] .m-ctrl:active { transform: scale(0.94); }
+#island[data-view="music"] .m-ctrl.play {
+  width: 42px; height: 42px; background: rgba(255,255,255,.12);
+  color: #fff;
+}
+#island[data-view="music"] .m-ctrl.play:hover { background: rgba(255,255,255,.18); }
+#island[data-view="music"] .music {
+  padding: 0; background: radial-gradient(120% 80% at 20% 0%, rgba(255,255,255,.04), transparent 50%), #050505;
+}
+
+/* Compact old-style Clipboard/Drop card. */
+.clipboard-drop-card { cursor: pointer; border: 0 !important; background: var(--card-flat); }
+.clipboard-drop-card:focus-visible { outline: 0; }
+.clipboard-drop-card .drop-frame { display: none !important; }
+.clipboard-drop-card .drop-body {
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+.clipboard-drop-card .drop-tags { justify-content: center; }
+.clipboard-drop-title {}
+.clipboard-drop-status { font: 400 9px var(--font); color: #858a93; margin-top: 1px; }
+.clipboard-drop-card.over { background: radial-gradient(220px 150px at 50% 100%, rgba(34,197,94,.12), transparent 72%), var(--card-flat); }
+.clipboard-drop-card.over .clipboard-drop-status { color: var(--green-2); }
+
+/* Theme propagation — every Island tab uses the selected material. */
+#island[data-theme="midnight"] { --theme-surface:rgba(10,12,16,.78); --theme-surface-2:rgba(255,255,255,.055); --theme-surface-3:rgba(255,255,255,.085); --theme-border:rgba(255,255,255,.075); --theme-hover:rgba(255,255,255,.10); --theme-shadow:rgba(0,0,0,.34); --theme-text:#f5f6f8; --theme-muted:#9398a1; }
+#island[data-theme="aurora"] { --theme-surface:rgba(10,12,22,.70); --theme-surface-2:rgba(159,242,218,.07); --theme-surface-3:rgba(159,242,218,.12); --theme-border:rgba(159,242,218,.12); --theme-hover:rgba(159,242,218,.15); --theme-shadow:rgba(0,0,0,.38); --theme-text:#f5f4ff; --theme-muted:#a5a4b8; }
+#island[data-theme="pure-black"] { --theme-surface:#000; --theme-surface-2:rgba(255,255,255,.045); --theme-surface-3:rgba(255,255,255,.075); --theme-border:rgba(255,255,255,.065); --theme-hover:rgba(255,255,255,.09); --theme-shadow:rgba(0,0,0,.62); --theme-text:#fff; --theme-muted:#92959d; }
+#island[data-theme="dynamic"] { --theme-surface:rgba(18,20,25,.72); --theme-surface-2:rgba(220,228,255,.055); --theme-surface-3:rgba(220,228,255,.095); --theme-border:rgba(255,255,255,.11); --theme-hover:rgba(220,228,255,.12); --theme-shadow:rgba(0,0,0,.34); --theme-text:#f4f6ff; --theme-muted:#a7adbd; }
+
+/* Every tab's root/card inherits the selected material. */
+#island[data-theme] .view > .card,
+#island[data-theme] .view .card,
+#island[data-theme] .chat-card,
+#island[data-theme] .settings-view > .card,
+#island[data-theme] .drop-card,
+#island[data-theme] .music-view .card {
+  background: var(--theme-surface) !important;
+  border-color: var(--theme-border) !important;
+  color: var(--theme-text);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-text) 6%, transparent);
+}
+
+/* Common tab controls/cards. */
+#island[data-theme] .chat-bar,
+#island[data-theme] .bubble,
+#island[data-theme] .chip,
+#island[data-theme] .switch,
+#island[data-theme] .seg button.on,
+#island[data-theme] .clipboard-item,
+#island[data-theme] .clipboard-icon,
+#island[data-theme] .recognition-scan-card,
+#island[data-theme] .recognition-scan-icon,
+#island[data-theme] .recognition-history-row,
+#island[data-theme] .recognition-history-spotify,
+#island[data-theme] .search-open,
+#island[data-theme] .screen-mode,
+#island[data-theme] .screen-status,
+#island[data-theme] .screen-action {
+  background: var(--theme-surface-2) !important;
+  border-color: var(--theme-border) !important;
+  color: var(--theme-text) !important;
+}
+
+#island[data-theme] .chat-bar:hover,
+#island[data-theme] .clipboard-item:hover,
+#island[data-theme] .search-open:hover,
+#island[data-theme] .screen-action:hover,
+#island[data-theme] .recognition-history-spotify:hover {
+  background: var(--theme-hover) !important;
+}
+
+#island[data-theme] .chat-row .reply,
+#island[data-theme] .recognition-sub,
+#island[data-theme] .recognition-scan-sub,
+#island[data-theme] .recognition-history-row .rh-artist,
+#island[data-theme] .recognition-history-row .rh-time,
+#island[data-theme] .clipboard-status,
+#island[data-theme] .clipboard-empty,
+#island[data-theme] .search-empty,
+#island[data-theme] .screen-hint,
+#island[data-theme] .status-badge {
+  color: var(--theme-muted) !important;
+}
+
+#island[data-theme] .chat-row .bubble,
+#island[data-theme] .chat-input,
+#island[data-theme] .clipboard-title,
+#island[data-theme] .clipboard-body,
+#island[data-theme] .recognition-title,
+#island[data-theme] .recognition-scan-title,
+#island[data-theme] .recognition-history-row .rh-title,
+#island[data-theme] .search-open,
+#island[data-theme] .screen-question {
+  color: var(--theme-text) !important;
+}
+
+/* Volume rows use the same material as every other tab. */
+#island[data-theme] .vol-row {
+  background: var(--theme-surface-2) !important;
+  border-color: var(--theme-border) !important;
+}
+
+/* Music player follows the selected island material instead of a hard-coded surface. */
+#island[data-theme] .m-art { background: var(--theme-surface-3); }
+#island[data-theme] .m-ph { background: var(--theme-surface-2); color: var(--theme-muted); }
+#island[data-theme] .m-bar { background: var(--theme-surface-3); }
+#island[data-theme] .m-title,
+#island[data-theme] .m-action,
+#island[data-theme] .m-btn,
+#island[data-theme] .m-progress span { color: var(--theme-text) !important; }
+#island[data-theme] .m-artist { color: var(--theme-muted) !important; }
+
+/* In-island Settings rows and controls. */
+#island[data-theme] .settings-row { color: var(--theme-text); }
+#island[data-theme] .seg button { color: var(--theme-muted); }
+#island[data-theme] .seg button.on { background: var(--theme-surface-3) !important; }
+#island[data-theme] .settings-row-icon { color: var(--island-accent); }
+
+/* The navigation dock lives beside #island, so mirror the selected theme via
+   the island's data-theme attribute. This makes the material consistent even
+   when the user swipes between tabs. */
+#island[data-theme] ~ #tab-dock {
+  background: var(--island-bg-2);
+  border-color: var(--island-edge);
+  box-shadow: 0 10px 24px var(--theme-shadow), inset 0 1px 0 var(--island-edge-soft);
+  color: var(--theme-text);
+}
+#island[data-theme] ~ #tab-dock .dock-tab { color: var(--theme-muted); }
+#island[data-theme] ~ #tab-dock .dock-tab:hover { color: var(--theme-text); background: var(--theme-surface-2); }
+#island[data-theme] ~ #tab-dock .dock-tab.on { color: var(--theme-text); background: var(--theme-surface-3); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-text) 7%, transparent); }
+
+
+  background: #000 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+  background: #000 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Music player stays transparent so the island material is visible throughout. */
+#island[data-theme] #content .music-view .card,
+#island[data-theme] #content .music-view .music {
+  background: var(--theme-surface) !important;
+  border-color: var(--theme-border) !important;
+  color: var(--theme-text) !important;
+}
+
+#island[data-theme] #content .music-view .music {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+#island[data-theme] #content .music-view .m-ctrl,
+#island[data-theme] #content .music-view .m-btn,
+#island[data-theme] #content .music-view .m-action.transport-side,
+#island[data-theme] #content .music-view .m-lyr-btn.transport-side {
+  color: var(--theme-text) !important;
+}
+
+#island[data-theme] #content .music-view .m-ctrl:hover,
+#island[data-theme] #content .music-view .m-btn:hover:not(:disabled),
+#island[data-theme] #content .music-view .m-action.transport-side:hover,
+#island[data-theme] #content .music-view .m-lyr-btn.transport-side:hover {
+  background: var(--theme-hover) !important;
+}
+
+#island[data-theme] #content .music-view .m-ctrl.play {
+  background: var(--theme-surface-3) !important;
+}
+
+/* Lyrics are content, never a themed surface.  Do not give the lyrics stage its own
+   material; the island itself supplies the selected theme. */
+#island[data-theme] #content .music-view .m-lyrics {
+  color: var(--theme-text) !important;
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+#island[data-theme] #content .music-view .m-ph {
+  background: var(--theme-surface-2) !important;
+  color: var(--theme-muted) !important;
+}
+
+
+/* Optional surface treatment: keep the outer Dynamic Island silhouette rounded,
+   but let users flatten the inner cards/panels across every tab. */
+#island.no-rounded-surfaces .card,
+#island.no-rounded-surfaces .int-card,
+#island.no-rounded-surfaces .chat-card,
+#island.no-rounded-surfaces .music,
+#island.no-rounded-surfaces .recognition-scan-card,
+#island.no-rounded-surfaces .recognition-history,
+#island.no-rounded-surfaces .recognition-history-row,
+#island.no-rounded-surfaces .drop-card,
+#island.no-rounded-surfaces .up-card,
+#island.no-rounded-surfaces .clipboard-drop-card,
+#island.no-rounded-surfaces .search-card,
+#island.no-rounded-surfaces .search-open,
+#island.no-rounded-surfaces .volume-card {
+  border-radius: 0 !important;
+}
+
+#island.no-rounded-surfaces .chat-input,
+#island.no-rounded-surfaces .chat-bar,
+#island.no-rounded-surfaces .send-btn {
+  border-radius: 0 !important;
+}
+
+/* When inner surfaces are disabled, remove the panel itself — not just its
+   corner radius. Controls such as the chat input/buttons remain visible,
+   while the large card behind them becomes part of the island background. */
+#island.no-rounded-surfaces .card,
+#island.no-rounded-surfaces .int-card,
+#island.no-rounded-surfaces .chat-card,
+#island.no-rounded-surfaces .music-view > .card,
+#island.no-rounded-surfaces .recognition-scan-card,
+#island.no-rounded-surfaces .recognition-history-row,
+#island.no-rounded-surfaces .drop-card,
+#island.no-rounded-surfaces .up-card,
+#island.no-rounded-surfaces .clipboard-drop-card {
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+#island.no-rounded-surfaces .card.wash::after {
+  display: none !important;
+}
+
+
+/* v41 — Flat tab panels by design.
+   The inner rounded "surface" is intentionally gone; tabs now sit directly
+   on the themed Dynamic Island background. Small interactive controls keep
+   their own material so the UI remains readable and usable. */
+#island[data-theme] .view > .card,
+#island[data-theme] .view > .chat-card,
+#island[data-theme] .view > .music-view > .card,
+#island[data-theme] .view > .drop-card,
+#island[data-theme] .view > .up-card,
+#island[data-theme] .view > .clipboard-drop-card,
+#island[data-theme] .view > .card.wash,
+#island[data-theme] .view > .int-card {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* The view root itself must not recreate the removed panel through a wash. */
+#island[data-theme] .view > .card.wash::before,
+#island[data-theme] .view > .card.wash::after {
+  display: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* v40 — remove the remaining inner surfaces from Home and Lyrics.
+   These views should sit directly on the Dynamic Island material, just like
+   the flat/no-surface design: keep the actual controls, but remove the large
+   container/card behind the content. */
+#island[data-view="overview"] .overview > .left > .card,
+#island[data-view="overview"] .overview > .right > .card {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+#island[data-view="music"] .music-view.lyrics-on > .card {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+#island[data-view="music"] .music-view.lyrics-on > .card,
+#island[data-view="music"] .music-view.lyrics-on .m-main,
+#island[data-view="music"] .music-view.lyrics-on .m-lyrics {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Lyrics must be true full-bleed content on the island material.  The
+   wrapper card is not a surface; only the small close control keeps its own
+   button treatment. */
+#island[data-view="music"] .music-view.lyrics-on > .card::before,
+#island[data-view="music"] .music-view.lyrics-on > .card::after {
+  display: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+
+/* v43 — Lyrics must stay genuinely surface-free.  Some of the later global
+   theme rules intentionally theme Music cards, but Lyrics is a special full-bleed
+   view: its wrapper, main layer, and lyrics stage are all transparent so the
+   selected island material shows directly underneath. */
+#island[data-view="music"] .music-view.lyrics-on,
+#island[data-view="music"] .music-view.lyrics-on > .card,
+#island[data-view="music"] .music-view.lyrics-on .m-main,
+#island[data-view="music"] .music-view.lyrics-on .m-lyrics,
+#island[data-view="music"] .music-view.lyrics-on .m-lyrics::before,
+#island[data-view="music"] .music-view.lyrics-on .m-lyrics::after {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+#island[data-view="music"] .music-view.lyrics-on > .card::before,
+#island[data-view="music"] .music-view.lyrics-on > .card::after {
+  display: none !important;
+  content: none !important;
+}
+
+/* Download activity: a compact circular progress/spinner on the right side of
+   the notch. It can sit over Spotify/other compact activity without rebuilding
+   the whole Dynamic Island. */
+#volume-hud.activity[data-activity-kind="download"] {
+  left: auto;
+  right: 9px;
+  width: min(190px, calc(100% - 18px));
+  min-width: 0;
+  padding: 0 12px;
+  gap: 9px;
+  justify-content: flex-start;
+  z-index: 80;
+}
+#volume-hud.activity[data-activity-kind="download"] #volume-hud-icon {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+}
+#volume-hud.activity[data-activity-kind="download"] #volume-hud-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#volume-hud.activity[data-activity-kind="download"] #volume-hud-text {
+  min-width: 0;
+}
+#volume-hud.activity[data-activity-kind="download"] #volume-hud-subtitle {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.download-progress-icon { display:block; overflow:visible; }
+.download-spinner-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lyraDownloadSpin .82s linear infinite;
+}
+@keyframes lyraDownloadSpin {
+  to { transform: rotate(360deg); }
+}
+
+
+/* Lyrics surface is permanently removed. This selector intentionally matches the
+   same specificity as the old theme rule so no later theme can recreate it. */
+#island[data-theme] #content .music-view.lyrics-on .m-lyrics {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* FINAL MUSIC SURFACE REMOVAL — structural, not a visual hide.
+   buildMusic() no longer creates a .card wrapper for Music, so there is no
+   inner Music/Lyrics surface element to style. These rules also neutralize
+   any legacy surface declarations that may target the remaining content. */
+#island[data-view="music"] .music-view,
+#island[data-view="music"] .music-view .music,
+#island[data-view="music"] .music-view .m-main,
+#island[data-view="music"] .music-view .m-lyrics {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+#island[data-view="music"] .music-view .m-lyrics::before,
+#island[data-view="music"] .music-view .m-lyrics::after {
+  content: none !important;
+  display: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Download activity — secondary overlay mode.  When another compact activity
+   (Spotify/timer/app launch/voice) already owns the island, downloads reduce to
+   a stable right-side progress circle and never cover the primary activity. */
+#volume-hud.activity[data-activity-kind="download"][data-download-compact="1"] {
+  left: auto;
+  right: 10px;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  z-index: 90;
+}
+#volume-hud.activity[data-activity-kind="download"][data-download-compact="1"] #volume-hud-icon {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: grid;
+  place-items: center;
+}
+#volume-hud.activity[data-activity-kind="download"][data-download-compact="1"] #volume-hud-text,
+#volume-hud.activity[data-activity-kind="download"][data-download-compact="1"] #volume-hud-spotify,
+#volume-hud.activity[data-activity-kind="download"][data-download-compact="1"] #volume-hud-track {
+  display: none !important;
+}
+
+/* Full download HUD when nothing else owns the compact island. */
+#volume-hud.activity[data-activity-kind="download"][data-download-compact="0"] {
+  left: auto;
+  right: 10px;
+  width: min(310px, calc(100% - 20px));
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Download spinner geometry. The Island controller drives strokeDashoffset
+   with requestAnimationFrame so the ring cannot be frozen by a CSS animation
+   rule or by WebView2 reduced-motion handling. */
+.download-spinner-ring {
+  transform: none !important;
+  transform-origin: 12px 12px;
+  animation: none !important;
+  will-change: stroke-dashoffset;
+}
+
+/* Never let a download spinner survive the island's hidden/retraction state.
+   The island window is allowed to retract above the viewport, so an overflowing
+   animated SVG could otherwise leave a tiny moving arc visible at the top edge. */
+#island[data-mode="hidden"] #volume-hud.activity[data-activity-kind="download"],
+#island[data-mode="hidden"] #volume-hud.activity[data-activity-kind="download"] .download-spinner-ring {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  animation: none !important;
+}
+
+#island, #spotify-compact, #spotify-compact-art, .theme-chip { transition:none !important; }
+
+#island.timer-on #spotify-compact-eq { display: none; }
+#island.timer-on #spotify-compact { padding-right: 88px; }
+
+
+@media (prefers-reduced-motion: reduce) {
+  .view, .view.on, .view.is-entering, .view.is-leaving {
+    transition:none !important;
+    animation:none !important;
+    filter:none !important;
+    transform:none !important;
+  }
+  #tab-dock.switching .dock-tab.on { animation:none !important; }
+}
+
+/* Creative pass: restrained system-wide polish. */
+#island .dock-tab { transition: transform .16s ease, opacity .16s ease, background .16s ease, color .16s ease; }
+#island .dock-tab:hover { transform: translateY(-1px); }
+#island .dock-tab:active { transform: scale(.94); }
+#island .header-status-right > * { transition: opacity .16s ease, transform .16s ease; }
+#island .header-status-right > button:hover { transform: translateY(-1px); opacity:1; }
+.search-card[tabindex="0"] { cursor:pointer; }
+.search-card[tabindex="0"]:focus-visible { outline:1px solid rgba(150,195,255,.65); outline-offset:2px; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LYRA 2026 CREATIVE POLISH
+   A restrained system layer: clearer hierarchy, calmer motion, richer states.
+   It intentionally overrides existing styles instead of rewriting the base UI.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#header-status-left { min-width: 0; display:flex; align-items:center; }
+
+
+.lyra-status-text { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+
+
+
+
+
+
+
+
+
+
+@keyframes lyra-status-pulse { 0%,100% { transform:scale(.82); opacity:.72; } 50% { transform:scale(1.18); opacity:1; } }
+
+/* Make the island feel like one responsive surface rather than stacked cards. */
+#island[data-mode="expanded"] .card {
+  border-color:rgba(255,255,255,.055);
+  background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,.008));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.028), 0 10px 24px rgba(0,0,0,.12);
+}
+#island[data-mode="expanded"] .card:hover { border-color:rgba(255,255,255,.075); }
+
+/* Home: active integration pills get a living edge instead of a static blob. */
+#island[data-view="overview"] .pills .pill { transition:transform .2s ease, border-color .2s ease, background .2s ease, box-shadow .2s ease; }
+#island[data-view="overview"] .pills .pill:hover { transform:translateY(-1px); border-color:rgba(255,255,255,.12); box-shadow:0 8px 18px rgba(0,0,0,.16); }
+#island[data-view="overview"] .who-row .dot { box-shadow:0 0 10px currentColor; }
+
+/* Chat/search: cards read as a single research stream. */
+#island[data-view="prompt"] .search-card { transition:transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease; }
+#island[data-view="prompt"] .search-card:hover { transform:translateY(-1px); border-color:rgba(var(--island-accent-rgb),.22); background:rgba(255,255,255,.045); box-shadow:0 10px 22px rgba(0,0,0,.18); }
+#island[data-view="prompt"] .search-card:focus-visible { outline:1px solid rgba(var(--island-accent-rgb),.6); outline-offset:2px; }
+#island[data-view="prompt"] .chat-bar { box-shadow:0 8px 24px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.05); }
+#island[data-view="prompt"] .chat-bar:focus-within { border-color:rgba(var(--island-accent-rgb),.34); box-shadow:0 0 0 3px rgba(var(--island-accent-rgb),.06), 0 10px 26px rgba(0,0,0,.22); }
+
+/* Music: make the artwork feel like the source of the whole surface. */
+#island[data-view="music"] .m-art { box-shadow:0 14px 28px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.045); transition:transform .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease; }
+#island[data-view="music"] .m-art:hover { transform:translateY(-1px) scale(1.015); }
+#island[data-view="music"] .m-btn { transition:transform .16s ease, opacity .16s ease, background .16s ease; }
+#island[data-view="music"] .m-btn:hover { transform:translateY(-1px); background:rgba(255,255,255,.065); }
+#island[data-view="music"] .m-btn:active { transform:scale(.93); }
+
+/* Recognition: a soft scan halo makes the action feel alive without becoming neon. */
+#island[data-view="recognition"] .recognition-scan-card { position:relative; overflow:hidden; }
+#island[data-view="recognition"] .recognition-scan-card::after { content:""; position:absolute; inset:0; background:linear-gradient(105deg,transparent 0%,rgba(255,255,255,.04) 45%,transparent 60%); transform:translateX(-120%); pointer-events:none; }
+#island[data-view="recognition"] .recognition-scan-card.has-result::after { animation:lyra-scan-sheen 1.2s ease-out both; }
+@keyframes lyra-scan-sheen { to { transform:translateX(120%); } }
+
+
+/* The dock gets a subtle active beacon and better touch feedback. */
+#tab-dock.visible .dock-tab.on::after { content:""; position:absolute; bottom:3px; width:3px; height:3px; border-radius:50%; background:#fff; box-shadow:0 0 7px rgba(255,255,255,.55); }
+#tab-dock .dock-tab { position:relative; }
+#tab-dock.visible { box-shadow:0 12px 28px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.055); }
+
+/* Timer urgency: last ten seconds become a calm pulse instead of a noisy alarm. */
+#timer-chip.urgent { color:#fff; animation:lyra-timer-urgent .8s ease-in-out infinite; }
+#timer-chip.urgent #timer-chip-time { color:#ffb0a6; }
+#timer-chip.urgent #timer-chip-icon { color:#ff6a5a !important; }
+@keyframes lyra-timer-urgent { 0%,100% { opacity:.78; } 50% { opacity:1; } }
+
+/* Respect Windows accessibility preferences. */
+@media (prefers-reduced-motion: reduce) {
+   #timer-chip.urgent, #island[data-view="recognition"] .recognition-scan-card.has-result::after { animation:none !important; }
+  #island[data-view="prompt"] .search-card:hover, #island[data-view="music"] .m-art:hover { transform:none; }
+}
+
+/* RESTORED MUSIC CONTROLS — pre-creative placement.
+   Keep the original five-slot transport row: Shuffle, Previous, Play/Pause,
+   Next, Lyrics. The group is centered by the five equal columns, not by
+   independently centering the four visible transport buttons. */
+#island[data-view="music"] .m-controls {
+  position: absolute !important;
+  left: 28px !important;
+  right: 28px !important;
+  top: 114px !important;
+  width: auto !important;
+  height: 46px !important;
+  display: grid !important;
+  grid-template-columns: repeat(5, 1fr) !important;
+  gap: 6px !important;
+  align-items: center !important;
+  justify-items: center !important;
+  transform: none !important;
+  z-index: 100 !important;
+  pointer-events: auto !important;
+}
+#island[data-view="music"] .m-controls > .m-btn,
+#island[data-view="music"] .m-controls > .m-action.transport-side,
+#island[data-view="music"] .m-controls > .m-lyr-btn.transport-side {
+  display: grid !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  width: 46px !important;
+  height: 46px !important;
+}
+#island[data-view="music"] .m-controls > .m-btn.main { width: 50px !important; height: 50px !important; }
+#island[data-view="music"] .m-controls > .m-btn svg,
+#island[data-view="music"] .m-controls > .m-action.transport-side svg,
+#island[data-view="music"] .m-controls > .m-lyr-btn.transport-side svg {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Attached + Chat: the generic attached rule reserves 38px at the bottom of
+   #content for the dock, but Chat's dock sits below the island and .chat-body
+   already reserves its own space. Stacking both squeezed the empty state
+   (Mochi, title, subtitle, chips overlapped), so Chat gets the full height. */
+#island[data-position="attached"][data-view="prompt"] #content { padding-bottom: 0; }
+#island[data-position="attached"][data-view="prompt"][data-mode="expanded"] .chat-body { padding-bottom: 46px; }
+
+/* Shuffle button states. Same specificity ladder as the transport rules above
+   (themed and unthemed), because those use !important for colour and opacity. */
+#island[data-view="music"] #content .music-view .m-controls > .m-action.transport-side.shuffle.on,
+#island[data-theme] #content .music-view .m-controls > .m-action.transport-side.shuffle.on {
+  color: rgb(var(--island-accent-rgb)) !important;
+  position: relative;
+}
+#island[data-view="music"] #content .music-view .m-controls > .m-action.transport-side.shuffle.on::after,
+#island[data-theme] #content .music-view .m-controls > .m-action.transport-side.shuffle.on::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 5px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: currentColor;
+}
+#island[data-view="music"] #content .music-view .m-controls > .m-action.transport-side.shuffle.unsupported,
+#island[data-view="music"] #content .music-view .m-controls > .m-action.transport-side.shuffle:disabled {
+  opacity: .4 !important;
+}
+#island[data-view="music"] #content .music-view .m-controls > .m-action.transport-side.shuffle:disabled {
+  pointer-events: none !important;
+}
+
+/* ── Clipboard tab: dropped files + history list ───────────────────────── */
+.cb-card .cb-body { display: none; }
+.cb-card.cb-has-items .drop-body { display: none; }
+.cb-card.cb-has-items .cb-body {
+  display: flex; flex-direction: column; height: 100%; box-sizing: border-box;
+  padding: 10px 12px 8px; gap: 6px; text-align: left;
+}
+.cb-card.cb-has-items { cursor: default; }
+.cb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 20px; flex: 0 0 auto; }
+.cb-title-row { display: flex; align-items: center; gap: 7px; }
+.cb-title { font: 700 14px var(--font); color: #fff; }
+.cb-count {
+  min-width: 18px; height: 16px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center;
+  background: rgba(255,255,255,.09); color: var(--dim); font: 700 9px var(--font);
+}
+.cb-clear {
+  border: 0; background: transparent; color: var(--dim); font: 600 10px var(--font);
+  padding: 3px 7px; border-radius: 8px; cursor: pointer;
+}
+.cb-clear:hover { background: rgba(255,255,255,.08); color: #fff; }
+.cb-clear.armed { background: rgba(244,80,94,.2); color: #ff8a95; }
+.cb-list {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent;
+}
+.cb-row {
+  flex: 0 0 auto; height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 9px;
+  padding: 0 6px 0 7px; border-radius: 11px; background: rgba(255,255,255,.045); color: var(--ink);
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+}
+.cb-row:hover { background: rgba(255,255,255,.085); }
+.cb-row:focus-visible { outline: 1px solid rgba(255,255,255,.25); }
+.cb-row.dragging { opacity: .5; }
+.cb-icon { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; flex: 0 0 auto; background: rgba(255,255,255,.08); }
+.cb-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 11.5px var(--font); color: var(--ink-2); }
+.cb-meta { font: 500 9px var(--font); color: var(--dim); }
+.cb-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; opacity: .55; }
+.cb-row:hover .cb-actions { opacity: 1; }
+.cb-btn {
+  width: 24px; height: 24px; border: 0; border-radius: 7px; background: transparent; color: var(--ink);
+  display: grid; place-items: center; cursor: pointer; padding: 0;
+}
+.cb-btn:hover { background: rgba(255,255,255,.12); }
+.cb-status { flex: 0 0 auto; height: 14px; line-height: 14px; font: 500 10px var(--font); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cb-drop-hint {
+  position: absolute; inset: 0; display: none; align-items: center; justify-content: center; z-index: 5;
+  background: rgba(0,0,0,.74); color: var(--green-2); font: 700 15px var(--font); pointer-events: none;
+}
+.cb-card.cb-has-items.over .cb-drop-hint { display: flex; }
+.cb-card .clipboard-drop-status:empty { display: none; }
+
+/* ── Search result cards (base styles — these were missing, so results rendered as bare text) ── */
+.search-results-block { display:flex; flex-direction:column; padding-left:0; }
+.search-results-label { color:#e9ecf1; font:700 11px var(--font); }
+.search-card {
+  display:flex; align-items:center; gap:10px; padding:8px 9px; box-sizing:border-box;
+  border-radius:12px; border:1px solid rgba(255,255,255,.07); background:rgba(255,255,255,.03);
+  min-width:0;
+}
+.search-source-mark {
+  flex:none; width:36px; height:36px; border-radius:10px; display:grid; place-items:center;
+  background:rgba(255,255,255,.09); color:#fff; font:800 11px var(--font); overflow:hidden;
+}
+.search-source-mark.has-icon { background:#fff; }
+.search-source-mark img { width:22px; height:22px; object-fit:contain; display:block; }
+.search-card-thumb { flex:none; width:36px; height:36px; border-radius:10px; object-fit:cover; background:#1a1c20; }
+.search-card.is-video .search-card-video { position:relative; flex:none; width:92px; height:52px; border-radius:9px; overflow:hidden; background:#1a1c20; }
+.search-card.is-video .search-card-thumb { width:100%; height:100%; border-radius:0; display:block; }
+.search-card-dur {
+  position:absolute; right:3px; bottom:3px; padding:1px 4px; border-radius:4px;
+  background:rgba(0,0,0,.82); color:#fff; font:700 8.5px var(--font);
+}
+.search-card-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.search-card-title { color:#f4f6f8; font:700 11.5px var(--font); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.search-card-source { color:rgba(150,195,255,.85); font:600 9.5px var(--font); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.search-card-desc {
+  color:rgba(255,255,255,.5); font:500 9.5px/1.35 var(--font);
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.search-card-meta { color:rgba(255,255,255,.32); font:600 8.5px var(--font); }
+.search-card-visit {
+  flex:none; display:inline-flex; align-items:center; gap:4px; height:26px; padding:0 9px;
+  border-radius:8px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05);
+  color:#fff; font:700 10px var(--font); cursor:pointer;
+}
+.search-card-visit:hover { background:rgba(255,255,255,.12); }
+.search-card-visit svg { fill:currentColor; }
+
+/* ── Download card: pure white, Apple-style ───────────────────────────────── */
+.dl-tile { display: block; width: 100%; height: 100%; overflow: visible; }
+.dl-tile.done { animation: dlPop .34s cubic-bezier(.2,1.4,.4,1); }
+@keyframes dlPop { from { transform: scale(.7); } to { transform: scale(1); } }
+#volume-hud.activity[data-activity-kind="download"][data-download-compact="0"] {
+  left: 0; right: 0; width: 100%; padding: 0 18px 0 14px; gap: 12px; overflow: hidden; border-radius: inherit;
+}
+#volume-hud.activity[data-activity-kind="download"][data-download-compact="0"] #volume-hud-icon {
+  flex: 0 0 34px; width: 34px; height: 34px;
+}
+#volume-hud.activity[data-activity-kind="download"][data-download-compact="0"] #volume-hud-label {
+  font: 700 13.5px var(--font); letter-spacing: -.01em; color: #fff;
+}
+#volume-hud.activity[data-activity-kind="download"][data-download-compact="0"] #volume-hud-subtitle {
+  font: 500 10.5px/1.2 var(--font); color: rgba(255,255,255,.55); font-variant-numeric: tabular-nums;
+}
+#volume-hud-pct { display: none; }
+#volume-hud.activity[data-activity-kind="download"][data-download-compact="0"] #volume-hud-pct {
+  display: block; flex: none; min-width: 40px; text-align: right;
+  font: 700 17px var(--font); letter-spacing: -.02em; color: #fff; font-variant-numeric: tabular-nums;
+}
+#volume-hud-dlbar { display: none; }
+#volume-hud.activity[data-activity-kind="download"][data-download-compact="0"] #volume-hud-dlbar {
+  display: block; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.08);
+}
+#volume-hud-dlbar i {
+  display: block; height: 100%; width: 0; border-radius: 0 3px 3px 0; background: #fff;
+  box-shadow: 0 0 9px rgba(255,255,255,.55); transition: width .6s linear;
+}
+#volume-hud-dlbar.indeterminate i { width: 35% !important; animation: dlSlide 1.2s ease-in-out infinite; }
+@keyframes dlSlide { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+
+
+/* ═══ Dynamic-Island dock v2 — liquid-glass pill with a sliding, springy indicator ═══
+   Pure CSS (uses :has). To revert, restore the previous style.css. */
+#tab-dock {
+  border-color: rgba(255,255,255,.09);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 55%),
+    rgba(8,9,12,.72);
+  backdrop-filter: blur(28px) saturate(170%);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  box-shadow:
+    0 14px 30px rgba(0,0,0,.38),
+    0 2px 6px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(255,255,255,.10),
+    inset 0 -1px 0 rgba(0,0,0,.35);
+  transition: opacity .22s ease, transform .5s cubic-bezier(.34,1.56,.64,1);
+}
+#tab-dock:not(.visible) { transform: translateX(-50%) translateY(-6px) scale(.9); }
+
+/* the sliding indicator (one per page, moves to the active slot) */
+#tab-dock .tab-dock-page { position: relative; }
+#tab-dock .tab-dock-page::before {
+  content: "";
+  position: absolute; left: 0; top: 50%;
+  width: 56px; height: 23px; margin-top: -11.5px;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,.08));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.22),
+    0 0 14px rgba(255,255,255,.10),
+    0 3px 8px rgba(0,0,0,.35);
+  opacity: 0;
+  transform: translateX(0) scale(.9);
+  transition: transform .5s cubic-bezier(.34,1.56,.64,1), opacity .22s ease;
+  pointer-events: none; z-index: 0;
+}
+#tab-dock .tab-dock-page:has(.dock-tab.on)::before { opacity: 1; transform: translateX(0) scale(1); }
+#tab-dock .tab-dock-page:has(.dock-tab:nth-child(2).on)::before { transform: translateX(60px) scale(1); }
+#tab-dock .tab-dock-page:has(.dock-tab:nth-child(3).on)::before { transform: translateX(120px) scale(1); }
+
+/* tabs: icon-only, the indicator provides the highlight */
+#tab-dock .dock-tab,
+#island[data-theme] ~ #tab-dock .dock-tab.on,
+#island[data-theme] ~ #tab-dock .dock-tab:hover { background: transparent !important; box-shadow: none !important; }
+#tab-dock .dock-tab { position: relative; z-index: 1; color: rgba(255,255,255,.46); }
+#tab-dock .dock-tab svg { transition: transform .4s cubic-bezier(.34,1.56,.64,1), filter .25s ease; }
+#tab-dock .dock-tab:hover { color: rgba(255,255,255,.82); transform: none; }
+#tab-dock .dock-tab:hover svg { transform: scale(1.14); }
+#tab-dock .dock-tab.on { color: #fff; }
+#tab-dock .dock-tab.on svg { transform: scale(1.12); filter: drop-shadow(0 0 5px rgba(255,255,255,.45)); }
+#tab-dock .dock-tab:active svg { transform: scale(.82); }
+#tab-dock .dock-tab:active { transform: none; }
+/* old dot beacon + pop animation replaced by the sliding pill */
+#tab-dock.visible .dock-tab.on::after { display: none; }
+#tab-dock.switching .dock-tab.on { animation: none; }
+#tab-dock.visible { box-shadow: 0 14px 30px rgba(0,0,0,.38), 0 2px 6px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.10), inset 0 -1px 0 rgba(0,0,0,.35); }
+
+/* follow the chosen theme */
+#island[data-theme] ~ #tab-dock { background: linear-gradient(180deg, rgba(255,255,255,.06), transparent 55%), var(--island-bg-2); }
+#island[data-theme] ~ #tab-dock .tab-dock-page::before {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--theme-text) 20%, transparent), color-mix(in srgb, var(--theme-text) 8%, transparent));
+}
+#island[data-theme] ~ #tab-dock .dock-tab { color: color-mix(in srgb, var(--theme-text) 46%, transparent); }
+#island[data-theme] ~ #tab-dock .dock-tab:hover { color: color-mix(in srgb, var(--theme-text) 82%, transparent); }
+#island[data-theme] ~ #tab-dock .dock-tab.on { color: var(--theme-text); }
+
+@media (prefers-reduced-motion: reduce) {
+  #tab-dock, #tab-dock .tab-dock-page::before, #tab-dock .dock-tab svg { transition-duration: .01s !important; }
+}
+
+
+/* ═══ Closing animation: the island shrinks into the notch and fades out ═══ */
+#island.quitting, #tab-dock.quitting { pointer-events: none; }
+#island.quitting { animation: lyraQuitIsland .5s cubic-bezier(.55,0,.8,.3) forwards; transform-origin: 50% 0; }
+#tab-dock.quitting { animation: lyraQuitDock .32s ease-in forwards; }
+@keyframes lyraQuitIsland {
+  0%   { transform: scale(1);   opacity: 1; filter: blur(0); }
+  35%  { transform: scale(1.03); opacity: 1; }
+  100% { transform: scale(.4, .2) translateY(-18px); opacity: 0; filter: blur(6px); }
+}
+@keyframes lyraQuitDock { to { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(.8); } }
+@media (prefers-reduced-motion: reduce) { #island.quitting, #tab-dock.quitting { animation-duration: .01s; } }
+
+
+/* ═══ All-tabs design pass v3 — one shared "glass + spring" language ═══
+   Visual only: no sizes/paddings are changed, so layouts stay exactly the same.
+   To revert, restore the previous style.css. */
+
+/* 1. Content rises in, staggered, whenever a tab opens */
+@keyframes lyraRise { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+.view.on .recognition-body > *,
+.view.on .clipboard-body > *,
+.view.on .vol-list > *,
+.view.on .chat-empty > *,
+.view.on .drop-body > * { animation: lyraRise .5s cubic-bezier(.22,1,.36,1) both; }
+.view.on .recognition-body > :nth-child(2), .view.on .clipboard-body > :nth-child(2), .view.on .vol-list > :nth-child(2), .view.on .chat-empty > :nth-child(2) { animation-delay: .04s; }
+.view.on .recognition-body > :nth-child(3), .view.on .clipboard-body > :nth-child(3), .view.on .vol-list > :nth-child(3), .view.on .chat-empty > :nth-child(3) { animation-delay: .08s; }
+.view.on .recognition-body > :nth-child(4), .view.on .clipboard-body > :nth-child(4), .view.on .vol-list > :nth-child(4), .view.on .chat-empty > :nth-child(4) { animation-delay: .12s; }
+.view.on .vol-list > :nth-child(n+5) { animation-delay: .16s; }
+
+/* 2. Typography: confident titles, quiet subtitles */
+.recognition-title, .clipboard-title, .drop-title { letter-spacing: -.02em; text-shadow: 0 1px 12px rgba(255,255,255,.08); }
+.recognition-sub, .recognition-history-head, .clipboard-count, .vol-meta { letter-spacing: .01em; opacity: .82; }
+.recognition-history-head { text-transform: uppercase; letter-spacing: .09em; font-size: 10.5px; opacity: .6; }
+
+/* 3. Cards & rows: soft sheen, hairline highlight, spring hover/press */
+.recognition-scan-card, .recognition-history-row, .clipboard-item, .clipboard-drop-card, .vol-row, .drop-card {
+  background-image: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 60%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.09), 0 6px 16px rgba(0,0,0,.22);
+  transition: transform .4s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease, background-color .2s ease, border-color .2s ease;
+}
+.recognition-history-row:hover, .clipboard-item:hover, .vol-row:hover, .clipboard-drop-card:hover {
+  transform: translateY(-1px) scale(1.008);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 10px 22px rgba(0,0,0,.30);
+}
+.recognition-history-row:active, .clipboard-item:active, .vol-row:active { transform: scale(.985); }
+
+/* 4. Recognition: glowing result card + living listen button */
+.recognition-scan-card.has-result { box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 0 0 1px rgba(255,255,255,.07), 0 10px 28px rgba(0,0,0,.34); }
+.recognition-scan-art { border-radius: 14px; box-shadow: 0 6px 16px rgba(0,0,0,.4); }
+.recognize-circle { transition: transform .4s cubic-bezier(.34,1.56,.64,1), box-shadow .3s ease; box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 6px 18px rgba(0,0,0,.35); }
+.recognize-circle:hover:not(:disabled) { transform: scale(1.07); box-shadow: 0 0 0 1px rgba(255,255,255,.16), 0 0 22px rgba(255,255,255,.14); }
+.recognize-circle:active:not(:disabled) { transform: scale(.92); }
+.recognize-circle.busy { animation: lyraListen 1.6s ease-in-out infinite; }
+@keyframes lyraListen {
+  0%,100% { box-shadow: 0 0 0 0 rgba(255,255,255,.28), 0 6px 18px rgba(0,0,0,.35); }
+  50%     { box-shadow: 0 0 0 11px rgba(255,255,255,0), 0 6px 18px rgba(0,0,0,.35); }
+}
+.recognition-spotify-button, .recognition-history-spotify { transition: transform .35s cubic-bezier(.34,1.56,.64,1), filter .2s ease; }
+.recognition-spotify-button:hover, .recognition-history-spotify:hover { transform: scale(1.12); filter: drop-shadow(0 0 8px rgba(30,215,96,.45)); }
+.recognition-spotify-button:active, .recognition-history-spotify:active { transform: scale(.9); }
+
+/* 5. Chat: springy quick chips, input glows on focus */
+.chat-quick { transition: transform .35s cubic-bezier(.34,1.56,.64,1), background-color .2s ease; }
+.chat-quick:hover { transform: translateY(-2px) scale(1.03); }
+.chat-quick:active { transform: scale(.95); }
+.chat-bar { transition: box-shadow .3s ease, border-color .3s ease, transform .3s cubic-bezier(.34,1.56,.64,1); }
+.chat-bar:focus-within { box-shadow: 0 0 0 1px rgba(255,255,255,.18), 0 0 24px rgba(255,255,255,.07), inset 0 1px 0 rgba(255,255,255,.10); }
+
+/* 6. Volume & clipboard small touches */
+.vol-mute, .clipboard-copy, .clipboard-add { transition: transform .35s cubic-bezier(.34,1.56,.64,1), background-color .2s ease; }
+.vol-mute:hover, .clipboard-copy:hover, .clipboard-add:hover { transform: scale(1.1); }
+.vol-mute:active, .clipboard-copy:active, .clipboard-add:active { transform: scale(.88); }
+.clipboard-drop-card { border-style: dashed; }
+
+/* 7. Slim scrollbars inside every tab */
+#island .view * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.2) transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  .view.on .recognition-body > *, .view.on .clipboard-body > *, .view.on .vol-list > *, .view.on .chat-empty > *, .view.on .drop-body > *,
+  .recognize-circle.busy { animation: none !important; }
+  .recognition-history-row, .clipboard-item, .vol-row, .chat-quick, .recognize-circle { transition-duration: .01s !important; }
+}
+
+
+/* ═══ Redesign v4 — Volume / Recognize / Clipboard rebuilt "as Apple would" ═══ */
+
+/* ── VOLUME: Control-Center capsules. The whole row is the slider. ── */
+#island[data-view="volume"] .vol-list { gap: 7px; padding: 1px 0 2px; }
+#island[data-view="volume"] .vol-row,
+#island[data-theme] .vol-row {
+  position: relative; overflow: hidden; height: 40px; padding: 0 8px 0 10px; gap: 10px;
+  border-radius: 20px; border: 1px solid rgba(255,255,255,.07);
+  background: rgba(255,255,255,.07) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+.vol-fill {
+  position: absolute; inset: 0 auto 0 0; width: 0; pointer-events: none; border-radius: 20px 0 0 20px;
+  background: linear-gradient(90deg, rgba(255,255,255,.30), rgba(255,255,255,.22));
+  box-shadow: inset -1px 0 0 rgba(255,255,255,.18);
+  transition: width .18s cubic-bezier(.22,1,.36,1), opacity .2s ease;
+}
+.vol-row.muted .vol-fill { opacity: .18; }
+#island .vol-row .vol-slider {
+  position: absolute !important; inset: 0; width: 100% !important; height: 100% !important; margin: 0;
+  opacity: 0; cursor: ew-resize; z-index: 1;
+}
+.vol-row .vol-ic, .vol-row .vol-meta { position: relative; z-index: 2; pointer-events: none; }
+#island[data-view="volume"] .vol-row .vol-ic { width: 26px; height: 26px; flex-basis: 26px; border-radius: 7px; background: transparent; }
+#island[data-view="volume"] .vol-row .vol-ic img { width: 26px; height: 26px; border-radius: 7px; }
+#island[data-view="volume"] .vol-row .vol-meta { flex: 1 1 auto; display: flex; align-items: center; justify-content: space-between; min-width: 0; padding-right: 4px; }
+.vol-row .vol-name { font: 650 12.5px var(--font); letter-spacing: -.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vol-row .vol-pct { font: 600 11px var(--font); font-variant-numeric: tabular-nums; opacity: .75; }
+.vol-row .vol-mute { position: relative; z-index: 3; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: rgba(0,0,0,.22); flex: 0 0 28px; }
+.vol-row:hover { transform: none; }
+.vol-row:active { transform: scale(.992); }
+.vol-empty { text-align: center; padding: 26px 4px; opacity: .6; }
+
+/* ── RECOGNIZE: no header, one hero card, clean history ── */
+#island[data-view="recognition"] .recognition-title,
+#island[data-view="recognition"] .recognition-sub { display: none; }
+#island[data-view="recognition"] .recognition-body { padding: 14px 16px 10px; }
+#island[data-view="recognition"] .recognition-scan-card {
+  min-height: 66px; padding: 9px 12px 9px 9px; margin: 0 0 10px; gap: 12px; border-radius: 22px;
+  background-image: radial-gradient(120% 140% at 0% 0%, rgba(255,255,255,.12), rgba(255,255,255,0) 60%);
+}
+#island[data-view="recognition"] .recognition-scan-icon { width: 48px; height: 48px; flex-basis: 48px; border-radius: 14px; }
+#island[data-view="recognition"] .recognition-scan-art { border-radius: 14px; }
+#island[data-view="recognition"] .recognition-scan-title { font: 700 14px/1.15 var(--font); letter-spacing: -.01em; }
+#island[data-view="recognition"] .recognition-scan-sub { font: 500 11px var(--font); margin-top: 3px; }
+#island[data-view="recognition"] .recognize-circle { width: 48px; height: 48px; flex-basis: 48px; background: #fff; color: #0b0c0e; border: 0; }
+#island[data-view="recognition"] .recognize-circle:hover:not(:disabled) { box-shadow: 0 0 0 5px rgba(255,255,255,.14), 0 0 26px rgba(255,255,255,.25); }
+.recognition-scan-card.listening .recognition-scan-icon { opacity: .55; }
+.recognition-wave { display: none; align-items: center; gap: 3px; height: 24px; margin-right: 4px; }
+.recognition-scan-card.listening .recognition-wave { display: flex; }
+.recognition-wave span { width: 3px; height: 8px; border-radius: 3px; background: #fff; animation: lyraWave .9s ease-in-out infinite; }
+@keyframes lyraWave { 0%,100% { height: 6px; opacity: .55; } 50% { height: 22px; opacity: 1; } }
+
+#island[data-view="recognition"] .recognition-history { gap: 0; }
+#island[data-view="recognition"] .recognition-history-head { margin: 2px 2px 6px; }
+#island[data-theme] .recognition-history-row {
+  background: transparent !important; border: 0 !important; box-shadow: none; background-image: none;
+  border-radius: 12px; padding: 6px 8px; position: relative;
+}
+#island[data-theme] .recognition-history-row + .recognition-history-row::before {
+  content: ""; position: absolute; left: 52px; right: 8px; top: 0; height: 1px; background: rgba(255,255,255,.06);
+}
+#island[data-theme] .recognition-history-row:hover { background: var(--theme-surface-2, rgba(255,255,255,.06)) !important; transform: none; }
+.recognition-history-row img { width: 34px; height: 34px; border-radius: 9px; box-shadow: 0 3px 8px rgba(0,0,0,.35); }
+.rh-title { font: 650 12.5px var(--font); letter-spacing: -.005em; }
+.rh-artist { font: 500 11px var(--font); opacity: .6; }
+.rh-time { font: 500 10.5px var(--font); opacity: .45; font-variant-numeric: tabular-nums; }
+
+/* ── CLIPBOARD: flat inset list, rounded-square type badges ── */
+.clipboard-head { margin-bottom: 10px; }
+.clipboard-title { font: 700 17px var(--font); letter-spacing: -.02em; }
+.clipboard-list { gap: 0; background: rgba(255,255,255,.05); border-radius: 18px; overflow: hidden; border: 1px solid rgba(255,255,255,.07); }
+#island[data-theme] .clipboard-item {
+  background: transparent !important; border: 0 !important; border-radius: 0; box-shadow: none; background-image: none;
+  min-height: 46px; padding: 8px 12px; position: relative;
+}
+#island[data-theme] .clipboard-item + .clipboard-item::before {
+  content: ""; position: absolute; left: 50px; right: 0; top: 0; height: 1px; background: rgba(255,255,255,.06);
+}
+#island[data-theme] .clipboard-item:hover { background: rgba(255,255,255,.07) !important; transform: none; }
+.clipboard-item:active { transform: none; background: rgba(255,255,255,.11) !important; }
+.clipboard-icon { width: 30px; height: 30px; border-radius: 9px; background-image: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.05)); }
+.clipboard-label { font: 600 9px var(--font); letter-spacing: .08em; opacity: .6; }
+.clipboard-count { background: rgba(255,255,255,.12); color: var(--ink); }
+.clipboard-add { border-radius: 999px; padding: 6px 12px; }
+@media (prefers-reduced-motion: reduce) { .recognition-wave span { animation: none; } .vol-fill { transition: none; } }
+
+
+/* ═══ v5 — Volume fix + Music / Ask / Home pass ═══ */
+
+/* VOLUME FIX: name and % sit on one line; four capsules fit without clipping */
+#island[data-view="volume"] .vol-row .vol-meta { flex-direction: row !important; align-items: center; gap: 8px; }
+#island[data-view="volume"] .vol-row .vol-name { flex: 1 1 auto; min-width: 0; text-shadow: none; opacity: 1; }
+#island[data-view="volume"] .vol-row .vol-pct { flex: 0 0 auto; }
+#island[data-view="volume"] .vol-list { gap: 5px; }
+#island[data-view="volume"] .vol-row, #island[data-theme] .vol-row { height: 34px; border-radius: 17px; }
+#island[data-view="volume"] .vol-fill { border-radius: 17px 0 0 17px; }
+#island[data-view="volume"] .vol-row .vol-ic, #island[data-view="volume"] .vol-row .vol-ic img { width: 22px; height: 22px; flex-basis: 22px; }
+#island[data-view="volume"] .vol-row .vol-mute { width: 24px; height: 24px; flex-basis: 24px; }
+#island[data-view="volume"] .vol-body { padding: 10px 14px 10px; }
+.vol-row .vol-name { text-shadow: none; }
+.vol-meta { opacity: 1; }
+
+/* MUSIC: bigger art with glow, pill progress, glass transport */
+.m-art { border-radius: 16px; box-shadow: 0 10px 26px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.06); transition: transform .5s cubic-bezier(.34,1.56,.64,1); }
+.music-view:hover .m-art { transform: scale(1.03); }
+.m-title { letter-spacing: -.015em; }
+.m-bar { height: 5px; border-radius: 5px; transition: height .2s ease; }
+.m-bar:hover { height: 8px; }
+.m-bar i { border-radius: 5px; background: linear-gradient(90deg, rgba(255,255,255,.75), #fff); }
+.m-bar i::after { opacity: 0; transition: opacity .2s ease, transform .3s cubic-bezier(.34,1.56,.64,1); }
+.m-bar:hover i::after { opacity: 1; transform: scale(1.1); }
+.m-btn { transition: background .2s ease, transform .35s cubic-bezier(.34,1.56,.64,1), opacity .2s ease; }
+.m-btn:hover:not(:disabled) { transform: scale(1.1); background: rgba(255,255,255,.12); }
+.m-btn:active:not(:disabled) { transform: scale(.88); }
+.m-btn.main { background: #fff; color: #0b0c0e; box-shadow: 0 6px 18px rgba(255,255,255,.18); }
+.m-btn.main:hover:not(:disabled) { background: #fff; box-shadow: 0 8px 26px rgba(255,255,255,.3); }
+.m-lyr-btn, .m-open { transition: transform .35s cubic-bezier(.34,1.56,.64,1), background .2s ease; }
+.m-lyr-btn:hover, .m-open:hover { transform: scale(1.08); }
+
+/* ASK: calmer empty state, glass composer */
+.chat-empty-title { font: 700 17px var(--font); letter-spacing: -.02em; }
+.chat-empty-sub { opacity: .75; }
+
+@keyframes lyraFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.chat-quick { border-radius: 999px; background-image: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)); }
+.chat-bar { border-radius: 22px; padding: 7px 14px; background-image: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0)); border: 1px solid rgba(255,255,255,.08); }
+.send-btn { transition: transform .35s cubic-bezier(.34,1.56,.64,1); }
+.send-btn:hover:not(:disabled) { transform: scale(1.1); }
+.send-btn:active:not(:disabled) { transform: scale(.88); }
+.bubble { border-radius: 18px; }
+
+/* HOME: softer panels, calmer hover */
+.overview .card, .overview > .left, .overview > .right { transition: transform .4s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease; }
+.overview .card { border-radius: 22px; background-image: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0) 60%); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 8px 22px rgba(0,0,0,.25); }
+.overview .card:hover { transform: translateY(-1px); }
+.overview .card:active { transform: scale(.992); }
+@media (prefers-reduced-motion: reduce) {  }
+
+
+/* ═══ v6 — Volume as vertical "Control Center" tiles + Music play-button fix ═══ */
+
+/* MUSIC: the play/pause icon is white, so the button must be glass, not white */
+.m-btn.main, .m-btn.main:hover:not(:disabled) {
+  background: rgba(255,255,255,.14); color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 6px 18px rgba(0,0,0,.35);
+}
+.m-btn.main:hover:not(:disabled) { background: rgba(255,255,255,.22); }
+.m-btn.main svg { color: #fff !important; }
+/* same trap on Recognize: dark icon on the white circle */
+#island .recognize-circle svg { color: #0b0c0e !important; }
+
+/* VOLUME: one tall tile per app, drag up/down; scroll sideways when there are many */
+#island[data-view="volume"] .vol-body { padding: 10px 14px; }
+#island[data-view="volume"] .vol-list {
+  flex-direction: row; align-items: stretch; gap: 10px; overflow-x: auto; overflow-y: hidden;
+  padding: 0 0 2px; scrollbar-width: none; scroll-snap-type: x proximity;
+}
+#island[data-view="volume"] .vol-row, #island[data-theme] .vol-row {
+  flex: 0 0 78px; width: 78px; height: auto; min-height: 0; scroll-snap-align: start;
+  flex-direction: column; align-items: stretch; justify-content: space-between; gap: 0;
+  padding: 7px 7px 8px; border-radius: 22px; cursor: ns-resize; touch-action: none; user-select: none;
+  background: rgba(255,255,255,.06) !important; border: 1px solid rgba(255,255,255,.07);
+}
+#island[data-view="volume"] .vol-fill {
+  inset: auto 0 0 0; width: auto; height: 0; border-radius: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.36), rgba(255,255,255,.20));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.4);
+  transition: height .18s cubic-bezier(.22,1,.36,1), opacity .2s ease;
+}
+.vol-row.dragging .vol-fill { transition: none; }
+.vol-row.muted .vol-fill { height: 0 !important; }
+#island[data-view="volume"] .vol-row .vol-top { position: relative; z-index: 3; display: flex; justify-content: flex-end; }
+#island[data-view="volume"] .vol-row .vol-mute { width: 24px; height: 24px; flex-basis: 24px; background: rgba(0,0,0,.25); }
+#island[data-view="volume"] .vol-row .vol-pct {
+  position: relative; z-index: 2; text-align: center; font: 700 15px var(--font); opacity: 1; letter-spacing: -.01em;
+  pointer-events: none; text-shadow: 0 1px 6px rgba(0,0,0,.3);
+}
+#island[data-view="volume"] .vol-row .vol-bottom {
+  position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; min-width: 0;
+}
+#island[data-view="volume"] .vol-row .vol-ic, #island[data-view="volume"] .vol-row .vol-ic img { width: 28px; height: 28px; flex-basis: 28px; }
+#island[data-view="volume"] .vol-row .vol-name {
+  font: 600 10.5px var(--font); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; flex: 0 0 auto;
+}
+#island[data-view="volume"] .vol-row:active { transform: none; }
+#island[data-view="volume"] .vol-empty { align-self: center; width: 100%; text-align: center; }
+
+
+/* ═══ v7 — slimmer volume tiles: all apps visible, no scrolling, icon only ═══ */
+#island[data-view="volume"] .vol-list { overflow: hidden; justify-content: center; gap: 8px; scroll-snap-type: none; }
+#island[data-view="volume"] .vol-row, #island[data-theme] .vol-row {
+  flex: 1 1 0; width: auto; min-width: 38px; max-width: 64px; border-radius: 20px; padding: 6px 4px 8px;
+}
+#island[data-view="volume"] .vol-row .vol-name { display: none; }
+#island[data-view="volume"] .vol-row .vol-pct { font-size: 12.5px; }
+#island[data-view="volume"] .vol-row .vol-ic, #island[data-view="volume"] .vol-row .vol-ic img { width: 28px; height: 28px; flex-basis: 28px; }
+#island[data-view="volume"] .vol-row .vol-top { justify-content: center; }
+#island[data-view="volume"] .vol-row .vol-mute { width: 22px; height: 22px; flex-basis: 22px; }
+
+/* ── Search results shown alone: no header, the query sits beside the close button ─ */
+/* Search results use the full panel height; the query sits beside the close button. */
+#island.search-results-open[data-view="prompt"][data-mode="expanded"] .chat-body { padding: 0 14px 12px !important; gap: 0; }
+#island.search-results-open[data-view="prompt"] .cx-close { top: 2px; }
+#island.search-results-open[data-view="prompt"][data-mode="expanded"] .chat-card:not(.cx-small) .chat-log { padding: 0 !important; gap: 0; }
+#island.search-results-open[data-view="prompt"][data-mode="expanded"] .search-results-block { gap: 10px; margin: 0; }
+#island .search-results-block > .search-query-pill {
+  height: 32px; min-height: 32px; margin-left: 40px; padding: 0 14px; gap: 8px; box-sizing: border-box;
+  border-radius: 999px; border: 1px solid rgba(255,255,255,.1);
+  background: rgba(255,255,255,.075); color: rgba(255,255,255,.9);
+  font: 600 13px var(--font); letter-spacing: .005em;
+}
+#island .search-results-block > .search-query-pill svg { flex: none; opacity: .6; }
+#island .search-results-block > .search-query-pill > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Web results v2: no scrolling, a bigger knowledge card, cleaner rows ─────────
+   Every part has a fixed height; island.ts adds them up to size the panel exactly:
+   pill 32 + [10 + card 176] + [10 + rows × 70 + gaps 8] + 14. */
+#island.search-results-open[data-view="prompt"] .chat-log {
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+  flex: none;
+}
+#island.search-results-open[data-view="prompt"] .chat-log::-webkit-scrollbar { display: none !important; width: 0 !important; }
+#island.search-results-open[data-view="prompt"][data-mode="expanded"] .search-results-block { gap: 8px; flex: none; width: 100%; }
+#island .search-results-block > .search-query-pill { margin-bottom: 2px; flex: none; }
+
+/* knowledge card: portrait + text on top, the official links in one row underneath */
+#island .kg-card {
+  flex: none; display: flex; flex-direction: column; gap: 10px; height: 176px; box-sizing: border-box; margin-bottom: 2px;
+  padding: 12px; border-radius: 20px; overflow: hidden;
+  background: linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.04));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.09);
+}
+#island .kg-top { display: flex; gap: 14px; height: 114px; min-height: 0; }
+#island .kg-media { flex: none; width: 100px; height: 114px; border-radius: 14px; overflow: hidden; background: #1a1c20; box-shadow: 0 6px 16px rgba(0,0,0,.35); }
+#island .kg-img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 18%; }
+#island .kg-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+#island .kg-title { font: 700 18px/22px var(--font); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#island .kg-sub { font: 600 12px/16px var(--font); color: rgba(150,195,255,.9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#island .kg-text { margin-top: 2px; font: 500 12px/17px var(--font); color: rgba(255,255,255,.74); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+#island .kg-links { display: flex; gap: 6px; height: 28px; overflow: hidden; flex: none; }
+#island .kg-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 12px; border: 0; border-radius: 999px; cursor: pointer;
+  font: 600 12px var(--font); color: rgba(255,255,255,.94); background: rgba(255,255,255,.1); transition: background .18s, transform .18s;
+}
+#island .kg-chip svg { fill: currentColor; opacity: .7; }
+/* where to watch: a second row, service logo + name (the card grows by 38px: see island.ts) */
+#island .kg-card.has-watch { height: 214px; }
+#island .kg-watch { align-items: center; }
+#island .kg-watch-label { flex: none; font: 700 10.5px var(--font); letter-spacing: .06em; text-transform: uppercase; color: rgba(255,255,255,.5); padding-right: 2px; }
+#island .kg-watch-chip { padding: 0 12px 0 5px; background: rgba(120,170,255,.16); }
+#island .kg-watch-chip:hover { background: rgba(120,170,255,.28); }
+#island .kg-logo { display: block; width: 18px; height: 18px; border-radius: 5px; object-fit: cover; }
+#island .kg-chip:hover { background: rgba(255,255,255,.2); }
+#island .kg-chip:active { transform: scale(.95); }
+
+/* result rows: site icon · site / title / two lines of snippet · round arrow */
+#island .search-card { flex: none; display: flex; align-items: center; gap: 12px; height: 70px; padding: 0 12px; box-sizing: border-box; border-radius: 16px; }
+#island .search-card::before { display: none; }
+#island .search-card > .search-card-thumb { flex: none; width: 72px; height: 48px; border-radius: 10px; object-fit: cover; background: #1a1c20; }
+#island .search-card .search-source-mark { width: 40px; height: 40px; border-radius: 12px; }
+#island .search-card .search-source-mark img { width: 24px; height: 24px; }
+#island .search-card-body { gap: 1px; }
+#island .search-card-source { font: 600 10.5px/14px var(--font); }
+#island .search-card-title { font: 700 13px/18px var(--font); }
+#island .search-card-desc { font: 500 11px/14px var(--font); color: rgba(255,255,255,.55); -webkit-line-clamp: 2; }
+#island .search-card-go {
+  flex: none; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+  color: #fff; background: rgba(255,255,255,.08); transition: background .18s, transform .18s;
+}
+#island .search-card-go svg { fill: currentColor; }
+#island .search-card:hover .search-card-go, #island .search-card-go:hover { background: rgba(255,255,255,.2); }
+#island .search-card-go:active { transform: scale(.92); }
+
+/* ── "Thinking" on the small island ───────────────────────────────────────────── */
+
+/* ── YouTube results: just the video previews, 2 × 2, no header, no scrolling ── */
+#island .yt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: none; }
+#island .yt-tile { position: relative; height: 158px; padding: 0; border: 0; border-radius: 16px; overflow: hidden; cursor: pointer; background: #1a1c20; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); transition: transform .2s ease, box-shadow .2s ease; }
+#island .yt-tile img { display: block; width: 100%; height: 100%; object-fit: cover; }
+#island .yt-tile:hover { transform: scale(1.015); box-shadow: 0 8px 20px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.18); }
+#island .yt-tile:active { transform: scale(.985); }
+#island .yt-tile:focus-visible { outline: 2px solid rgba(255,255,255,.7); outline-offset: 2px; }
+#island .yt-badge { position: absolute; left: 10px; bottom: 10px; width: 30px; height: 21px; filter: drop-shadow(0 1px 3px rgba(0,0,0,.55)); pointer-events: none; }
+#island .yt-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 10px; text-align: center; color: rgba(255,255,255,.7); font: 600 11px var(--font); }
+#island .yt-results { gap: 10px !important; }
+
+
+/* Compact notch: the active tab stays ".on" underneath the 248x38 pill, so its
+   buttons (Pomodoro, Start Focus, Cancel...) swallowed clicks meant for the pill.
+   While compact, nothing inside a view is clickable; the pill handles the click. */
+#island[data-mode="compact"] .view,
+#island[data-mode="compact"] .view * { pointer-events: none !important; }
+
+/* Lyrics view only: lines sit slightly higher, and the "make smaller" arrow
+   (added by withPeek) is hidden. The normal music player keeps its arrow. */
+#island[data-view="music"] .music-view.lyrics-on .m-lyr-inner { margin-top: -10px; }
+#island[data-view="music"] .music-view.lyrics-on > .pk-shrink { display: none !important; }

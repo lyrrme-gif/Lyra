@@ -1,0 +1,10 @@
+/* Playing with the Mochi on the expanded island (views/home.ts) */
+.hx-mochi-spot { position: relative; }
+.hx-say { position: absolute; left: 50%; top: -2px; transform: translateX(-50%); z-index: 3; padding: 4px 11px; border-radius: 999px; white-space: nowrap; pointer-events: none;
+  background: rgba(255, 255, 255, .95); color: #14141a; font: 700 12px/1.2 var(--font, system-ui, sans-serif); box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
+  animation: hxSay 1.7s ease-out forwards; }
+@keyframes hxSay { 0% { opacity: 0; transform: translate(-50%, 8px) scale(.85); } 14% { opacity: 1; transform: translate(-50%, 0) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -8px); } }
+.hx-fx { position: absolute; left: var(--x, 50%); bottom: 46%; z-index: 3; font-size: 18px; line-height: 1; pointer-events: none; opacity: 0;
+  animation: hxFloat 1.4s ease-out forwards; }
+@keyframes hxFloat { 0% { opacity: 0; transform: translate(0, 0) scale(.6); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx, 0), -78px) scale(1.15) rotate(12deg); } }
+@media (prefers-reduced-motion: reduce) { .hx-fx { animation-duration: .01s; } }

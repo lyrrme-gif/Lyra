@@ -1,0 +1,9 @@
+2026-10-30 20:15:26,765 [INFO] whatsapp: a voice was not loaded: could not be loaded
+2026-10-30 20:15:26,766 [INFO] whatsapp: a voice was not loaded: media expired
+2026-10-30 20:15:38,533 [WARNING] whatsapp: reply suggestion failed: no AI key is set up yet
+2026-10-30 20:15:38,575 [INFO] [trace] live trace is ON (set LYRA_TRACE=0 to turn it off)
+2026-10-30 20:15:38,575 [INFO] [trace] push: backend -> UI: open_view view=apps
+2026-10-30 20:15:38,593 [INFO] [trace] push: backend -> UI: open_view view=apps
+2026-10-30 20:15:38,593 [INFO] [trace] push: backend -> UI: open_view view=apps
+2026-10-30 20:15:38,593 [INFO] [trace] push: backend -> UI: open_view view=apps
+2026-10-30 20:15:38,634 [INFO] secrets: no usable OS keychain (ModuleNotFoundError) - using the plain-text fallback

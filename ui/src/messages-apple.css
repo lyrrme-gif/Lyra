@@ -1,0 +1,181 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Apps tab · the glass chat look (WhatsApp chats, and any other chat app)
+   See-through glass bubbles with the little tail, round glass buttons, a pill reply bar with a circle on each
+   side, a centred contact header and glass list rows. Everything is a white tint over whatever is behind the
+   island (like the reference), never a solid grey.
+   Every colour comes from the ISLAND THEME (--theme-text, --island-accent), so it follows
+   whichever island theme is on. Scoped to .apps-view; loaded last.
+   To get the previous look back, remove the `import "./messages-apple.css"` line in main.ts.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.apps-view {
+  --tint: var(--island-accent, #8ea7ff);
+  --tint-rgb: var(--island-accent-rgb, 142, 167, 255);
+  --on-tint: #06080c;                                                        /* dark ink on the accent (every island accent is light) */
+  --txt: var(--theme-text, #fff);
+  --txt-2: var(--theme-muted, rgba(235, 235, 245, .6));
+  --g1: color-mix(in srgb, var(--txt) 9%, transparent);                     /* glass: pills, circles, rows */
+  --g2: color-mix(in srgb, var(--txt) 16%, transparent);                    /* glass, hovered / pressed */
+  --bub-in: color-mix(in srgb, var(--txt) 13%, transparent);                /* received bubble */
+  --bub-out: color-mix(in srgb, var(--tint) 38%, transparent);              /* sent bubble: the island accent, see-through */
+  --edge: color-mix(in srgb, var(--txt) 17%, transparent);
+  --sheen: linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, 0) 70%);
+  --glass-shadow: inset 0 0 0 1px var(--edge), inset 0 1px 0 rgba(255, 255, 255, .10);
+  --blur: blur(18px) saturate(1.45);
+  --spr: var(--spring, cubic-bezier(.34, 1.56, .64, 1));
+  --msg-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, "Segoe UI Variable Text", "Segoe UI", "Segoe UI Emoji", sans-serif;
+  font-family: var(--msg-font);
+  -webkit-font-smoothing: antialiased;
+}
+.apps-view .ap-top, .apps-view .ap-body, .apps-view .ap-foot, .apps-view button, .apps-view input { font-family: var(--msg-font); }
+
+/* a round glass button (back, suggest, send) */
+.apps-view .ap-back, .apps-view .ap-plus, .apps-view .ap-send {
+  width: 36px; height: 36px; flex: none; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+  display: grid; place-items: center; color: var(--txt);
+  background-color: var(--g1); background-image: var(--sheen); box-shadow: var(--glass-shadow);
+  transition: transform .35s var(--spr), background-color .15s, opacity .15s;
+}
+.apps-view .ap-back, .apps-view .ap-plus, .apps-view .ap-send, .apps-view .ap-pillin, .apps-view .ap-row, .apps-view .ap-sug, .apps-view .ap-attach {
+  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+}
+.apps-view .ap-back:hover, .apps-view .ap-plus:hover { background-color: var(--g2); }
+.apps-view .ap-back:active, .apps-view .ap-plus:active, .apps-view .ap-send:active { transform: scale(.88); }
+
+/* ── Header: a round back button, the contact's picture and name in the middle ── */
+.apps-view .ap-top.thread {
+  display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; gap: 8px;
+  padding: 0; min-height: 56px; box-shadow: none;
+}
+.apps-view .ap-back { justify-self: start; }
+.apps-view .ap-who { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+.apps-view .ap-whoname { font: 600 12px/1.2 var(--msg-font); color: var(--txt); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apps-view .ap-whospace { width: 36px; }
+.apps-view .ap-who .ap-avatar { box-shadow: var(--glass-shadow); }
+
+/* ── The conversation ── */
+.apps-view .ap-thread, .apps-view .ap-body, .apps-view .ap-threadbox { scrollbar-width: none !important; -ms-overflow-style: none; }
+.apps-view .ap-thread::-webkit-scrollbar, .apps-view .ap-body::-webkit-scrollbar, .apps-view .ap-threadbox::-webkit-scrollbar,
+.apps-view .ap-thread::-webkit-scrollbar-button, .apps-view .ap-body::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }
+.apps-view .ap-thread { gap: 0; padding: 6px 12px 6px; }
+.apps-view .ap-stamp { align-self: center; font: 500 11.5px/1 var(--msg-font); color: var(--txt-2); padding: 12px 0 8px; }
+.apps-view .ap-m { margin-top: 8px; }
+.apps-view .ap-stamp + .ap-m { margin-top: 2px; }
+.apps-view .ap-m.cont { margin-top: 2px; }
+.apps-view .ap-bubble {
+  position: relative; isolation: isolate;          /* isolate: the tail sits under the text, never over it */
+  max-width: 72%; padding: 8px 14px 9px; border-radius: 20px; gap: 2px;
+  --bub: var(--bub-in);
+  background-color: var(--bub); background-image: none; color: var(--txt);
+  font: 400 14.5px/1.3 var(--msg-font); letter-spacing: -.005em; box-shadow: none;
+}
+.apps-view.big .ap-bubble { max-width: 68%; font-size: 15px; }
+.apps-view .ap-m .ap-bubble, .apps-view .ap-m.mine .ap-bubble { background-color: var(--bub); background-image: none; }
+.apps-view .ap-m.mine .ap-bubble { --bub: var(--bub-out); border-radius: 20px; box-shadow: none; }
+.apps-view .ap-bubble.fresh { animation: msg-in .38s var(--spr) both; }      /* only a message that just arrived pops in */
+.apps-view .ap-m .ap-bubble small { font: 600 11px var(--msg-font); color: var(--tint); padding: 0 0 1px; }
+.apps-view .ap-text { white-space: pre-wrap; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(6px) scale(.96); } to { opacity: 1; transform: none; } }
+
+/* the tail: the last bubble of a run gets the little flick, drawn as a mask in the bubble's own colour */
+.apps-view .ap-bubble.tail::after {
+  content: ""; position: absolute; z-index: -1; bottom: -5px; width: 26px; height: 25px; pointer-events: none;
+  background: var(--bub);
+  -webkit-mask: var(--tail) center / 100% 100% no-repeat; mask: var(--tail) center / 100% 100% no-repeat;
+}
+.apps-view .ap-m.mine .ap-bubble.tail { --tail: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 25'%3E%3Cpath d='M13.45 13.98Q17.91 18.20 26.00 20.00Q15.70 24.29 3.92 19.00A19.4 19.4 0 0 0 13.45 13.98Z'/%3E%3C/svg%3E"); }
+.apps-view .ap-m.mine .ap-bubble.tail::after { right: -6px; }
+.apps-view .ap-m:not(.mine) .ap-bubble.tail { --tail: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 25'%3E%3Cpath d='M12.55 13.98Q8.09 18.20 0.00 20.00Q10.30 24.29 22.08 19.00A19.4 19.4 0 0 1 12.55 13.98Z'/%3E%3C/svg%3E"); }
+.apps-view .ap-m:not(.mine) .ap-bubble.tail::after { left: -6px; }
+.apps-view .ap-m:has(.ap-bubble.tail) { margin-bottom: 2px; }
+
+/* a photo on its own: no bubble, just the rounded picture */
+.apps-view .ap-m .ap-bubble.bare { background: transparent; background-image: none; padding: 0; border-radius: 20px; }
+.apps-view .ap-bubble.media { gap: 6px; }
+.apps-view .ap-photo { border-radius: 20px; background: var(--g1); }
+.apps-view .ap-bubble:not(.bare) .ap-photo { border-radius: 14px; margin: -3px -6px 0; width: min(300px, calc(100% + 12px)); }
+.apps-view .ap-photo.ready { transition: transform .35s var(--spr); }
+.apps-view .ap-photo.ready:active { transform: scale(.985); }
+.apps-view .ap-mnote { color: var(--txt-2); font: 400 13px var(--msg-font); flex-wrap: wrap; }
+.apps-view .ap-mnote .ap-link { margin-left: 2px; }
+
+/* ── Voice messages: round play button, waveform, time ── */
+.apps-view .ap-voicebox { min-width: 232px; gap: 7px; }
+.apps-view .ap-voice { gap: 10px; }
+.apps-view .ap-play { width: 32px; height: 32px; background: var(--tint); color: var(--on-tint); transition: transform .35s var(--spr); }
+.apps-view .ap-play:active { transform: scale(.88); }
+.apps-view .ap-track { display: flex; align-items: center; gap: 2px; height: 26px; background: transparent; border-radius: 0; min-width: 96px; }
+.apps-view .ap-track::before { inset: 0; }
+.apps-view .ap-track i { position: static; display: block; flex: 1; width: auto; min-width: 2px; max-width: 3px; opacity: 1; align-self: auto; border-radius: 2px; background: color-mix(in srgb, var(--txt) 30%, transparent); transition: background .12s; }
+.apps-view .ap-track i.on { background: var(--tint); }
+.apps-view .ap-vtime { font: 500 12px var(--msg-font); color: var(--txt-2); min-width: 38px; opacity: 1; }
+.apps-view .ap-bubble .ap-link, .apps-view .ap-mnote .ap-link { color: var(--tint); font: 600 12.5px var(--msg-font); }
+
+/* ── Reply bar: [circle] (pill) [circle] ── */
+.apps-view .ap-composewrap { gap: 8px; padding-top: 4px; }
+.apps-view .ap-compose { display: flex; align-items: center; gap: 8px; padding: 0; min-height: 0; background: transparent; box-shadow: none; border-radius: 0; }
+.apps-view .ap-pillin {
+  flex: 1; min-width: 0; height: 40px; gap: 4px; display: flex; align-items: center; padding: 0 16px; border-radius: 19px;
+  background-color: var(--g1); background-image: var(--sheen); box-shadow: var(--glass-shadow); transition: box-shadow .2s;
+}
+.apps-view .ap-pillin:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 55%, transparent), inset 0 1px 0 rgba(255, 255, 255, .12); }
+.apps-view .ap-in { width: 100%; height: 30px; font: 400 15px var(--msg-font); color: var(--txt); letter-spacing: -.005em; }
+.apps-view .ap-in::placeholder { color: var(--txt-2); opacity: .8; }
+.apps-view .ap-plus { color: var(--txt); }
+.apps-view .ap-file { display: none; }
+.apps-view .ap-pillin .ap-sugbtn {
+  width: 30px; height: 30px; margin: 0 -8px 0 0; flex: none; padding: 0; border: 0; border-radius: 50%; cursor: pointer; display: grid; place-items: center;
+  background: transparent; color: var(--tint); transition: transform .35s var(--spr), background-color .15s;
+}
+.apps-view .ap-pillin .ap-sugbtn:hover { background: color-mix(in srgb, var(--tint) 20%, transparent); }
+.apps-view .ap-pillin .ap-sugbtn:active { transform: scale(.86); }
+
+/* the file picked with +: a small glass chip above the bar, removable until Send */
+.apps-view .ap-attach {
+  align-self: flex-start; max-width: 100%; display: flex; align-items: center; gap: 9px; padding: 5px 6px 5px 5px; border-radius: 16px;
+  background-color: var(--g1); background-image: var(--sheen); box-shadow: var(--glass-shadow); animation: msg-in .3s var(--spr) both;
+}
+.apps-view .ap-attach img, .apps-view .ap-atticon { width: 36px; height: 36px; flex: none; border-radius: 11px; object-fit: cover; }
+.apps-view .ap-atticon { display: grid; place-items: center; background: color-mix(in srgb, var(--tint) 22%, transparent); color: var(--tint); }
+.apps-view .ap-attname { font: 500 13px var(--msg-font); color: var(--txt); max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apps-view .ap-attsize { font: 400 12px var(--msg-font); color: var(--txt-2); flex: none; }
+.apps-view .ap-attx {
+  width: 22px; height: 22px; flex: none; padding: 0; border: 0; border-radius: 50%; cursor: pointer; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--txt) 18%, transparent); color: var(--txt);
+}
+.apps-view .ap-attx:hover { background: color-mix(in srgb, var(--txt) 30%, transparent); }
+.apps-view .ap-send { color: var(--txt-2); opacity: .75; }
+.apps-view .ap-send.ready { opacity: 1; background-color: var(--tint); background-image: none; color: var(--on-tint); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* suggested replies: glass pills */
+.apps-view .ap-sugs { gap: 6px; }
+.apps-view .ap-sug {
+  padding: 8px 14px; border-radius: 18px; background-color: var(--g1); background-image: var(--sheen); box-shadow: var(--glass-shadow); color: var(--txt);
+  font: 400 13.5px/1.25 var(--msg-font); animation: msg-in .36s var(--spr) both;
+}
+.apps-view .ap-sug:hover { background-color: var(--g2); }
+.apps-view .ap-sug:active { background-color: color-mix(in srgb, var(--tint) 45%, transparent); }
+
+/* ── Chat list: glass rows ── */
+.apps-view .ap-row { gap: 12px; padding: 9px 14px 9px 22px; border-radius: 18px; margin-bottom: 6px; position: relative; background-color: var(--g1); background-image: var(--sheen); box-shadow: var(--glass-shadow); }
+.apps-view .ap-row.click:hover { background-color: var(--g2); }
+.apps-view .ap-row.click:active { transform: scale(.985); }
+.apps-view .ap-row.unread { background-color: var(--g1); }
+.apps-view .ap-row.unread::before { content: ""; position: absolute; left: 8px; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: var(--tint); }
+.apps-view .ap-row .ap-avatar { --s: 42px; }
+.apps-view .ap-rowhead b { font: 600 15px var(--msg-font); letter-spacing: -.01em; color: var(--txt); }
+.apps-view .ap-rowhead time, .apps-view .ap-row.unread .ap-rowhead time { font: 400 12.5px var(--msg-font); color: var(--txt-2); }
+.apps-view .ap-row .ap-sub, .apps-view .ap-row.unread .ap-sub { font: 400 13.5px/1.3 var(--msg-font); color: var(--txt-2); opacity: 1; }
+.apps-view .ap-badge { display: none; }
+.apps-view .ap-chip { background: color-mix(in srgb, var(--tint) 20%, transparent); color: var(--tint); }
+
+/* ── Photo viewer ── */
+.apps-view .ap-lightbox { background: rgba(0, 0, 0, .86); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); animation: msg-fade .22s ease both; }
+.apps-view .ap-lightbox img { border-radius: 16px; animation: msg-in .4s var(--spr) both; }
+.apps-view .ap-iconbtn.light { width: 34px; height: 34px; border-radius: 50%; background: rgba(120, 120, 128, .45); color: #fff; }
+@keyframes msg-fade { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .apps-view .ap-bubble.fresh, .apps-view .ap-sug, .apps-view .ap-attach, .apps-view .ap-lightbox, .apps-view .ap-lightbox img { animation: none; }
+  .apps-view .ap-send, .apps-view .ap-play, .apps-view .ap-back, .apps-view .ap-plus, .apps-view .ap-sugbtn { transition: none; }
+}

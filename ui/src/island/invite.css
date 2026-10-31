@@ -1,0 +1,16 @@
+/* Hover invite (see invite.ts): shown while the pointer rests on the compact notch. */
+#island-sheen {
+  position: absolute; inset: 0; z-index: 8; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .25s ease;
+  background: radial-gradient(110px 70px at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .17), transparent 70%);
+}
+#island.hovering[data-mode="compact"] #island-sheen { opacity: 1; }
+
+/* a slow, gentle float so it stays alive while the pointer rests on it */
+#island.hovering[data-mode="compact"]:not(.pulse-on):not(.pulse-off) {
+  animation: isl-float 2.6s ease-in-out .3s infinite;
+}
+@keyframes isl-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -2.5px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  #island.hovering[data-mode="compact"] { animation: none !important; }
+}

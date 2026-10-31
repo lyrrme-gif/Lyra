@@ -1,0 +1,9 @@
+{
+  "_default_app": "whatsapp",
+  "sara": {
+    "names": ["sara", "sarah", "sera"],
+    "display": "Sara",
+    "default_app": "whatsapp",
+    "chat_names": {"whatsapp": "Sara Benali", "discord": "sara_b"}
+  }
+}

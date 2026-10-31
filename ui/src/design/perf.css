@@ -1,0 +1,8 @@
+/* Performance: backdrop-filter cannot see the desktop through a transparent window, so in the
+   island, chat bar and wheel it blurs nothing visible but forces a GPU blur pass every frame.
+   Delete this file (and its <link> lines) to get the blur back. */
+*, *::before, *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+
+/* Equalizer bars: smooth, full 60 fps (the stepped ~20 updates/s version was removed). will-change keeps them
+   on the compositor so they stay cheap. */
+#island :is(.m-music-wave i, .w-m-eq i, .cx-wave i, .rec-wave span, #spotify-compact-eq i) { will-change: transform; }

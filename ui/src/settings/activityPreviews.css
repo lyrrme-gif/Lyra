@@ -1,0 +1,29 @@
+/* Live Activities previews: the real island's own DOM, scaled to the tile (see activityPreviews.ts).
+   The snapshot carries its computed styles inline; this file only places it on the little desktop and
+   re-declares the keyframes the island's CSS defines (style.css), so the loops still play. */
+
+.pgrid .ptile-scene { aspect-ratio: 420 / 100; }
+.ap-desk { overflow: hidden; }
+.ap-stage {
+  --k: .55;
+  position: absolute; left: 0; top: 0; width: 420px; height: 100px;
+  transform: scale(var(--k)); transform-origin: 0 0;
+}
+/* Place the island like the real notch: centred, near the top. The snapshot's own absolute offsets are replaced. */
+.ap-stage > .ap-island {
+  position: absolute !important; inset: auto !important; margin: 0 !important;
+  left: 50% !important; top: 18px !important; transform: translateX(-50%) !important;
+  pointer-events: none; text-align: left;
+}
+/* The open Clipboard panel is much taller than a notch: show it smaller so it fits the tile. */
+.ap-stage > .ap-island[data-act="clipboard"] { top: 6px !important; transform: translateX(-50%) scale(.52) !important; transform-origin: 50% 0 !important; }
+.ap-stage * { box-sizing: border-box; }
+
+@keyframes spotify-compact-eq { 0%, 100% { transform: scaleY(.45); } 50% { transform: scaleY(1.7); } }
+@keyframes nt-pop { 0% { transform: scale(.4) rotate(-12deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+@keyframes nt-nudge { 0%, 100% { transform: translateY(0) scale(1); } 40% { transform: translateY(-2px) scale(1.12); } 70% { transform: translateY(0) scale(.97); } }
+@keyframes nt-ring { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(-12deg); } 30% { transform: rotate(10deg); } 45% { transform: rotate(-8deg); } 60% { transform: rotate(5deg); } 75% { transform: rotate(0); } }
+@keyframes nt-swing { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(18deg); } 75% { transform: rotate(-18deg); } }
+@keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) { .ap-stage * { animation: none !important; } }

@@ -1,0 +1,139 @@
+/* Controls tab — Apple Control Center style.
+   Frosted grey tiles, the icon circle lights up in the accent when a switch is on,
+   a capsule volume slider, and quiet power buttons. Accent = cyan (its Home tile). */
+.controls-view {
+  --ac: #46d4ee; --ac2: #1595b8;
+  --glass: rgba(255,255,255,.095);
+  --glass-hi: rgba(255,255,255,.15);
+  display: grid; grid-template-rows: auto auto 1fr; gap: 10px;
+  padding: 12px 14px 14px; box-sizing: border-box; height: 100%;
+  font-family: var(--font); color: #fff; -webkit-font-smoothing: antialiased;
+}
+
+/* ── switches ── */
+.ct-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.ct-tile {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 1px;
+  min-height: 78px; padding: 10px 12px 10px 10px; border: 0; border-radius: 22px; cursor: pointer; text-align: left;
+  background: var(--glass); color: #fff; font-family: inherit;
+  box-shadow: inset 0 .5px 0 rgba(255,255,255,.2);
+  transition: background .25s ease, transform .4s var(--spring-pop, cubic-bezier(.3,1.4,.5,1)), opacity .2s;
+}
+.ct-tile:hover { background: var(--glass-hi); }
+.ct-tile:active { transform: scale(.95); }
+.ct-ico { margin-bottom: auto; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: rgba(120,120,128,.4); color: #fff;
+  transition: background .3s ease, box-shadow .3s ease, transform .4s var(--spring-pop, ease); }
+.ct-lbl { font-size: 12.5px; font-weight: 600; line-height: 1.1; letter-spacing: -.005em; }
+.ct-sub { font-size: 11px; font-weight: 500; color: rgba(235,235,245,.6); }
+/* on: the circle fills with the accent (like Wi-Fi turning blue in Control Center) */
+.ct-tile.on .ct-ico { background: linear-gradient(160deg, var(--ac), var(--ac2)); box-shadow: 0 3px 12px rgba(70,212,238,.45), inset 0 1px 0 rgba(255,255,255,.3); }
+.ct-tile.on .ct-sub { color: var(--ac); }
+.ct-tile.na { opacity: .4; cursor: default; }
+.ct-tile.na:active { transform: none; }
+.ct-tile.busy { opacity: .7; animation: ctPulse 1s ease-in-out infinite; }
+.ct-tile.err, .ct-pw.err { box-shadow: inset 0 0 0 1.5px #ff453a; }
+@keyframes ctPulse { 50% { opacity: .45; } }
+
+/* ── volume: a capsule you fill, the icon and number ride on top ── */
+.ct-vol { position: relative; height: 40px; border-radius: 20px; overflow: hidden; background: var(--glass); box-shadow: inset 0 .5px 0 rgba(255,255,255,.2); }
+.ct-vol.na { opacity: .4; pointer-events: none; }
+/* three classes: the global input[type=range] rule would otherwise win and shrink it to 72×3 */
+.controls-view .ct-vol .ct-range { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; border-radius: 0; background: transparent; appearance: none; -webkit-appearance: none; cursor: pointer; --pct: 0%; }
+.controls-view .ct-range::-webkit-slider-runnable-track { height: 40px; background: linear-gradient(90deg, rgba(255,255,255,.96) var(--pct), transparent var(--pct)); }
+.controls-view .ct-range::-webkit-slider-thumb { -webkit-appearance: none; width: 0; height: 40px; border-radius: 0; background: transparent; }
+.ct-mute, .ct-pct { position: absolute; z-index: 2; color: #fff; mix-blend-mode: difference; pointer-events: none; }
+.ct-mute { left: 6px; top: 6px; width: 28px; height: 28px; border: 0; border-radius: 50%; display: grid; place-items: center; background: transparent; }
+.ct-pct { right: 15px; top: 0; height: 40px; display: flex; align-items: center; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ct-mute.muted { opacity: .7; }
+
+/* ── power ── */
+.ct-powerwrap { position: relative; min-height: 0; }
+.ct-power { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; height: 100%; transition: opacity .2s ease, transform .25s ease; }
+.ct-pw {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 54px;
+  border: 0; border-radius: 22px; cursor: pointer; background: var(--glass); color: #fff; font-family: inherit;
+  box-shadow: inset 0 .5px 0 rgba(255,255,255,.2);
+  transition: background .2s ease, color .2s ease, transform .4s var(--spring-pop, ease);
+}
+.ct-pw:hover { background: var(--glass-hi); }
+.ct-pw:active { transform: scale(.95); }
+.ct-pw .ct-lbl { font-size: 11.5px; }
+.ct-pw.danger:hover { background: rgba(255,69,58,.2); color: #ff8b84; }
+.ct-pw.confirm { background: #ff453a; color: #fff; animation: ctPulse 1s ease-in-out infinite; }
+.ct-banner {
+  position: absolute; inset: 0; display: none; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 0 18px; border-radius: 22px; background: rgba(255,69,58,.16); box-shadow: inset 0 0 0 1px rgba(255,69,58,.4);
+}
+.controls-view.pending .ct-banner { display: flex; }
+.controls-view.pending .ct-power { opacity: 0; pointer-events: none; }
+.ct-banner-text { font-size: 13px; font-weight: 600; color: #ff8b84; font-variant-numeric: tabular-nums; }
+.ct-cancel { border: 0; border-radius: 999px; padding: 7px 16px; font: 600 12px var(--font); cursor: pointer; background: #fff; color: #1c1c1e; transition: transform .3s var(--spring-pop, ease); }
+.ct-cancel:active { transform: scale(.92); }
+
+/* Controls tab visual pass: quieter Apple Control Center surfaces and spacing. */
+.controls-view {
+  --ac: #0a84ff;
+  --ac2: #5e5ce6;
+  --glass: rgba(120, 120, 128, .24);
+  --glass-hi: rgba(120, 120, 128, .34);
+  gap: 12px;
+  padding: 14px;
+  background: radial-gradient(ellipse at 50% 0%, rgba(120, 120, 128, .12), transparent 62%);
+}
+
+.ct-tiles { gap: 10px; }
+.ct-tile {
+  min-height: 82px;
+  padding: 10px 11px;
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(110,110,118,.29), rgba(75,75,82,.22));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 5px 16px rgba(0,0,0,.10);
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+}
+.ct-tile:hover { background: linear-gradient(145deg, rgba(130,130,138,.36), rgba(85,85,92,.28)); }
+.ct-ico { width: 32px; height: 32px; background: rgba(28,28,30,.42); }
+.ct-tile.on .ct-ico {
+  background: linear-gradient(145deg, #0a84ff, #5e5ce6);
+  box-shadow: 0 4px 14px rgba(10,132,255,.34), inset 0 1px 0 rgba(255,255,255,.35);
+}
+.ct-tile.on .ct-sub { color: #64b5ff; }
+.ct-lbl { letter-spacing: -.015em; }
+.ct-sub { color: rgba(235,235,245,.68); }
+
+.ct-vol {
+  height: 44px;
+  border-radius: 16px;
+  background: rgba(120,120,128,.24);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.16);
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+}
+.controls-view .ct-range::-webkit-slider-runnable-track { height: 44px; }
+.controls-view .ct-range::-webkit-slider-thumb { height: 44px; }
+.ct-mute { top: 8px; }
+.ct-pct { height: 44px; right: 14px; font-weight: 650; }
+
+.ct-power { gap: 10px; }
+.ct-pw {
+  gap: 8px;
+  border-radius: 18px;
+  background: rgba(120,120,128,.20);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+.ct-pw:hover { background: rgba(120,120,128,.30); }
+.ct-pw > svg { opacity: .9; }
+.ct-pw.danger { color: #ff6961; }
+.ct-pw.danger:hover { background: rgba(255,69,58,.14); color: #ff8b84; }
+.ct-banner { border-radius: 18px; }
+.ct-cancel { color: #0a84ff; }
+
+@media (max-width: 420px) {
+  .controls-view { gap: 9px; padding: 10px; }
+  .ct-tiles, .ct-power { gap: 7px; }
+  .ct-tile { min-height: 74px; padding: 8px; border-radius: 17px; }
+  .ct-lbl { font-size: 11.5px; }
+  .ct-pw { border-radius: 16px; }
+}

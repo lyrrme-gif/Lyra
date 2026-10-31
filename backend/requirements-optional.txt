@@ -1,0 +1,9 @@
+# Optional extras. Lyra runs without these; each one just unlocks one thing.
+# Install with:  pip install -r requirements-optional.txt
+
+soundcard          # fallback audio capture for song recognition if loopback capture fails
+pywinauto          # lets Lyra read and click other apps' windows ("computer use" actions)
+kokoro-onnx        # offline voice (also needs the Kokoro model files in the data folder)
+soundfile          # used by the offline voice
+sympy             # Study tab: checks maths answers symbolically (x^2+2x+1 = (x+1)^2). Without it the AI grades them
+

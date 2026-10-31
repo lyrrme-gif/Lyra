@@ -1,0 +1,67 @@
+# IMPORTANT — Python version: use Python 3.13, not 3.14, for this project.
+# PyAudio (below) has no official Windows wheels for 3.14 yet (confirmed as
+# of Aug 2026 — check https://pypi.org/project/PyAudio/#files if this may
+# have changed since) and falls back to a source build that needs
+# portaudio.h, which isn't available either. There's a maintained fork
+# (PyAudioWPatch) with 3.14 wheels, but its import name is "pyaudiowpatch"
+# not "pyaudio", so it's not a drop-in — both this codebase
+# and the SpeechRecognition library itself do "import pyaudio" directly,
+# so swapping would mean monkey-patching sys.modules, which is fragile.
+# Simplest fix: install Python 3.13 alongside 3.14 (side-by-side installs
+# are fine) and create this project's venv with it, e.g.:
+#   py -3.13 -m venv venv
+#   venv\Scripts\activate
+#   pip install -r requirements.txt
+# Everything else in this file (pygame-ce, etc.) works fine on
+# either 3.13 or 3.14 — this is specifically a PyAudio-on-3.14 gap.
+requests
+qrcode              # draws the WhatsApp sign-in code in the notch
+SpeechRecognition   # import name is speech_recognition, pip package is SpeechRecognition
+PyAudio             # required by sr.Microphone() — see the Python-version note at the top of this file
+edge-tts>=7.2.0   # neural TTS (main voice; keep it updated: pip install -U edge-tts) (Aria/Jenny/etc.) — needs internet at speak-time
+pygame-ce     # audio playback for edge-tts's mp3 output, with stop() support for barge-in.
+              # Using pygame-ce (Community Edition) instead of plain "pygame": the original
+              # pygame project has no Python 3.14 Windows wheels (unmaintained upstream, still
+              # tries to build from source and fails on distutils.msvccompiler, which Python
+              # removed). pygame-ce is a drop-in fork — same "import pygame" API, same
+              # pygame.mixer calls used in voice.py — but it actively ships 3.14 wheels.
+              # If you're on Python 3.10-3.13 plain "pygame" still works fine too.
+openai          # used for both chat and the Spotify vision-assist — Groq's API is OpenAI-compatible
+Pillow
+pygetwindow
+pyautogui
+psutil
+pycaw          # Windows per-application audio-session volume control (Spotify ducking)
+ddgs            # falls back to duckduckgo_search automatically if this isn't installed
+audioop-lts     # provides the 'audioop' module on Python 3.13+ (removed from stdlib) — used for the waveform ring's mic-level RMS calc
+imageio-ffmpeg  # supplies a local ffmpeg binary for pydub/audio helpers; avoids PATH-only ffmpeg warnings
+
+# Phase 0 additions: local wake word + STT
+faster-whisper>=1.0.0  # local STT (replaces recognize_google)
+numpy                  # used directly by wake.py and stt.py for audio buffer handling
+sherpa-onnx            # Phase 4: small streaming STT (partial text) for early turn end + dictation
+simple-websocket-server>=0.4.0
+
+# Optional Windows media-session verification (SMTC)
+winsdk; sys_platform == "win32"
+
+# Shazam-compatible fingerprint recognition (no API key required)
+shazamio==0.8.1
+screen-brightness-control
+pyaudiowpatch; sys_platform == "win32"   # system-audio capture for the Recognize (song ID) tab
+pynput>=1.7.7                            # macro recorder (Step 9): global mouse/keyboard hooks and replay
+# File indexing formats (pptx support is optional at runtime)
+pypdf
+python-docx
+python-pptx
+# Google OAuth installed-app flow (read-only scopes)
+google-auth
+google-auth-oauthlib
+
+# >>> phase-0 begin
+keyring>=24    # API keys / tokens in Windows Credential Manager instead of llm_keys.json (secrets_store.py)
+# <<< phase-0 end
+# >>> phase-1 begin
+onnx-asr[cpu]>=0.12.0   # Parakeet v3 (ONNX int8) engine; pure Python on numpy + onnxruntime
+onnxruntime!=1.24.1     # 1.24.1 has a known incompatibility with onnx-asr
+# <<< phase-1 end

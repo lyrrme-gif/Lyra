@@ -1,0 +1,69 @@
+/* "Added" / "couldn't add" pill + new-row highlight. See addedFx.ts. */
+.fx-added {
+  position: absolute; left: 50%; top: 8px; z-index: 40; max-width: 86%;
+  display: flex; align-items: center; gap: 7px; padding: 5px 13px 5px 6px;
+  border-radius: 999px; background: var(--fx, #34c759); color: #fff;
+  font: 650 12px var(--font); box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+  pointer-events: none; will-change: transform, opacity;
+  animation: fx-pop 2s cubic-bezier(.2, .9, .3, 1.15) both;
+}
+.fx-added::after {            /* ring burst */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  border: 2px solid var(--fx, #34c759); opacity: 0; animation: fx-ring .75s .08s ease-out;
+}
+.fx-tick { flex: none; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: var(--fx, #1f9d43); }
+.fx-txt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@keyframes fx-pop {
+  0%   { opacity: 0; transform: translate(-50%, -12px) scale(.6); }
+  14%  { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+  22%  { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  84%  { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -6px) scale(.96); }
+}
+@keyframes fx-ring { 0% { opacity: .85; transform: scale(1); } 100% { opacity: 0; transform: scale(1.35, 1.9); } }
+@keyframes fx-draw { to { stroke-dashoffset: 0; } }
+
+/* per-kind icon animations (transform/opacity only; transform-box makes the origins work inside the SVG) */
+.fx-tick svg * { transform-box: fill-box; }
+.fx-draw { stroke-dasharray: 24; stroke-dashoffset: 24; animation: fx-draw .4s .16s ease-out forwards; }
+.fx-k-event .fx-tick svg { animation: fx-drop .45s .1s cubic-bezier(.2, .9, .3, 1.4) both; }
+.fx-bell { transform-origin: 50% 12%; animation: fx-ring-bell .9s .12s ease-in-out both; }
+.fx-hand { transform-origin: 50% 100%; animation: fx-sweep .8s .12s cubic-bezier(.4, 0, .2, 1) both; }
+.fx-k-timer .fx-tick, .fx-k-stopwatch .fx-tick, .fx-k-focus .fx-tick { animation: fx-beat .5s .9s ease-out; }
+@keyframes fx-ring-bell { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(22deg); } 35% { transform: rotate(-18deg); }
+  55% { transform: rotate(12deg); } 75% { transform: rotate(-7deg); } }
+@keyframes fx-sweep { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+@keyframes fx-drop { 0% { transform: translateY(-9px) scale(.7); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes fx-beat { 0%, 100% { transform: scale(1); } 40% { transform: scale(1.25); } }
+
+/* failure: red pill, the cross draws and the whole pill shakes once, stays a little longer */
+.fx-added.fx-fail { animation: fx-pop-fail 2.8s cubic-bezier(.2, .9, .3, 1.15) both; }
+.fx-fail::after { animation: fx-ring .75s .08s ease-out; }
+.fx-x { stroke-dasharray: 30; stroke-dashoffset: 30; animation: fx-draw .3s .14s ease-out forwards; }
+@keyframes fx-pop-fail {
+  0%   { opacity: 0; transform: translate(-50%, -12px) scale(.6); }
+  10%  { opacity: 1; transform: translate(-50%, 0) scale(1.06); }
+  16%  { transform: translate(calc(-50% - 7px), 0); }
+  22%  { transform: translate(calc(-50% + 6px), 0); }
+  28%  { transform: translate(calc(-50% - 4px), 0); }
+  34%  { transform: translate(calc(-50% + 2px), 0); }
+  40%  { transform: translate(-50%, 0) scale(1); }
+  88%  { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -6px) scale(.96); }
+}
+
+/* a row that has just been added slides in with a green pulse */
+.fx-new { animation: fx-row .75s cubic-bezier(.2, .9, .3, 1.2) both; }
+@keyframes fx-row {
+  0%   { opacity: 0; transform: translateX(-16px) scale(.96); box-shadow: 0 0 0 0 rgba(52, 199, 89, .6); }
+  55%  { opacity: 1; transform: none; box-shadow: 0 0 0 5px rgba(52, 199, 89, .28); }
+  100% { opacity: 1; transform: none; box-shadow: 0 0 0 0 rgba(52, 199, 89, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fx-added { animation-duration: 1.6s; animation-name: fx-fade; }
+  .fx-added::after, .fx-tick svg path { animation: none; stroke-dashoffset: 0; }
+  .fx-tick svg, .fx-tick svg *, .fx-tick { animation: none !important; }
+  .fx-added.fx-fail { animation-name: fx-fade; animation-duration: 2.2s; }
+  .fx-new { animation: none; }
+  @keyframes fx-fade { 0%, 100% { opacity: 0; } 10%, 85% { opacity: 1; } }
+}

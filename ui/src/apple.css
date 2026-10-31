@@ -1,0 +1,302 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Lyra · Apple-style layer
+   Loaded after style.css. Contains: the Droppy-style orange timer, the SF-symbol
+   dock with spring animations, and the "Frost" island theme.
+   To undo everything here, remove the `import "./apple.css"` line in main.ts.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --spring: cubic-bezier(.34, 1.56, .64, 1);      /* iOS-style overshoot */
+  --ease-out: cubic-bezier(.22, 1, .36, 1);        /* iOS-style deceleration */
+  --clock-orange: #ff9f0a;                         /* Apple Clock orange */
+  --clock-green: #30d158;
+}
+
+/* ── Timer chip ─────────────────────────────────────────────────────────────
+   Orange ring on the left edge of the notch, orange time on the right. With a song
+   playing the artwork owns the left side, so ring + time sit together on the right. */
+#timer-chip { left: 16px; right: 16px; gap: 0; justify-content: space-between; }
+#timer-chip.with-music { left: auto; right: 14px; justify-content: flex-end; gap: 7px; }
+#timer-chip-label, #timer-chip-more { display: none !important; }
+#timer-chip-icon { flex: 0 0 20px; width: 20px; height: 20px; color: var(--timer-accent, var(--clock-orange)); }
+#timer-chip-icon svg { display: block; overflow: visible; }
+#timer-chip-icon .ring-track { opacity: .24; }
+#timer-chip-icon .ring-arc { transition: stroke-dashoffset .3s linear, stroke .25s ease; }
+#island #timer-chip #timer-chip-time,
+#island[data-mode] #timer-chip #timer-chip-time {
+  color: var(--timer-accent, var(--clock-orange)) !important;
+  font: 600 15px var(--font);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .2px;
+}
+#island[data-mode] #timer-chip #timer-chip-icon { color: var(--timer-accent, var(--clock-orange)) !important; }
+#timer-chip.paused #timer-chip-time { opacity: .75; }
+#timer-chip.urgent { animation: none; }
+#timer-chip.urgent #timer-chip-time { color: var(--timer-accent, var(--clock-orange)) !important; animation: lyra-timer-urgent .9s ease-in-out infinite; }
+#timer-chip.urgent #timer-chip-icon svg { animation: timerRingPulse .9s ease-in-out infinite; }
+@keyframes timerRingPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+
+/* ── Dock: SF-symbol glass pill with springy selection ────────────────────── */
+#tab-dock .dock-tab svg { display: block; }
+#tab-dock .dock-tab.on { color: #fff; }
+#tab-dock .dock-tab.on svg { filter: none; transform: scale(1.04); }
+#tab-dock .dock-tab.pop svg { animation: sfBounce .62s var(--spring); }
+@keyframes sfBounce {
+  0%   { transform: scale(1)    translateY(0); }
+  28%  { transform: scale(.82)  translateY(1px); }
+  58%  { transform: scale(1.2)  translateY(-2.5px); }
+  100% { transform: scale(1.04) translateY(0); }
+}
+/* The glass pill breathes in/out like a Dynamic Island accessory. */
+#tab-dock { transition: opacity .22s ease, transform .55s var(--spring); }
+#tab-dock .tab-dock-page::before { transition: transform .5s var(--spring), opacity .22s ease, width .3s ease; }
+#tab-dock .dock-tab:active svg { transform: scale(.8); transition-duration: .12s; }
+#tab-dock .dock-tab:focus-visible { outline: 2px solid rgba(255,255,255,.55); outline-offset: -2px; border-radius: 999px; }
+
+/* ═══ Frost theme ═══════════════════════════════════════════════════════════
+   Black glass that fades into translucent frosted glass toward the bottom,
+   big squircle corners, Apple Music-style player with blue equaliser dots. */
+#island[data-theme="frost"] {
+  --island-bg: #000;
+  --island-bg-2: #000;
+  --island-edge: rgba(255,255,255,.16);
+  --island-edge-soft: rgba(255,255,255,.10);
+  --island-accent: #3d7bff;
+  --island-accent-rgb: 61, 123, 255;
+  --theme-surface: transparent;
+  --theme-surface-2: rgba(255,255,255,.10);
+  --theme-surface-3: rgba(255,255,255,.17);
+  --theme-border: rgba(255,255,255,.12);
+  --theme-hover: rgba(255,255,255,.15);
+  --theme-shadow: rgba(0,0,0,.40);
+  --theme-text: #fff;
+  --theme-muted: rgba(255,255,255,.62);
+}
+/* Material: solid black for the top half, then a long fade into frosted glass. */
+#island[data-theme="frost"][data-mode="expanded"] {
+  background:
+    linear-gradient(180deg,
+      #000 0%, #000 48%,
+      rgba(6,5,4,.90) 62%,
+      rgba(34,28,23,.62) 80%,
+      rgba(86,72,60,.40) 100%) !important;
+  border-color: rgba(255,255,255,.18) !important;
+  backdrop-filter: blur(30px) saturate(170%);
+  -webkit-backdrop-filter: blur(30px) saturate(170%);
+  box-shadow:
+    0 26px 54px rgba(0,0,0,.34),
+    0 8px 20px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(255,255,255,.12),
+    inset 0 -1px 0 rgba(255,255,255,.16),
+    inset 0 -30px 40px -30px rgba(255,255,255,.10);
+}
+#island[data-theme="frost"][data-mode="compact"] { background: #000 !important; border-color: rgba(255,255,255,.10) !important; }
+#island[data-theme="frost"]::before { opacity: .0; }
+#island[data-theme="frost"] .m-ambience { display: none; }
+
+/* Music: same player, restyled. */
+#island[data-view="music"] .m-art { box-shadow: 0 6px 18px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.08); border-radius: 13px; }
+#island[data-view="music"] .m-title { font-weight: 700; font-size: 17px; letter-spacing: -.012em; color: #fff; }
+#island[data-view="music"] .m-artist { font-weight: 500; font-size: 15px; line-height: 18px; color: rgba(255,255,255,.58) !important; }
+
+/* Equaliser: five blue squares that bounce while playing and rest as dots when paused. */
+#island[data-view="music"] .m-head .m-music-wave {
+  flex: 0 0 31px; width: 31px; height: 20px; gap: 3px; align-items: center; justify-content: flex-end;
+}
+#island[data-view="music"] .m-head .m-music-wave i {
+  width: 4px; height: 4px !important; border-radius: 1.2px; background: var(--island-accent); opacity: 1;
+  transform: none; animation: frostEq .8s ease-in-out infinite alternate;
+}
+#island[data-view="music"] .m-head .m-music-wave i:nth-child(1) { --h: 9px;  animation-delay: -.30s; }
+#island[data-view="music"] .m-head .m-music-wave i:nth-child(2) { --h: 15px; animation-delay: -.55s; animation-duration: .66s; }
+#island[data-view="music"] .m-head .m-music-wave i:nth-child(3) { --h: 11px; animation-delay: -.15s; animation-duration: .92s; }
+#island[data-view="music"] .m-head .m-music-wave i:nth-child(4) { --h: 17px; animation-delay: -.70s; animation-duration: .74s; }
+#island[data-view="music"] .m-head .m-music-wave i:nth-child(5) { --h: 8px;  animation-delay: -.42s; }
+#island[data-view="music"] .m-head .m-music-wave.paused i { animation: none; height: 4px !important; opacity: .9; }
+@keyframes frostEq { from { height: 4px; } to { height: var(--h, 12px); } }
+
+/* Progress: thin white bar, no knob, remaining time on the right. */
+#island[data-view="music"] .m-progress span { font-size: 13px; font-weight: 600; color: rgba(255,255,255,.62); letter-spacing: .01em; }
+#island[data-view="music"] .m-bar { height: 5px; background: rgba(255,255,255,.24); }
+#island[data-view="music"] .m-bar i { background: rgba(255,255,255,.88); }
+#island[data-view="music"] .m-bar i::after { display: none; }
+
+/* Transport: bare white glyphs (list · back · play · forward · output), no discs. */
+#island[data-view="music"] .m-controls > .lyrics-side { order: -1; }
+#island[data-view="music"] .m-controls > .shuffle { order: 9; }
+#island[data-view="music"] .m-controls > .m-btn,
+#island[data-view="music"] .m-controls > .m-action,
+#island[data-view="music"] .m-controls > .m-lyr-btn { background: transparent !important; box-shadow: none !important; color: #fff !important; }
+#island[data-view="music"] .m-controls > .m-lyr-btn,
+#island[data-view="music"] .m-controls > .shuffle { color: rgba(255,255,255,.66) !important; }
+#island[data-view="music"] .m-controls > .m-btn:hover:not(:disabled),
+#island[data-view="music"] .m-controls > .m-action:hover,
+#island[data-view="music"] .m-controls > .m-lyr-btn:hover { background: rgba(255,255,255,.10) !important; }
+#island[data-view="music"] .m-controls > .m-btn svg { width: 26px !important; height: 26px !important; }
+#island[data-view="music"] .m-controls > .m-btn.main svg { width: 34px !important; height: 34px !important; }
+#island[data-view="music"] .m-controls > .m-btn.main { width: 56px !important; height: 56px !important; }
+#island[data-view="music"] .m-controls > .m-btn svg path { stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
+#island[data-view="music"] .m-controls > .m-btn:active svg { transform: scale(.86); }
+#island[data-view="music"] .m-controls > .m-btn svg { transition: transform .3s var(--spring); }
+#island[data-view="music"] .m-controls > .m-lyr-btn svg,
+#island[data-view="music"] .m-controls > .shuffle svg { width: 22px !important; height: 22px !important; }
+
+/* Dock in Frost: lighter frosted pill, brighter selection. */
+#island[data-theme="frost"] ~ #tab-dock {
+  background: linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,.08)), rgba(52,42,34,.46);
+  border-color: rgba(255,255,255,.22);
+  box-shadow: 0 14px 30px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.26), inset 0 -1px 0 rgba(255,255,255,.06);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+}
+#island[data-theme="frost"] ~ #tab-dock .tab-dock-page::before {
+  background: linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,.18));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.30), 0 2px 8px rgba(0,0,0,.22);
+}
+#island[data-theme="frost"] ~ #tab-dock .dock-tab { color: rgba(255,255,255,.62); }
+#island[data-theme="frost"] ~ #tab-dock .dock-tab.on { color: #fff; }
+
+@media (prefers-reduced-motion: reduce) {
+  #tab-dock .dock-tab.pop svg, #timer-chip.urgent #timer-chip-icon svg,
+  #island[data-view="music"] .m-head .m-music-wave i { animation: none !important; }
+}
+
+/* ── View-to-view motion (Home ↔ Ask ↔ Music …) ────────────────────────────
+   Direction-aware slide + soft blur with an iOS spring settle. */
+#island { --nav-x: 36px; }
+#island[data-nav="back"] { --nav-x: -36px; }
+#island[data-nav] .view.on { animation: viewIn .66s var(--spring) backwards; }
+@keyframes viewIn {
+  0%   { opacity: 0; transform: translate3d(var(--nav-x), 0, 0) scale(.965); filter: blur(9px); }
+  38%  { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+}
+#island[data-nav] .view.is-entering { transform: translate3d(var(--nav-x), 0, 0) scale(.965) !important; filter: blur(9px) !important; }
+
+/* Music view elements rise in one after another. */
+#island[data-nav] .view.on.music-view .m-art      { animation: riseIn .6s var(--spring) .02s both; }
+#island[data-nav] .view.on.music-view .m-head     { animation: riseIn .6s var(--spring) .07s both; }
+#island[data-nav] .view.on.music-view .m-progress { animation: riseIn .6s var(--spring) .12s both; }
+#island[data-nav] .view.on.music-view .m-controls { animation: riseIn .6s var(--spring) .17s both; }
+@keyframes riseIn {
+  from { opacity: 0; translate: 0 12px; scale: .96; }
+  to   { opacity: 1; translate: 0 0;    scale: 1; }
+}
+/* Controls get a springy press, like SF Symbol buttons. */
+.m-controls .m-btn, .m-controls .m-lyr-btn { transition: transform .35s var(--spring), background .2s ease, opacity .2s ease; }
+.m-controls .m-btn:active:not(:disabled) { transform: scale(.88); }
+
+@media (prefers-reduced-motion: reduce) {
+  #island[data-nav] .view.on, #island[data-nav] .view.on * { animation: none !important; }
+}
+
+/* While a timer shows in the notch the ring owns the left edge (no mascot behind it). */
+
+
+/* ═══ Timer tab (Apple Clock style) ═══════════════════════════════════════ */
+.timer-view { --tm-accent: var(--clock-orange); color: #fff; }
+.timer-view .tm-face { position: absolute; inset: 0; box-sizing: border-box; }
+.timer-view[data-face="running"] .tm-setup, .timer-view:not([data-face="running"]) .tm-running { display: none; }
+.timer-view[data-face] .tm-face { animation: faceIn .5s var(--spring) both; }
+@keyframes faceIn { from { opacity: 0; transform: scale(.96); filter: blur(5px); } to { opacity: 1; transform: none; filter: none; } }
+
+/* running */
+.tm-running { display: flex; align-items: center; justify-content: space-between; padding: 14px 26px 20px; }
+.tm-run-left { display: flex; gap: 12px; }
+.tm-circle { width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer; padding: 0; transition: transform .35s var(--spring), background .2s; }
+.tm-circle:active { transform: scale(.86); }
+.tm-pause { background: color-mix(in srgb, var(--tm-accent) 24%, transparent); color: var(--tm-accent); }
+.tm-pause:hover { background: color-mix(in srgb, var(--tm-accent) 34%, transparent); }
+.tm-cancel { background: rgba(255,255,255,.14); color: #fff; }
+.tm-cancel:hover { background: rgba(255,255,255,.22); }
+.tm-run-right { display: flex; flex-direction: column; align-items: flex-end; line-height: 1; }
+.tm-run-label { font: 600 14px var(--font); color: var(--tm-accent); margin-bottom: 4px; letter-spacing: .01em; }
+.tm-run-time { font: 500 54px/1 var(--font); color: var(--tm-accent); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.tm-ring-wrap { display: none; }
+
+/* setup */
+.tm-setup { padding: 12px 26px 18px; }
+.tm-seg { display: flex; justify-content: center; gap: 22px; height: 24px; }
+.tm-seg-btn { border: 0; background: none; padding: 0 2px; font: 500 14px var(--font); color: rgba(255,255,255,.72); cursor: pointer; position: relative; transition: color .2s, transform .3s var(--spring); }
+.tm-seg-btn:active { transform: scale(.94); }
+.tm-seg-btn.on { color: var(--tm-accent); font-weight: 700; }
+.tm-tape { position: absolute; left: 0; right: 0; top: 44px; height: 54px; overflow: hidden; cursor: ew-resize; touch-action: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 22%, #000 78%, transparent 100%);
+          mask-image: linear-gradient(90deg, transparent 0, #000 22%, #000 78%, transparent 100%); }
+.tm-setup:not([data-mode="timer"]) .tm-tape { opacity: .25; pointer-events: none; }
+.tm-strip { position: absolute; left: 50%; top: 18px; height: 30px; width: 0; will-change: transform; }
+.tm-tick { position: absolute; bottom: 0; width: 1.6px; height: 14px; margin-left: -.8px; border-radius: 1px; background: rgba(255,255,255,.38); }
+.tm-tick.major { height: 24px; background: rgba(255,255,255,.9); }
+.tm-tick b { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); font: 600 12px var(--font); color: rgba(255,255,255,.85); }
+.tm-marker { position: absolute; left: 50%; bottom: 0; width: 0; height: 0; margin-left: -5px; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid var(--tm-accent); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--tm-accent) 60%, transparent)); }
+.tm-hint { position: absolute; left: 0; right: 0; top: 104px; text-align: center; font: 500 11.5px var(--font); color: rgba(255,255,255,.5); }
+.tm-start { position: absolute; left: 26px; bottom: 20px; height: 34px; padding: 0 18px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--tm-accent) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tm-accent) 55%, transparent); color: var(--tm-accent); font: 700 14px var(--font); cursor: pointer; transition: transform .35s var(--spring), background .2s; }
+.tm-start:hover { background: color-mix(in srgb, var(--tm-accent) 28%, transparent); }
+.tm-start:active { transform: scale(.94); }
+.tm-readout { position: absolute; right: 26px; bottom: 14px; font: 300 44px/1 var(--font); color: var(--tm-accent); font-variant-numeric: tabular-nums; letter-spacing: -.02em; text-shadow: 0 0 24px color-mix(in srgb, var(--tm-accent) 35%, transparent); }
+
+/* Timer setup: fit under the island header (≈38px) */
+.tm-setup { padding: 0; }
+.tm-seg { position: absolute; top: 40px; left: 0; right: 0; height: 22px; }
+.tm-seg-btn { font-size: 13px; }
+.tm-tape { top: 66px; height: 46px; }
+.tm-strip { top: 10px; height: 34px; }
+.tm-tick { height: 12px; } .tm-tick.major { height: 20px; }
+.tm-tick b { bottom: 24px; font-size: 11px; }
+.tm-hint { top: auto; bottom: 62px; opacity: 0; }
+.tm-setup:not([data-mode="timer"]) .tm-hint { opacity: 1; top: 76px; bottom: auto; font-size: 12.5px; }
+.tm-start { left: 24px; bottom: 16px; height: 32px; font-size: 13px; }
+.tm-readout { right: 24px; bottom: 14px; font-size: 38px; }
+
+/* The view box starts below the island header: re-base the setup layout */
+.tm-seg { top: 4px; }
+.tm-tape { top: 30px; height: 46px; }
+.tm-start { bottom: 8px; }
+.tm-readout { bottom: 6px; }
+.tm-setup:not([data-mode="timer"]) .tm-hint { top: 40px; }
+.tm-running { padding-top: 0; padding-bottom: 10px; }
+.tm-hint, .tm-readout { pointer-events: none; }
+
+/* ═══ Timer — running face redesign (focus layout, no header) ═══════════ */
+.timer-view .tm-running { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 10px 24px 14px; }
+.timer-view .tm-run-center { display: flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1; }
+.timer-view .tm-run-label { margin: 0; font: 500 12px var(--font); letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+.timer-view .tm-run-time { font: 200 76px/1 var(--font); letter-spacing: -.035em; color: #fff; font-variant-numeric: tabular-nums; text-shadow: 0 0 36px color-mix(in srgb, var(--tm-accent) 28%, transparent); }
+.timer-view[data-paused="1"] .tm-run-time { color: rgba(255,255,255,.5); }
+.timer-view .tm-run-actions { display: flex; align-items: center; gap: 10px; }
+.tm-pill { height: 36px; min-width: 116px; padding: 0 20px; border: 0; border-radius: 18px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font: 600 14px var(--font); cursor: pointer; background: var(--tm-accent); color: #000; transition: transform .35s var(--spring), filter .2s; }
+.tm-pill:hover { filter: brightness(1.08); }
+.tm-pill:active { transform: scale(.94); }
+.timer-view .tm-cancel { width: 36px; height: 36px; background: rgba(255,255,255,.12); color: rgba(255,255,255,.8); }
+
+#island[data-view="music"] .m-ambience { display: none; }
+
+/* Timer tabs: always above the tape/hint layers so nothing can sit on top of them. */
+.tm-seg { z-index: 6; }
+.tm-seg-btn { position: relative; z-index: 6; min-height: 22px; padding: 0 8px; }
+
+/* Whole pill = one big target; the label never swallows the pointer on its own. */
+.timer-view .tm-seg button { -webkit-app-region: no-drag; user-select: none; }
+.timer-view .tm-seg button * { pointer-events: none; }
+
+/* The wake strip (16px, z-index 9999, always hit-testable) is only for waking a HIDDEN island.
+   Left on, it sat over the top of the open panel and swallowed clicks on anything up there
+   (the timer tabs, header buttons...). */
+#root:not(:has(#island[data-mode="hidden"])) > #wake-strip { pointer-events: none; }
+
+/* ── Camera tab: edge-to-edge preview (controls and styles live in views/camera.css) ───────────────── */
+#island[data-view="camera"] #header,
+#island[data-view="camera"] #countdown,
+#island[data-view="camera"] #privacy-dots { display: none !important; }
+#island[data-view="camera"] #content { padding: 0; }
+
+/* ── Home: Sounds and Camera share the last column as two slim tiles ───────── */
+.home-view .home-grid {
+  grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr);
+  grid-template-areas: "wx cal mus mus" "wx cal mus mus" "tim clip rec snd" "tim clip rec cam";
+}
+.home-view .w-weather { grid-area: wx; } .home-view .w-calendar { grid-area: cal; } .home-view .w-music { grid-area: mus; }
+.home-view .w-timer { grid-area: tim; } .home-view .w-clipboard { grid-area: clip; } .home-view .w-recognition { grid-area: rec; }
+.home-view .w-sounds { grid-area: snd; } .home-view .w-camera { grid-area: cam; }
+.home-view .w-sounds, .home-view .w-camera { justify-content: center; padding-top: 0; padding-bottom: 0; }
+.home-view .w-sounds .w-body, .home-view .w-camera .w-body { display: none; }

@@ -1,0 +1,51 @@
+/* Stats tab: rings on the left, top apps + speed test on the right. Accent = violet (its Home tile). */
+.stats-view {
+  --ac: #8f7bff; --ac2: #5a45e0; -webkit-font-smoothing: antialiased;
+  display: grid; grid-template-columns: minmax(0, 1fr) 208px; gap: 10px;
+  padding: 12px 14px 14px; box-sizing: border-box; height: 100%;
+  font-family: var(--font);
+}
+.st-left { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr auto; gap: 8px; min-height: 0; }
+.st-right { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.st-card { background: rgba(255,255,255,.085); box-shadow: inset 0 .5px 0 rgba(255,255,255,.2); border-radius: 22px; box-sizing: border-box; min-width: 0; }
+
+.st-gauge { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 6px 7px; }
+.st-ring-wrap { position: relative; width: 62px; height: 62px; }
+.st-ring { width: 100%; height: 100%; display: block; }
+.st-arc { transition: stroke-dasharray .6s ease; }
+.st-ring-pct { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; font-weight: 700; letter-spacing: -.01em; color: #fff; font-variant-numeric: tabular-nums; }
+.st-name { margin-top: 4px; font-size: 12.5px; font-weight: 600; color: #fff; }
+.st-sub { max-width: 100%; font-size: 8px; color: rgba(255,255,255,.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 11px; }
+.st-chips { display: flex; gap: 3px; margin-top: 3px; flex-wrap: nowrap; justify-content: center; min-height: 15px; }
+.st-chip { font-size: 8.5px; font-weight: 600; color: rgba(255,255,255,.72); background: rgba(255,255,255,.1); padding: 2px 5px; border-radius: 999px; white-space: nowrap; }
+.st-chip:empty { display: none; }
+
+.st-mini { padding: 7px 10px 8px; display: flex; flex-direction: column; gap: 3px; justify-content: center; }
+.st-lbl { font-size: 8.5px; font-weight: 600; letter-spacing: .08em; color: rgba(235,235,245,.5); text-transform: uppercase; }
+.st-val { font-size: 11.5px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.st-apps-card { flex: 1 1 auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: hidden; }
+.st-apps-head { display: flex; align-items: center; justify-content: space-between; font-size: 9px; font-weight: 600; color: rgba(255,255,255,.55); }
+.st-toggle { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: var(--ac); cursor: pointer; }
+.st-apps { display: flex; flex-direction: column; gap: 6px; }
+.st-none { font-size: 10px; color: rgba(255,255,255,.4); }
+.st-app { display: flex; align-items: center; gap: 6px; }
+.st-badge { flex: none; width: 13px; height: 13px; border-radius: 4px; background: rgba(255,255,255,.14); display: grid; place-items: center; font-size: 8px; font-weight: 700; color: rgba(255,255,255,.8); }
+.st-app-body { flex: 1; min-width: 0; }
+.st-app-row { display: flex; justify-content: space-between; gap: 6px; font-size: 9.5px; color: #fff; }
+.st-app-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-app-val { flex: none; color: rgba(255,255,255,.55); }
+.st-track-bar { margin-top: 3px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.1); overflow: hidden; }
+.st-bar { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--ac2), var(--ac)); transition: width .5s ease; }
+
+.st-speed { flex: none; padding: 8px 10px 9px; display: flex; flex-direction: column; gap: 6px; }
+.st-sp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 9px; font-weight: 600; color: rgba(255,255,255,.55); white-space: nowrap; }
+.st-sp-meta { font-size: 8px; color: rgba(255,255,255,.4); font-weight: 500; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-sp-row { display: flex; gap: 14px; align-items: baseline; }
+.st-sp-num { font-size: 19px; font-weight: 800; color: #fff; }
+.st-unit { margin-left: 3px; font-size: 8.5px; color: rgba(255,255,255,.5); }
+.st-run { border: 0; border-radius: 999px; padding: 8px 10px; font: inherit; font-size: 11px; font-weight: 600; color: #fff; background: linear-gradient(160deg, var(--ac), var(--ac2)); box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 4px 12px rgba(143,123,255,.35); cursor: pointer; transition: transform .3s var(--spring-pop, ease); }
+.st-run:active { transform: scale(.94); }
+.st-run:disabled { opacity: .6; cursor: default; }
+
+.st-val.two { display: flex; flex-direction: column; gap: 1px; white-space: normal; overflow: visible; line-height: 1.2; }

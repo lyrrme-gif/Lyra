@@ -1,0 +1,96 @@
+/* ═══ Mochi tab, formerly Home (hx-*) ═══════════════════════════════════════
+   Island is 600 × 258; content area is 580 × 240:
+     left: the Mochi card (full height) · right: Weather 80 + To-do (the rest), 8px gaps.
+   Self-contained: nothing here depends on the old .home-view / .widget rules. */
+
+.hx-view {
+  color: var(--theme-text, #fff);
+  display: grid; gap: 8px;
+  grid-template-columns: 1.18fr 1fr; grid-template-rows: minmax(0, 1fr);
+}
+.hx-col { display: grid; gap: 8px; grid-template-rows: 80px minmax(0, 1fr); min-height: 0; min-width: 0; }
+
+/* shared surface */
+.hx-card {
+  position: relative; box-sizing: border-box; min-width: 0; min-height: 0; overflow: hidden;
+  border: 0; color: inherit; text-align: left; font: var(--t-body); border-radius: var(--r-md);
+  background: var(--surface-widget, rgba(255,255,255,.06));
+  box-shadow: inset 0 0 0 1px var(--theme-border, rgba(255,255,255,.08));
+  transition: background var(--dur-fast), transform .4s var(--spring-pop), opacity .2s ease;
+}
+button.hx-card { cursor: pointer; }
+button.hx-card:hover { background: var(--surface-widget-hover, rgba(255,255,255,.1)); transform: scale(1.012); }
+button.hx-card:active { transform: scale(var(--press-scale)); transition-duration: .1s; }
+
+.hx-eyebrow { font: 700 10.5px var(--font); letter-spacing: .07em; text-transform: uppercase; color: var(--theme-muted, #9398a1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hx-sub { font: var(--t-sub); color: var(--theme-muted, #9398a1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Mochi ── */
+.hx-card.hx-mochi { padding: 10px 13px 10px; display: flex; flex-direction: column; gap: 4px;
+  background-image: radial-gradient(ellipse at 50% 100%, rgba(143,123,255,.2), transparent 68%), linear-gradient(160deg, rgba(165,139,255,.13), rgba(165,139,255,0) 55%); }
+.hx-mochi-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: none; }
+.hx-mochi .hx-eyebrow { color: #a58bff; }
+.hx-clock { font: 600 24px/1.05 var(--font); letter-spacing: var(--tracking-tight); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hx-clock small { font: 700 11px var(--font); letter-spacing: 0; margin-left: 4px; color: var(--theme-muted, #9398a1); }
+
+.hx-mochi-spot { position: relative; flex: 1; min-height: 0; padding: 0; border: 0; background: none; cursor: pointer; color: inherit;
+  display: grid; place-items: end center; }
+.hx-mochi-spot::after { content: ""; position: absolute; bottom: 4px; left: 50%; width: 86px; height: 11px; margin-left: -43px; border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.4), transparent 70%); pointer-events: none; }
+.hx-mochi-host { position: relative; z-index: 1; margin-bottom: 8px; transition: transform .4s var(--spring-pop); }
+.hx-mochi-spot:hover .hx-mochi-host { transform: translateY(-2px) scale(1.03); }
+.hx-mochi-spot:active .hx-mochi-host { transform: scale(.95); transition-duration: .1s; }
+
+.hx-skin-row { display: flex; align-items: center; gap: 6px; height: 26px; flex: none; }
+.hx-skin-name { flex: 1; min-width: 0; text-align: center; font: 600 12px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hx-skin-arrow { flex: none; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; display: grid; place-items: center; color: inherit;
+  background: color-mix(in srgb, var(--theme-text, #fff) 8%, transparent);
+  transition: background .2s ease, transform .35s var(--spring-pop); }
+.hx-skin-arrow:hover { background: color-mix(in srgb, var(--theme-text, #fff) 16%, transparent); }
+.hx-skin-arrow:active { transform: scale(.84); transition-duration: .1s; }
+.hx-skin-dots { display: flex; align-items: center; justify-content: center; gap: 5px; height: 12px; flex: none; }
+.hx-skin-dot { position: relative; width: 6px; height: 6px; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+  background: color-mix(in srgb, var(--theme-text, #fff) 24%, transparent);
+  transition: background .2s ease, transform .35s var(--spring-pop); }
+.hx-skin-dot::before { content: ""; position: absolute; inset: -5px -3px; }   /* bigger hit area */
+.hx-skin-dot:hover { background: color-mix(in srgb, var(--theme-text, #fff) 55%, transparent); }
+.hx-skin-dot.on { background: var(--theme-text, #fff); transform: scale(1.4); }
+
+
+/* ── Weather ── */
+.hx-weather { padding: 0 13px; display: flex; align-items: center; gap: 8px; background-image: linear-gradient(160deg, rgba(90,180,255,.18), rgba(90,180,255,0) 62%); }
+.hx-weather .hx-eyebrow { color: #5ab4ff; }
+.hx-wx-glyph { display: grid; place-items: center; width: 30px; height: 30px; flex: none; }
+.hx-temp { font: 600 30px/1 var(--font); letter-spacing: var(--tracking-tight); flex: none; }
+.hx-wx-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; margin-left: 2px; }
+
+/* ── To-do ── */
+.hx-todo { padding: 7px 10px 8px; display: flex; flex-direction: column; gap: 3px; }
+.hx-todo-head { border: 0; background: none; color: inherit; cursor: pointer; padding: 0 2px; height: 20px; display: flex; align-items: center; gap: 7px; text-align: left; flex: none; }
+.hx-todo-name { font: 700 12px var(--font); }
+.hx-count { margin-left: auto; min-width: 16px; padding: 0 5px; border-radius: 8px; text-align: center; font: 700 10px/15px var(--font); color: #fff; background: #34c759; }
+.hx-count:empty { display: none; }
+.hx-todo-list { display: flex; flex-direction: column; gap: 2px; min-height: 0; }
+.hx-todo-item { display: flex; align-items: center; gap: 8px; height: 20px; padding: 0 2px; }
+.hx-todo-text { font: 600 12px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.hx-check { flex: none; width: 15px; height: 15px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer; background: transparent; color: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--theme-muted, #9398a1); transition: background .2s, box-shadow .2s, color .2s, transform .35s var(--spring-pop); }
+.hx-check:hover { box-shadow: inset 0 0 0 1.5px #34c759; color: #34c759; }
+.hx-check:active { transform: scale(.82); background: #34c759; color: #000; }
+.hx-todo-none { font: var(--t-sub); color: var(--theme-muted, #9398a1); padding: 2px 2px; }
+.hx-more { font: 600 10px var(--font); color: var(--theme-muted, #9398a1); padding-left: 25px; }
+
+/* colour tile (shared) */
+.hx-tile-ico { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; color: #fff; flex: none;
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.28), inset 0 1px 0 rgba(255,255,255,.22), 0 4px 10px rgba(0,0,0,.32); }
+.hx-tile-ico.xs { width: 20px; height: 20px; border-radius: 6.5px; box-shadow: inset 0 0 0 .5px rgba(255,255,255,.25), 0 2px 5px rgba(0,0,0,.3); }
+
+/* pressing something: the rest steps back so the pressed item reads as what opens */
+.hx-view.grow .hx-card { opacity: 0; transform: scale(.96); transition: opacity .2s ease, transform .3s var(--spring-soft); }
+
+@media (prefers-reduced-motion: reduce) {
+  .hx-card, .hx-mochi-host, .hx-skin-arrow, .hx-skin-dot { transition-duration: .01s !important; }
+}
+
+/* Features switched off in Settings → Features */
+.hx-view [hidden], #lyra-dock [hidden] { display: none !important; }

@@ -1,0 +1,57 @@
+[package]
+name = "lyra"
+description = "Lyra UI — visual shell for the Lyra desktop assistant"
+authors = ["Lyra"]
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "lyra_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["net", "io-util", "sync", "time", "rt"] }
+open = "5"
+# >>> phase-8 begin
+sha2 = "0.10"   # updater.rs: re-hash the installer right before it runs
+# <<< phase-8 end
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_System_Ole",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging",
+  # Spotify island: process list, media session (SMTC), full-screen check
+  "Foundation",
+  "Foundation_Collections",
+  "Media_Control",
+  "Storage_Streams",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_WinRT",
+  "Win32_UI_Shell",
+  # Volume HUD: master volume of the default speakers (Core Audio)
+  "Win32_Media_Audio",
+  "Win32_Media_Audio_Endpoints",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Variant",
+  "Win32_UI_Shell_PropertiesSystem",
+] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+gtk = "0.18"

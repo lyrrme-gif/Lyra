@@ -1,0 +1,17 @@
+{
+  "name": "lyra-whatsapp-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Links Lyra to WhatsApp as a linked device (like WhatsApp Web). plugins/whatsapp.py runs bridge.bundle.js with Node.",
+  "main": "bridge.js",
+  "scripts": {
+    "build": "esbuild bridge.js --bundle --platform=node --target=node20 --outfile=bridge.bundle.js --external:jimp --external:sharp --external:link-preview-js --external:audio-decode --external:qrcode-terminal"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.24"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

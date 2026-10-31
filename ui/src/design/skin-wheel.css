@@ -1,0 +1,22 @@
+/* ═══ Tab wheel skin ═══════════════════════════════════════════════════════
+   Same geometry and click areas; the lit bead, the hub and the page tabs take the accent
+   and the display face. The five island materials (data-theme) still set the glass. */
+
+@supports (color: oklch(from red l c h)) {
+
+html #lyra-wheel { --font: var(--d-font-ui); --spring: var(--d-spring); --ease: var(--d-ease); }
+html #lyra-wheel .w-bead { fill: oklch(0.16 0 0 / 0.75); stroke: oklch(1 0 0 / 0.2); }
+html #lyra-wheel .w-sector.hl .w-bead {
+  fill: oklch(from var(--d-ac) l c h / 0.28); stroke: var(--d-ac); filter: drop-shadow(0 0 12px oklch(from var(--d-ac) l c h / 0.8));
+}
+html #lyra-wheel .w-sector.hl .w-ico { filter: drop-shadow(0 0 6px oklch(from var(--d-ac) l c h / 0.75)); }
+html #lyra-wheel .w-core { fill: var(--d-ac); filter: drop-shadow(0 0 10px var(--d-ac)); }
+html #lyra-wheel .w-dash { stroke: oklch(0.95 0 0 / 0.34); }
+html #lyra-wheel .wheel-hub-title { font-family: var(--d-font-display); font-weight: 650; }
+html #lyra-wheel .wheel-tab { border-radius: var(--d-r-xs); }
+html #lyra-wheel .wheel-tab.on {
+  color: var(--d-on-ac); background: var(--d-ac); box-shadow: 0 6px 20px oklch(from var(--d-ac) l c h / 0.4), 0 0 18px oklch(from var(--d-ac) l c h / 0.3);
+}
+html #lyra-wheel :focus-visible { outline: var(--d-focus-w) solid var(--d-ac); outline-offset: 2px; }
+
+}

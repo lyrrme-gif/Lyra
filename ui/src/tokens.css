@@ -1,0 +1,121 @@
+/* ═══ Lyra design tokens ═════════════════════════════════════════════════════
+   One system for type, spacing, radii, sizes, material and motion.
+   New and redesigned UI must use these; never invent per-screen values.
+   Theme colours come from #island[data-theme] (--theme-*, --island-*). */
+
+:root {
+  /* Type scale (SF-style: strong primary, soft secondary, quiet metadata) */
+  --t-display: 200 76px/1 var(--font);   /* timer digits */
+  --t-hero:    600 34px/1.05 var(--font);/* temperature, big numbers */
+  --t-title:   600 17px/1.2 var(--font);
+  --t-body:    500 14px/1.3 var(--font);
+  --t-sub:     500 12.5px/1.3 var(--font);
+  --t-meta:    500 11px/1.2 var(--font);
+  --t-control: 600 13px/1 var(--font);
+  --tracking-tight: -.02em;
+
+  /* Spacing (4pt grid) */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;  --sp-4: 16px;  --sp-5: 20px;  --sp-6: 28px;
+
+  /* Radii: shapes follow size. Pill = half the height. */
+  --r-xs: 8px;  --r-sm: 12px;  --r-md: 18px;  --r-lg: 24px;  --r-xl: 32px;
+  --r-island-expanded: 34px;
+
+  /* Island sizes (px) */
+  --island-h-mini: 22px;      /* secondary dot / glyph island */
+  --island-h-compact: 36px;   /* compact notch / secondary pill */
+  --island-h-secondary: 34px;
+  --widget-h: 84px;
+  --dock-h: 34px;
+  --icon-sm: 14px;  --icon-md: 18px;  --icon-lg: 26px;
+
+  /* Motion: spring-like, fast response, soft settle */
+  --spring-soft: cubic-bezier(.22, 1, .36, 1);        /* decelerate, no overshoot */
+  --spring-pop:  cubic-bezier(.34, 1.4, .64, 1);      /* slight overshoot */
+  --dur-fast: .18s;  --dur-base: .38s;  --dur-slow: .6s;
+  --press-scale: .96;
+}
+
+/* Surface hierarchy (shared by main island, secondary islands, widgets, dock).
+   Islands = solid/dense, widgets = lifted surface, dock = lightest glass. */
+#island[data-theme] {
+  --surface-island: var(--island-bg);
+  --surface-widget: var(--theme-surface-2);
+  --surface-widget-hover: var(--theme-surface-3);
+  --surface-dock: var(--island-bg-2);
+  --hairline: var(--theme-border);
+}
+
+/* ═══ Compact island: its own material, independent of the expanded theme ═══
+   Only three options: Black, Frost, Glass. */
+#island[data-mode="compact"][data-compact="black"] {
+  background: #000 !important;
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+  border-color: rgba(255,255,255,.08) !important;
+}
+#island[data-mode="compact"][data-compact="frost"] {
+  background: linear-gradient(180deg, #000 0%, rgba(8,7,6,.92) 55%, rgba(48,40,33,.72) 100%) !important;
+  backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border-color: rgba(255,255,255,.16) !important;
+}
+#island[data-mode="compact"][data-compact="glass"] {
+  background: rgba(22,24,30,.34) !important;
+  backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%);
+  border-color: rgba(255,255,255,.20) !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.18) !important;
+}
+
+/* Compact content must not tint the island: no inner chips, halo or sheen, so
+   Black is true #000 and Frost starts black at the top. */
+#island[data-mode="compact"][data-compact] .mini-pill,
+#island[data-mode="compact"][data-compact] .compact-chip,
+#island[data-mode="compact"][data-compact] .timer-chip,
+#island[data-mode="compact"][data-compact] #spotify-compact {
+  background: transparent !important; border-color: transparent !important; box-shadow: none !important;
+}
+#island[data-mode="compact"][data-compact="black"]::before,
+#island[data-mode="compact"][data-compact="black"]::after,
+#island[data-mode="compact"][data-compact="frost"]::before { display: none !important; }
+#island[data-theme="pure-black"], #island[data-theme="pure-black"][data-mode="expanded"] {
+  background: #000 !important; --island-bg: #000; --island-bg-2: #000;
+}
+
+/* ═══ Secondary island ═══════════════════════════════════════════════════════
+   Same physical object as the main island: shares material, shadow and
+   typography; capsule geometry (radius = half height), content-aware width. */
+.isl-sec {
+  position: absolute; z-index: 5; height: 34px; min-width: 34px; width: max-content; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px;
+  border-radius: 17px; border: 1px solid var(--island-edge, rgba(255,255,255,.08));
+  background: #000; color: #fff; font: var(--t-control); cursor: pointer; pointer-events: none;
+  box-shadow: 0 12px 28px rgba(0,0,0,.42), 0 3px 8px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+  opacity: 0; transform: scale(.5); transform-origin: var(--sec-origin, 0% 50%);
+  transition: opacity var(--dur-base) var(--spring-soft), transform var(--dur-base) var(--spring-pop);
+}
+.isl-sec[data-activity] { --sec-origin: 100% 50%; }
+.isl-sec.show { opacity: 1; transform: scale(1); pointer-events: auto; }
+.isl-sec:hover { filter: brightness(1.18); }
+.isl-sec:active { transform: scale(var(--press-scale)); transition-duration: .12s; }
+.isl-sec.enter { transition: none; opacity: 0; transform: scale(.4); }
+.isl-sec.morph-out { opacity: 0; transform: scale(1.6); transition-duration: .2s; pointer-events: none; }
+.isl-sec .sec-art { width: 22px; height: 22px; border-radius: 7px; object-fit: cover; background: #1b1c20; }
+.isl-sec .sec-eq { display: flex; align-items: center; gap: 2px; height: 14px; }
+.isl-sec .sec-eq i { width: 2.5px; height: 100%; border-radius: 2px; background: #fff; transform-origin: center; animation: sec-eq .9s ease-in-out infinite; }
+.isl-sec .sec-eq i:nth-child(2) { animation-delay: -.3s; } .isl-sec .sec-eq i:nth-child(3) { animation-delay: -.6s; } .isl-sec .sec-eq i:nth-child(4) { animation-delay: -.15s; }
+.isl-sec.paused .sec-eq i { animation: none; transform: scaleY(.25); opacity: .6; }
+.isl-sec .sec-dot { width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid var(--sec-accent, #ff9f0a); box-sizing: border-box; }
+.isl-sec .sec-dot.sec-rec { background: var(--sec-accent, #ff453a); border: 0; }   /* static on purpose: no pulse, no glow. An endlessly animating overlay on the always-on-top island window was the main suspect for the desktop slowing down while recording */
+.isl-sec.paused .sec-dot.sec-rec { opacity: .5; }   /* paused: the dot dims */
+@keyframes secRec { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.78); } }
+.isl-sec .sec-extra { display: flex; align-items: center; gap: 6px; margin-left: 9px; padding-left: 9px; border-left: 1px solid rgba(255, 255, 255, .2); }
+.isl-sec .sec-extra .sec-text { color: #ff453a; }
+.isl-sec .sec-text { font: 600 13px var(--font); color: var(--sec-accent, #ff9f0a); font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.isl-sec.paused .sec-text { opacity: .55; }
+@keyframes sec-eq { 0%,100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+/* The main island yields while an activity swap is in flight. */
+#island.activity-swap #spotify-compact, #island.activity-swap #timer-chip { opacity: 0 !important; transform: scale(.94) !important; transition: opacity .16s ease, transform .2s var(--spring-soft); }
+
+/* Secondary islands follow the compact material (Black / Frost / Glass). */
+.isl-sec[data-compact="black"] { background: #000; backdrop-filter: none; }
+.isl-sec[data-compact="frost"] { background: linear-gradient(180deg,#000 0%,rgba(8,7,6,.92) 55%,rgba(48,40,33,.72) 100%); backdrop-filter: blur(24px) saturate(160%); border-color: rgba(255,255,255,.16); }
+.isl-sec[data-compact="glass"] { background: rgba(22,24,30,.34); backdrop-filter: blur(30px) saturate(180%); border-color: rgba(255,255,255,.20); box-shadow: 0 12px 30px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.18); }

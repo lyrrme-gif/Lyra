@@ -1,0 +1,85 @@
+/* ═══ Launcher window (constellation) ═══════════════════════════════════════════
+   Round white icons floating on whatever is on the desktop. No panel, no backdrop, no blur: the
+   window is fully transparent and only the icons and the tooltip pill are painted.
+   It looks the same in every island theme on purpose (no data-theme rules here).
+   The window is 640 × 440 (see src-tauri/src/wheel.rs and src/core/wheelGeometry.ts) and opens in
+   the middle of the active monitor; `.c-field` is that design space, scaled to fit smaller windows.
+   Self-contained: it does not load the island's stylesheets. */
+
+html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+
+#lyra-wheel {
+  position: fixed; inset: 0; user-select: none; -webkit-user-select: none; cursor: default;
+  --font: system-ui, "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --white: #fff;
+  --ink: #0b0b0d;
+  --lift: 0 1px 7px rgba(0, 0, 0, .2);
+}
+
+.c-field { position: absolute; left: 50%; top: 50%; transform-origin: center; pointer-events: none; }
+
+/* Hidden until the launcher opens (the window is kept alive between uses). */
+#lyra-wheel:not(.open) .c-field { visibility: hidden; }
+
+/* ── Icons ───────────────────────────────────────────────────────────────── */
+.c-node {
+  position: absolute; box-sizing: border-box; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--white); color: var(--ink); box-shadow: var(--lift);
+  transition: background-color .14s ease, color .14s ease, transform .18s var(--ease);
+  will-change: transform;
+}
+.c-node svg { display: block; overflow: visible; }
+
+/* The lit icon (hovered, or reached with the keys): solid black, white symbol. */
+.c-node.lit { background: #000; color: var(--white); transform: scale(1.06); }
+
+/* The open group: solid black, white symbol (like the selected icon in the concept). */
+.c-sel { background: #000; color: var(--white); }
+.c-sel.lit { background: #1d1d20; }
+
+/* The tabs of the open group: a small arc around it, sliding out from the group. */
+.c-tab { animation: cTabIn .3s var(--ease) backwards; animation-delay: calc(var(--i, 0) * 34ms + 20ms); }
+.c-tab.c-out { animation: none; opacity: 0; transform: translate(var(--fx, 0), var(--fy, 0)) scale(.6); transition: opacity .12s ease, transform .13s ease; pointer-events: none; }
+
+/* The small grey × in the middle of the groups. */
+.c-close { background: rgba(190, 194, 200, .92); color: #1a1b1e; }
+.c-close.lit { background: #000; color: var(--white); transform: scale(1.08); }
+
+/* ── Tooltip pill ────────────────────────────────────────────────────────── */
+.c-tip {
+  position: absolute; left: 0; top: 0; padding: 7px 15px; border-radius: 999px; white-space: nowrap;
+  background: var(--white); color: var(--ink); box-shadow: var(--lift);
+  font: 600 13.5px/1.25 var(--font); letter-spacing: .005em;
+  opacity: 0; transform: translate(var(--from, 0), var(--fromY, 0)); transition: opacity .12s ease, transform .16s var(--ease);
+  pointer-events: none;
+}
+.c-tip[data-side="right"] { --from: -6px; }
+.c-tip[data-side="left"]  { --from: 6px; }
+.c-tip[data-side="above"] { --fromY: 6px; }
+.c-tip[data-side="below"] { --fromY: -6px; }
+.c-tip.on { opacity: 1; transform: none; }
+/* The little notch that points back at the icon. */
+.c-tip::before {
+  content: ""; position: absolute; top: var(--notch, 50%); width: 9px; height: 9px; background: var(--white);
+  transform: translateY(-50%) rotate(45deg); border-radius: 1.5px;
+}
+.c-tip[data-side="right"]::before { left: -3px; }
+.c-tip[data-side="left"]::before  { right: -3px; }
+.c-tip[data-side="above"]::before, .c-tip[data-side="below"]::before { top: auto; left: var(--notch, 50%); transform: translateX(-50%) rotate(45deg); }
+.c-tip[data-side="above"]::before { bottom: -3px; }
+.c-tip[data-side="below"]::before { top: -3px; }
+
+/* ── Open / close / page change ──────────────────────────────────────────── */
+.c-field.enter .c-node:not(.c-tab) { animation: cNodeIn .38s var(--ease) backwards; animation-delay: calc(var(--i, 0) * 22ms); }
+
+#lyra-wheel.closing .c-field { opacity: 0; transition: opacity .12s ease; }
+
+@keyframes cNodeIn { from { opacity: 0; transform: scale(.6); } }
+@keyframes cTabIn { from { opacity: 0; transform: translate(var(--fx, 0), var(--fy, 0)) scale(.5); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .c-node, .c-tip { transition-duration: .01s !important; }
+  .c-field.enter .c-node, .c-tab { animation: none !important; }
+}

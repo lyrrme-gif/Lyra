@@ -1,0 +1,16 @@
+/* Chat tab: this session's conversation under the typing pill (the island grows a bit, see State.chatExtra). */
+.cx-extra { display: none; }
+.chat-card.cx-extra-on .cx-extra { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; padding: 2px 4px 0 0; }
+#island[data-view="prompt"] .chat-card.cx-extra-on .chat-body { padding: 0 14px 12px 22px !important; gap: 4px; }
+#island[data-view="prompt"] .chat-card.cx-extra-on .chat-bar.cx-bar { height: 54px !important; flex: none; }
+/* Conversation bubbles, like the preview: you on the right (accent), Lyra on the left (grey). */
+.cx-q { align-self: flex-end; max-width: 78%; padding: 6px 13px; border-radius: 16px 16px 5px 16px; font: 500 13px/1.3 var(--font, system-ui, sans-serif); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: linear-gradient(135deg, #8f7bff, #5a45e0); box-shadow: 0 3px 10px rgba(90, 69, 224, .35); }
+.cx-a { align-self: flex-start; max-width: 88%; padding: 8px 13px; border-radius: 16px 16px 16px 5px; overflow-y: auto; font: 500 13.5px/1.42 var(--font, system-ui, sans-serif); color: #fff; white-space: pre-wrap; word-break: break-word; background: rgba(255, 255, 255, .12); scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .3) transparent; }
+
+/* The small chat pill sits straight in the island: no second outline of its own (it doubled the island's border). */
+#island .chat-card.cx-small .chat-bar.cx-bar { border: 0 !important; border-radius: 0 !important; }
+
+
+/* This session's conversation: scrolls (newest at the bottom) once it is taller than the cap set in chat.ts */
+.cx-convo { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .3) transparent; }
+.cx-convo > * { flex: none; }
