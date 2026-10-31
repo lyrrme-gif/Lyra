@@ -10,6 +10,8 @@
 // The Mochi is the real one (same engine as the notch and the screen mascot): its eyes follow
 // the cursor, it grooves while music plays, and the arrows switch the character (Cloud, Fox, Cat). The
 // pick is saved to the same backend setting as Settings → Mochi, so the notch and the screen Mochi follow.
+// Drag the Mochi out of this card and it hops onto the screen, where it stays; drag it back onto the island and it
+// flies home (the screen half lives in src/mascot/engine.ts, the two windows talk through src/mascot/carry.ts).
 // Every other tab (Music, Calendar, Timer, Stats, ...) is on the tab wheel.
 
 import { visiblePoll, type VisiblePoll } from "../core/visiblePoll";
@@ -25,7 +27,9 @@ import { Sound } from "../core/sound";
 import { isReallyVisible } from "../core/visibility";
 import { getFeatures, postFeatures } from "../core/featuresCache";
 import { createCharacter, gazeToward, type Character, type EmoteName } from "../mascot/character";
-import { CHAR_DEFS, CHARACTER_IDS } from "../mascot/characters";
+import { AWAY_TIMEOUT_MS, onAway } from "../mascot/dock";
+import { carry, emitCarryStart, onCarryState } from "../mascot/carry";
+import { CHAR_DEFS, CHARACTER_IDS, RAGE_LINES } from "../mascot/characters";
 import "./mochiPlay.css";
 
 const MOCHI_PX = 112;     // body width of the Mochi on this tab
@@ -72,7 +76,9 @@ export function buildHome(actions: ViewActions): ViewHost {
 
   const host = h("div", { class: "hx-mochi-host" });
   host.style.width = `${MOCHI_PX}px`;
-  const spot = h("button", { class: "hx-mochi-spot", type: "button", title: "Say hi", "aria-label": "Mochi" }, host) as HTMLButtonElement;
+  // Empty while the Mochi is out on the screen (or in the cursor's hand): it lights up when the Mochi is held above it.
+  const nest = h("div", { class: "hx-nest", "aria-hidden": "true" }, h("span", { text: "Drag Mochi back here" }));
+  const spot = h("button", { class: "hx-mochi-spot", type: "button", title: "Say hi, or drag me out onto the screen", "aria-label": "Mochi" }, nest, host) as HTMLButtonElement;
   const mochi: Character = createCharacter(host, { tight: true, sharp: 2 });
   mochi.setActive?.(false);   // drawn only while this tab is on screen
 
@@ -112,8 +118,9 @@ export function buildHome(actions: ViewActions): ViewHost {
   const PLAY: EmoteName[] = ["wave", "happy", "love", "surprised"];
   spot.addEventListener("click", (e) => {
     e.stopPropagation();
-    actions.blip();
     const now = performance.now();
+    if (away || carried || now < noClickUntil) return;   // out on the screen, or the click that ended a drag
+    actions.blip();
     if (now < dizzyUntil) return;                     // still seeing stars: ignore the poking
     window.clearTimeout(waveTimer);
     armSleep();
@@ -123,12 +130,12 @@ export function buildHome(actions: ViewActions): ViewHost {
       waveTimer = window.setTimeout(() => mochi.setEmote("idle"), 1500);
       return;
     }
-    clicks = now - lastClick < (shape === "knight" ? 4200 : 1800) ? clicks + 1 : 1;
+    clicks = now - lastClick < 4200 ? clicks + 1 : 1;
     lastClick = now;
-    if (shape === "knight") {                         // the Knight never gets dizzy: each poke = angrier, nail swings faster
+    if (CHAR_DEFS[shape]) {                           // nobody gets dizzy any more: each poke = angrier, in the Mochi's own way
       const lvl = Math.min(6, clicks);
       mochi.provoke?.(lvl);
-      const line = ["", "...", "Stop.", "Enough!", "I WARN YOU!", "NO MORE!!"][lvl - 1];
+      const line = RAGE_LINES[shape]?.[lvl - 1];
       if (line) say(line);
       if (lvl >= 3) burst("\u{1F4A2}", lvl >= 5 ? 3 : 1);
       return;
@@ -149,6 +156,91 @@ export function buildHome(actions: ViewActions): ViewHost {
     if (emote === "surprised") say("Hey!");
     waveTimer = window.setTimeout(() => mochi.setEmote("idle"), 1500);
   });
+
+  // ── Drag the Mochi out onto the screen (and back) ───────────────────────────
+  // Pulling it out hands it to the screen Mochi (the overlay window): it hops out of this card into the cursor's
+  // hand, and where the button is let go it stays (or flies back in when let go over the island). While it is
+  // out this card shows its empty nest.
+  let mascotOn = false;                  // Settings → Mochi → Lyra mascot (the overlay window exists only then)
+  let tabOn = false;                     // this tab is on screen
+  let away = false;                      // the Mochi is out of the island (on the screen, or in the cursor's hand)
+  let carried = false;                   // pulled out of this card and still held
+  let awayTimer = 0, carryGuard = 0, noClickUntil = 0;
+  let picking: { x: number; y: number } | null = null;
+
+  const paintAway = () => {
+    spot.classList.toggle("hx-away", away && !carried);
+    spot.classList.toggle("hx-carried", carried);
+    if (!away && !carried) spot.classList.remove("hx-nest-hot");
+  };
+  const endCarry = () => {
+    carried = false;
+    carry.active = false;
+    window.clearTimeout(carryGuard);
+    noClickUntil = performance.now() + 400;
+    paintAway();
+  };
+  void onAway((a) => {                   // same heartbeat the notch Mochi follows: it times out if the overlay goes quiet
+    window.clearTimeout(awayTimer);
+    away = a;
+    paintAway();
+    if (a) awayTimer = window.setTimeout(() => { away = false; paintAway(); }, AWAY_TIMEOUT_MS);
+  });
+  void onCarryState((st) => {
+    if (typeof st.over === "boolean") spot.classList.toggle("hx-nest-hot", st.over && (away || carried));
+    if (!st.end) return;
+    const home = st.end === "island";
+    if (home) { away = false; window.clearTimeout(awayTimer); }
+    endCarry();
+    if (home && tabOn) {                 // it flew back into this card: a little landing
+      host.classList.remove("hx-land");
+      void host.offsetWidth;
+      host.classList.add("hx-land");
+      window.setTimeout(() => host.classList.remove("hx-land"), 650);
+      mochi.setEmote("happy");
+      waveTimer = window.setTimeout(() => mochi.setEmote("idle"), 1500);
+      armSleep();
+    }
+  });
+
+  /** Where the Mochi sits in this card (island-window coordinates), for the screen Mochi to land on. */
+  carry.spot = () => {
+    if (!tabOn) return null;
+    const r = host.getBoundingClientRect();
+    return r.width < 4 ? null : { cx: r.left + r.width / 2, cy: r.top + r.height / 2, body: r.width * (82 / 84) };
+  };
+
+  const startCarry = (e: PointerEvent) => {
+    if (!mascotOn) { say("Turn on the Lyra mascot to drag me out"); noClickUntil = performance.now() + 600; return; }
+    const r = host.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    window.clearTimeout(waveTimer);
+    window.clearTimeout(sleepTimer);
+    asleep = false; clicks = 0;
+    carried = true;
+    carry.active = true;                                   // the island stays open while the Mochi is in the hand
+    noClickUntil = performance.now() + 1500;
+    window.clearTimeout(carryGuard);
+    carryGuard = window.setTimeout(endCarry, 30_000);      // the screen Mochi never answered: take the nest back
+    paintAway();
+    actions.blip();
+    emitCarryStart({ fx: cx, fy: cy, gx: e.clientX - cx, gy: e.clientY - cy, body: r.width * (82 / 84), winW: window.innerWidth });
+  };
+  spot.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || away || carried) return;
+    picking = { x: e.clientX, y: e.clientY };
+    try { spot.setPointerCapture(e.pointerId); } catch { /* the moves still arrive while over it */ }
+  });
+  spot.addEventListener("pointermove", (e) => {
+    if (!picking || carried) return;
+    if (Math.hypot(e.clientX - picking.x, e.clientY - picking.y) < 8) return;   // a click, not a drag
+    picking = null;
+    try { spot.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+    startCarry(e);
+  });
+  const dropPick = () => { picking = null; };
+  spot.addEventListener("pointerup", dropPick);
+  spot.addEventListener("pointercancel", dropPick);
 
   const skinName = h("div", { class: "hx-skin-name" });
   const dots = CHARACTER_IDS.map((id) =>
@@ -182,8 +274,9 @@ export function buildHome(actions: ViewActions): ViewHost {
   };
   const loadPrefs = async () => {
     try {
-      const p = (await getFeatures()) as { mascot_shape?: string } | null;
+      const p = (await getFeatures()) as { mascot_shape?: string; feature_mascot?: boolean } | null;
       if (!p) return;
+      mascotOn = p.feature_mascot === true;
       shape = (CHARACTER_IDS as readonly string[]).includes(p.mascot_shape ?? "") ? String(p.mascot_shape) : "cloud";
       mochi.setShape?.(shape);   // the character chosen in Settings → Mochi
       paintSkin();
@@ -292,6 +385,7 @@ export function buildHome(actions: ViewActions): ViewHost {
       paintTodo();
     },
     setActive(on) {
+      tabOn = on;
       timer?.stop(); timer = null;
       if (tick != null) { window.clearInterval(tick); tick = null; }
       mochi.setActive?.(on);

@@ -723,7 +723,7 @@ def _run_script(c: str, engine_context) -> str | None:
     folders = _load()["allowed_folders"]
     if not folders:
         if not explicit:
-            return None                   # "run macro X", "run routine Y": other modules
+            return None                   # "run routine Y" and the like: other modules
         return "No folders are allowed for scripts yet. Say allow scripts in, then a folder."
     found = _find_scripts(name, folders)
     if not found:

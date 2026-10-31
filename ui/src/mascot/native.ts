@@ -35,6 +35,10 @@ export const native = {
   monitor: (mode: MonitorMode) => call<void>("mascot_monitor", { mode }),
   /** Click on the character: open the island chat. */
   openChat: () => call<void>("mascot_open_chat"),
+  /** Draw this window above the island (the Mochi is dragged to or from it). */
+  raise: () => call<void>("mascot_raise"),
+  /** A Mochi dragged out of the island's Mochi tab is being held: Rust reports where the button is let go ("mascot-drop"). */
+  carry: (on: boolean) => call<void>("mascot_carry", { on }),
 };
 
 export async function onNative<T>(name: string, handler: (payload: T) => void): Promise<() => void> {

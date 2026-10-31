@@ -119,18 +119,16 @@ _DEFAULTS: dict[str, Any] = {
     "feature_status": True,                 # battery, Wi-Fi, device and brightness watcher
     "feature_light_mode": True,             # Light mode: heavy models (offline voice, Parakeet) load only when needed; idle watchers poll slower
     "shortcut_wheel_combo": "ctrl+capslock",   # Settings -> Shortcuts: hold to open the tab wheel ("" = off)
-    "shortcut_circle_combo": "lctrl",          # hold to circle something on screen ("" = off)
     "shortcut_record_combo": "ctrl+alt+r",     # start / stop a screen recording ("" = off)
     "shortcut_pause_combo": "ctrl+alt+p",      # pause / resume the recording ("" = off)
     "shortcut_typing_combo": "ctrl+meta",  # Settings -> Shortcuts -> "Switch to typing" (opens the chat bar from anywhere)
     "shortcut_typing_enabled": True,
-    "feature_circle_ask": True,             # Ctrl+Shift + circle something on screen to ask about it
+    "feature_circle_ask": True,             # tap Ctrl, then hold it and circle something on screen to ask about it
     "feature_tab_wheel": True,              # hold Ctrl+CapsLock: the island's tab wheel
     "proactive_enabled": True,              # low-battery and long-session heads-ups
-    "feature_game_mode": True,              # while a game runs, remove Right Ctrl / Ctrl+Win / Ctrl+Shift / Ctrl+CapsLock listeners
+    "feature_game_mode": True,              # while a game runs, remove Right Ctrl / Ctrl+Win / tap-and-hold Ctrl / Ctrl+CapsLock listeners
     "game_mode_fullscreen": True,           # ... also when any full-screen program (not a browser/player) is in front
     "game_mode_apps": ", ".join(GAME_MODE_APPS),
-    "feature_macros": True,                 # macro recorder: record clicks/keys once, replay by voice
     "feature_ollama": True,
     "feature_plugins": True,
     "plugins_disabled": [],
@@ -166,6 +164,9 @@ _DEFAULTS: dict[str, Any] = {
     "obs_host": "127.0.0.1",          # screen recording goes through OBS Studio's WebSocket server (see obs_control.py)
     "obs_port": 4455,
     "obs_password": "",               # only when OBS asks for one (Tools -> WebSocket Server Settings)
+    "obs_autostart": True,            # OBS not open when a recording starts: open it in the background (tray only) and leave it there
+    "obs_path": "",                   # only if Lyra can't find OBS Studio by itself: the obs64.exe file or the obs-studio folder
+    "obs_quality": "obs",          # obs = leave OBS's own video settings alone | high 1080p60 | medium 720p30 | low 480p30
     "feature_guide": True,
     "guide_level": "look",            # screen guide: look (point only) | step (ask before each click) | auto
     "feature_planner": True,
@@ -202,6 +203,9 @@ PREF_GROUPS: dict[str, dict[str, tuple]] = {
         "obs_host": ("text", 120),
         "obs_port": ("int", 1, 65535),
         "obs_password": ("text", 200),
+        "obs_autostart": ("bool",),
+        "obs_path": ("text", 400),
+        "obs_quality": ("choice", ("obs", "high", "medium", "low")),
     },
     "notifications": {
         "notify_toast_ms": ("int", 1500, 15000),
@@ -234,14 +238,13 @@ PREF_GROUPS: dict[str, dict[str, tuple]] = {
         "feature_volume": ("bool",),
         "feature_status": ("bool",),
         "feature_light_mode": ("bool",),
-        "shortcut_wheel_combo": ("text", 40), "shortcut_circle_combo": ("text", 40),
+        "shortcut_wheel_combo": ("text", 40),
         "shortcut_record_combo": ("text", 40), "shortcut_pause_combo": ("text", 40),
         "shortcut_typing_combo": ("text", 40), "shortcut_typing_enabled": ("bool",),
         "feature_circle_ask": ("bool",),
         "feature_tab_wheel": ("bool",),
         "proactive_enabled": ("bool",),
         "feature_game_mode": ("bool",), "game_mode_fullscreen": ("bool",), "game_mode_apps": ("text", 1000),
-        "feature_macros": ("bool",),
         "feature_ollama": ("bool",),
         "feature_plugins": ("bool",),
         "feature_proactive_extra": ("bool",),
@@ -263,7 +266,7 @@ PREF_GROUPS: dict[str, dict[str, tuple]] = {
         "feature_translate": ("bool",), "feature_mascot": ("bool",),
         "mascot_size": ("choice", ("small", "medium", "large")),
         "feature_mascot_stay": ("bool",),
-                "mascot_shape": ("choice", ("cloud", "fox", "cat", "bunny", "panda", "knight")),
+                "mascot_shape": ("choice", ("cloud", "fox", "cat", "bunny", "panda", "knight", "hornet", "lantern", "grimm")),
         "feature_guide": ("bool",), "guide_level": ("choice", ("look", "step", "auto")), "feature_planner": ("bool",),
         "feature_google": ("bool",), "feature_smarthome": ("bool",),
         "ha_url": ("text", 500), "ha_token": ("text", 500), "ha_aliases": ("text", 3000),
@@ -293,6 +296,16 @@ PREF_GROUPS: dict[str, dict[str, tuple]] = {
         "mochi_sound_mode": ("choice", ("speak", "mochi", "both")),
     },
 }
+
+
+# Keyboard shortcuts that run an action (hotkey_defs.py / hotkeys.py): shortcut_<id>_combo, "" = off.
+try:
+    import hotkey_defs as _hk
+    for _a, (_l, _combo) in _hk.ACTIONS.items():
+        _DEFAULTS[_hk.key_of(_a)] = _combo
+        PREF_GROUPS["features"][_hk.key_of(_a)] = ("text", 40)
+except Exception:  # noqa: BLE001
+    pass
 
 
 def _coerce(spec: tuple, value: Any) -> Any:

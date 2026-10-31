@@ -39,6 +39,9 @@ _size = 0
 _obs_msg = ""                         # why OBS cannot be reached right now ("" = fine)
 _next_try = 0.0                       # do not knock on a closed OBS more than every few seconds
 _mux_thread = None
+_launching = False                    # Lyra is opening OBS in the background right now (no polling meanwhile)
+_launch_lock = threading.Lock()
+_OBS_WAIT_S = 25                      # how long to wait for a freshly opened OBS to start its WebSocket server
 
 
 def _log():
@@ -423,6 +426,180 @@ def obs_test() -> dict:
         return {"ok": False, "message": str(e)[:200].rstrip(".") + "."}
 
 
+def _is_unreachable(e: Exception) -> bool:
+    """True when OBS did not answer at all (closed, or its WebSocket is off) - as opposed to a wrong password etc."""
+    return str(e).startswith("OBS isn't running")
+
+
+# ── Opening OBS by itself, hidden in the tray ────────────────────────────────
+
+def _exe_candidates() -> list[Path]:
+    """Where obs64.exe may be: the path in Settings, the installer's registry entry, then the usual folders."""
+    out: list[Path] = []
+
+    def add_dir(d: str | Path) -> None:
+        d = Path(str(d))
+        out.append(d / "bin" / "64bit" / "obs64.exe")
+
+    custom = str(_pref("obs_path", "") or "").strip().strip('"')
+    if custom:
+        p = Path(custom)
+        out.append(p) if p.suffix.lower() == ".exe" else add_dir(p)
+    if os.name == "nt":
+        try:
+            import winreg
+            for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+                    try:
+                        with winreg.OpenKey(root, r"SOFTWARE\OBS Studio", 0, winreg.KEY_READ | view) as k:
+                            add_dir(winreg.QueryValueEx(k, "")[0])
+                    except OSError:
+                        continue
+        except Exception:  # noqa: BLE001
+            pass
+        for env in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"):
+            base = os.environ.get(env)
+            if base:
+                add_dir(Path(base) / "obs-studio")
+                add_dir(Path(base) / "Steam" / "steamapps" / "common" / "OBS Studio")
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            add_dir(Path(local) / "Programs" / "obs-studio")
+    return out
+
+
+def _obs_exe() -> Path | None:
+    for p in _exe_candidates():
+        try:
+            if p.is_file():
+                return p
+        except OSError:
+            continue
+    return None
+
+
+def _obs_running() -> bool:
+    """Is an OBS process already there (even if its WebSocket does not answer)? Opening a second one would only
+    make OBS ask 'already running'."""
+    try:
+        import psutil  # type: ignore
+        return any((p.info.get("name") or "").lower() in ("obs64.exe", "obs.exe", "obs") for p in psutil.process_iter(["name"]))
+    except ImportError:
+        pass
+    except Exception:  # noqa: BLE001
+        return False
+    if os.name != "nt":
+        return False
+    try:
+        r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq obs64.exe", "/NH"], capture_output=True, text=True, timeout=5,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return "obs64.exe" in (r.stdout or "").lower()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _launch_obs(exe: Path):
+    """Start OBS minimized to the system tray, detached from Lyra (it keeps running when Lyra closes)."""
+    kw: dict = {"cwd": str(exe.parent), "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    if os.name == "nt":
+        si = subprocess.STARTUPINFO()                                     # type: ignore[attr-defined]
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW                      # type: ignore[attr-defined]
+        si.wShowWindow = 7                                                 # SW_SHOWMINNOACTIVE: no flash, no focus stolen
+        kw["startupinfo"] = si
+        kw["creationflags"] = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    # --minimize-to-tray: no window, just the tray icon. --disable-shutdown-check: no "OBS crashed, safe mode?" box.
+    return subprocess.Popen([str(exe), "--minimize-to-tray", "--disable-shutdown-check"], **kw)
+
+
+def _hide_obs_windows(pid: int) -> int:
+    """Fallback if OBS still shows its main window: hide it (OBS keeps running; its tray icon opens it again).
+    Returns how many windows were hidden."""
+    if os.name != "nt":
+        return 0
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32                                      # type: ignore[attr-defined]
+        hidden = [0]
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def cb(hwnd, _lp):
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            owner = wintypes.DWORD(0)
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+            if owner.value != pid:
+                return True
+            buf = ctypes.create_unicode_buffer(300)
+            user32.GetWindowTextW(hwnd, buf, 300)
+            if buf.value.startswith("OBS ") and "Profile:" in buf.value:     # the main window, not a dialog
+                user32.ShowWindow(hwnd, 0)                                   # SW_HIDE
+                hidden[0] += 1
+            return True
+
+        user32.EnumWindows(cb, 0)
+        return hidden[0]
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _ensure_obs() -> str | None:
+    """OBS is not answering and a recording was asked for. If allowed, open OBS in the background (tray only) and wait
+    until its WebSocket answers. Returns "" when OBS is ready, None when this does not apply (the original error is
+    shown), or a message to show instead."""
+    global _launching, _obs_msg, _next_try
+    if not _pref("obs_autostart", True):
+        return None
+    if str(_pref("obs_host", "127.0.0.1") or "127.0.0.1").strip().lower() not in ("127.0.0.1", "localhost", "::1"):
+        return None                                                        # OBS on another PC: nothing to open here
+    with _launch_lock:                                                     # a second request waits for the first launch
+        try:
+            _ask("GetVersion")
+            return ""                                                      # the other request already opened it
+        except ObsError as e:
+            if not _is_unreachable(e):
+                return None
+        if _obs_running():
+            return ("OBS is open but its WebSocket server isn't answering. "
+                    "In OBS: Tools → WebSocket Server Settings → Enable.")
+        exe = _obs_exe()
+        if exe is None:
+            _log().info("OBS is closed and Lyra could not find obs64.exe to open it (Settings -> Recordings -> OBS location)")
+            return None                                                    # the usual "OBS isn't running ..." message is shown
+        _launching = True
+        _obs_msg = "Opening OBS in the background…"
+        try:
+            try:
+                proc = _launch_obs(exe)
+            except OSError as e:
+                return f"I couldn't open OBS: {str(e)[:100]}"
+            deadline, hide_at = time.monotonic() + _OBS_WAIT_S, time.monotonic() + 4
+            while True:
+                try:
+                    _ask("GetVersion")
+                    break
+                except ObsError as e:
+                    if not _is_unreachable(e):
+                        return str(e)                                      # e.g. wrong password: no point waiting
+                if proc.poll() is not None:
+                    return "OBS closed right after opening."
+                if time.monotonic() >= deadline:
+                    return "OBS is taking too long to open. Try again in a moment."
+                if time.monotonic() >= hide_at:                            # still showing a window? send it to the tray
+                    _hide_obs_windows(proc.pid)
+                    hide_at += 1.0
+                time.sleep(0.5)
+            for _ in range(6):                                             # the window may show up just after the WebSocket
+                if _hide_obs_windows(proc.pid) == 0:
+                    break
+                time.sleep(0.4)
+            _log().info("OBS opened in the background (tray): %s", exe)
+            return ""
+        finally:
+            _launching = False
+            _obs_msg, _next_try = "", 0.0
+
+
 def _active() -> bool:
     return _live
 
@@ -450,7 +627,7 @@ def _refresh() -> None:
     """Ask OBS what it is doing (cheap: one small message on a connection that stays open) and keep the island's pill in step,
     also when the recording was started or stopped in OBS itself."""
     global _live, _paused, _secs, _size, _obs_msg, _next_try, _error
-    if time.monotonic() < _next_try:
+    if _launching or time.monotonic() < _next_try:
         return
     try:
         r = _ask("GetRecordStatus")
@@ -495,17 +672,61 @@ def status() -> dict:
         return _status()
 
 
+# Recording quality (Settings -> Recordings -> Quality): picture height and frame rate. "obs" = do not touch OBS's settings.
+QUALITY = {"high": (1080, 60), "medium": (720, 30), "low": (480, 30)}
+
+
+def _apply_quality() -> None:
+    """Before a recording starts: set OBS's output (scaled) size and frame rate to the chosen preset.
+
+    The canvas (what OBS captures) is left alone; only the size of the recorded picture and the fps change, and the
+    picture keeps the canvas's shape. It never makes a picture bigger than the canvas. OBS refuses to change video
+    settings while something else is using them (streaming, virtual camera ...): then the recording simply starts with
+    OBS's current settings. A quality change takes effect in OBS itself too (it is OBS's global video setting)."""
+    q = str(_pref("obs_quality", "obs") or "obs").lower()
+    if q not in QUALITY:
+        return
+    height, fps = QUALITY[q]
+    try:
+        v = _ask("GetVideoSettings")
+        bw, bh = int(v.get("baseWidth") or 0), int(v.get("baseHeight") or 0)
+        if bw <= 0 or bh <= 0:
+            return
+        oh = min(height, bh)
+        ow = round(oh * bw / bh)
+        ow, oh = ow - ow % 2, oh - oh % 2                                       # encoders want even sizes
+        have = (v.get("outputWidth"), v.get("outputHeight"), v.get("fpsNumerator"), v.get("fpsDenominator"))
+        if have == (ow, oh, fps, 1):
+            return
+        _ask("SetVideoSettings", {"outputWidth": ow, "outputHeight": oh, "fpsNumerator": fps, "fpsDenominator": 1})
+        _log().info("recording quality %s: %dx%d at %d fps", q, ow, oh, fps)
+    except ObsRefused as e:
+        _log().warning("OBS would not change its video settings (%s): recording with OBS's current settings", e)
+
+
 def start() -> dict:
     global _error, _live, _paused, _secs, _size
     with _lock:
         _error = ""
     try:
-        if _ask("GetRecordStatus").get("outputActive"):
+        try:
+            rec = _ask("GetRecordStatus")
+        except ObsError as e:
+            if not _is_unreachable(e):
+                raise
+            opened = _ensure_obs()                                              # OBS closed: open it in the tray, then carry on
+            if opened is None:
+                raise
+            if opened:
+                raise ObsError(opened) from e
+            rec = _ask("GetRecordStatus")
+        if rec.get("outputActive"):
             return status()
         try:
             _ask("SetRecordDirectory", {"recordDirectory": str(out_dir())})      # OBS 30+: the file is made right in Lyra's folder
         except ObsRefused as e:
             _log().info("OBS would not change its recording folder (%s): the file is moved when the recording stops", e)
+        _apply_quality()
         _ask("StartRecord")
         for _ in range(20):                                                     # StartRecord answers before the output is up
             if _ask("GetRecordStatus").get("outputActive"):

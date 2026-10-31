@@ -13,7 +13,7 @@ export const SOUND_NAMES = [
 
 export type SoundName = (typeof SOUND_NAMES)[number];
 
-const CHARACTERS = ["cloud", "fox", "cat", "bunny", "panda", "knight"];
+const CHARACTERS = ["cloud", "fox", "cat", "bunny", "panda", "knight", "hornet", "lantern", "grimm"];
 const BASE = "http://127.0.0.1:8765";
 
 class SoundEngine {

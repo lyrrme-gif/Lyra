@@ -2,22 +2,10 @@
    The snapshot carries its computed styles inline; this file only places it on the little desktop and
    re-declares the keyframes the island's CSS defines (style.css), so the loops still play. */
 
-.pgrid .ptile-scene { aspect-ratio: 420 / 100; }
-.ap-desk { overflow: hidden; }
-.ap-stage {
-  --k: .55;
-  position: absolute; left: 0; top: 0; width: 420px; height: 100px;
-  transform: scale(var(--k)); transform-origin: 0 0;
-}
-/* Place the island like the real notch: centred, near the top. The snapshot's own absolute offsets are replaced. */
-.ap-stage > .ap-island {
-  position: absolute !important; inset: auto !important; margin: 0 !important;
-  left: 50% !important; top: 18px !important; transform: translateX(-50%) !important;
-  pointer-events: none; text-align: left;
-}
-/* The open Clipboard panel is much taller than a notch: show it smaller so it fits the tile. */
-.ap-stage > .ap-island[data-act="clipboard"] { top: 6px !important; transform: translateX(-50%) scale(.52) !important; transform-origin: 50% 0 !important; }
-.ap-stage * { box-sizing: border-box; }
+.ap-island { text-align: left; }
+.ap-island * { box-sizing: border-box; }
+/* The open Clipboard panel is much taller than a notch: show it smaller so it fits the desktop. */
+.sp-snap > .ap-island[data-act="clipboard"] { transform: scale(.52) !important; transform-origin: 50% 0 !important; }
 
 @keyframes spotify-compact-eq { 0%, 100% { transform: scaleY(.45); } 50% { transform: scaleY(1.7); } }
 @keyframes nt-pop { 0% { transform: scale(.4) rotate(-12deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 1; } }

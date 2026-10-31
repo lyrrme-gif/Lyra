@@ -150,7 +150,7 @@ def _do(kind: str, arg, text: str):
 # conversation, is to answer "chat". These phrases can only ever be conversation, so they go straight to
 # the chat model. Deliberately tiny and fully anchored (the WHOLE utterance must match): anything with an
 # app, a verb like open/play/set, a name or a time word is left to the planner as before. Greetings like
-# "good morning" and "what can you do" are NOT here: users bind shortcuts/macros to them.
+# "good morning" and "what can you do" are NOT here: users bind shortcuts to them.
 _CHAT_ONLY = re.compile(
     r"^(?:(?:hey|hi|ok|okay)\s+)?(?:lyra\s*[,!]?\s*)?(?:"
     r"hi|hello|hey|hey there|how are you(?: today| doing)?|how'?s it going|what'?s up|how'?s your day|"
@@ -181,7 +181,7 @@ _Q_START = re.compile(r"^(?:(?:hey|ok|okay)\s+)?(?:lyra[,:]?\s+)?(?:who|whos|who
 _Q_PC = re.compile(
     r"\b(my|me|mine|this|that|these|those|here|screen|window|windows|tab|tabs|app|apps|file|files|folder|clipboard|"
     r"battery|disk|cpu|ram|memory|volume|brightness|wifi|bluetooth|computer|pc|laptop|playing|song|music|spotify|"
-    r"track|lyrics|timer|alarm|reminder|remind|note|notes|list|todo|shortcut|macro|notification|notifications|"
+    r"track|lyrics|timer|alarm|reminder|remind|note|notes|list|todo|shortcut|notification|notifications|"
     r"calendar|schedule|mail|email|message|messages|whatsapp|discord|telegram|time|date|today|tonight|weather|"
     r"temperature|open|close|play|pause|stop|start|set|turn|click|type|search|find|show|take|call|send|"
     r"you|your|lyra|mochi|settings)\b", re.IGNORECASE)

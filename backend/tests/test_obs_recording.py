@@ -34,6 +34,9 @@ class FakeObs:
         self.password, self.refuse_dir = password, refuse_dir
         self.directory = str(own_dir or folder)
         self.recording = self.paused = False
+        self.refuse_video = False
+        self.video = {"baseWidth": 2560, "baseHeight": 1440, "outputWidth": 2560, "outputHeight": 1440,
+                      "fpsNumerator": 30, "fpsDenominator": 1}
         self.requests, self.pings = [], 0
         self.srv = socket.socket()
         self.srv.bind(("127.0.0.1", 0))
@@ -122,6 +125,13 @@ class FakeObs:
         elif kind == "GetRecordStatus":
             body = {"outputActive": self.recording, "outputPaused": self.paused, "outputDuration": 7000 if self.recording else 0,
                     "outputBytes": 123456 if self.recording else 0}
+        elif kind == "GetVideoSettings":
+            body = dict(self.video)
+        elif kind == "SetVideoSettings":
+            if self.refuse_video:
+                ok, comment = False, "Video settings are in use"
+            else:
+                self.video.update(args)
         elif kind == "SetRecordDirectory":
             if self.refuse_dir:
                 ok, comment = False, "Unknown request type"
@@ -154,8 +164,8 @@ def fresh(tmp_path, monkeypatch):
         sr._client.close()
 
 
-def _use(monkeypatch, srv, password=""):
-    vals = {"obs_host": "127.0.0.1", "obs_port": srv.port, "obs_password": password}
+def _use(monkeypatch, srv, password="", quality="obs"):
+    vals = {"obs_host": "127.0.0.1", "obs_port": srv.port, "obs_password": password, "obs_quality": quality}
     monkeypatch.setattr(sr, "_pref", lambda k, d: vals.get(k, d))
 
 
@@ -325,3 +335,39 @@ def test_settings_know_the_obs_keys_and_the_old_recorder_is_gone():
     assert not [k for k in ss._DEFAULTS if k in ("record_quality", "record_encoder", "record_fps", "record_cpu", "record_capture")]
     for gone in ("record_audio.py", "record_diag.py"):
         assert not os.path.exists(os.path.join(os.path.dirname(__file__), "..", gone))
+
+
+# ── recording quality ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("quality,size,fps", [("high", (1920, 1080), 60), ("medium", (1280, 720), 30), ("low", (852, 480), 30)])
+def test_quality_presets_set_obs_output_size_and_fps(tmp_path, monkeypatch, quality, size, fps):
+    srv = FakeObs(tmp_path); _use(monkeypatch, srv, quality=quality)
+    assert sr.start()["recording"]
+    assert (srv.video["outputWidth"], srv.video["outputHeight"]) == size and srv.video["fpsNumerator"] == fps
+    assert srv.video["baseWidth"] == 2560                                    # the capture itself is never touched
+    kinds = [k for k, _ in srv.requests]
+    assert kinds.index("SetVideoSettings") < kinds.index("StartRecord")      # set before the recording starts
+    srv.close()
+
+
+def test_obs_default_quality_leaves_video_settings_alone(tmp_path, monkeypatch):
+    srv = FakeObs(tmp_path); _use(monkeypatch, srv)
+    sr.start()
+    assert "SetVideoSettings" not in [k for k, _ in srv.requests] and "GetVideoSettings" not in [k for k, _ in srv.requests]
+    srv.close()
+
+
+def test_a_small_canvas_is_never_scaled_up(tmp_path, monkeypatch):
+    srv = FakeObs(tmp_path); _use(monkeypatch, srv, quality="high")
+    srv.video.update(baseWidth=1280, baseHeight=720, outputWidth=1280, outputHeight=720)
+    sr.start()
+    assert (srv.video["outputWidth"], srv.video["outputHeight"]) == (1280, 720)
+    srv.close()
+
+
+def test_obs_refusing_video_settings_still_records(tmp_path, monkeypatch):
+    srv = FakeObs(tmp_path); _use(monkeypatch, srv, quality="high")
+    srv.refuse_video = True
+    st = sr.start()
+    assert st["recording"] and not st["error"]
+    srv.close()

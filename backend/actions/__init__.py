@@ -142,7 +142,6 @@ def try_optional_action(command: str, engine_context=None):
         ("plugins.loader", "try_plugin", True),
         ("study", "try_study", True),
         ("actions.dev", "try_dev", True),
-        ("macros", "try_macro", True),
         ("tab_sync", "try_calendar", True),
         ("google_workspace", "try_google", True),
     ):

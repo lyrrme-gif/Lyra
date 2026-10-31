@@ -11,6 +11,7 @@ import {
   type IslandMode, type IslandViewName,
 } from "../core/layout";
 import { Sound } from "../core/sound";
+import { carry as mochiCarry } from "../mascot/carry";
 import { State } from "../core/state";
 import type { KnowledgeCard, SearchResult } from "../core/state";
 import { deckHeight } from "../views/searchDeck";
@@ -40,6 +41,10 @@ import { tourSignal } from "../core/tour";
 import { visiblePoll } from "../core/visiblePoll";
 import { isReallyVisible } from "../core/visibility";
 import { PEEK_SIZES } from "../core/layout";
+
+/** Tabs that get ATTACHED_ROOM extra height in the attached position (keep in sync with the :is() list in style.css, v30). */
+const ATTACHED_ROOM = 10;
+const ATTACHED_ROOM_VIEWS = new Set<string>(["overview", "music", "recognition", "timer", "weather", "calendar", "todo", "stats", "controls", "wallpaper", "record", "volume", "clipboard"]);
 import { DEFAULT_CONTEXT, autoHidden, normalizeAutoHide, watchContext, type AutoHideContext } from "../core/autohide";
 
 /** Same margins as the Rust hit test (src-tauri/src/island.rs). Kept tight so the
@@ -202,9 +207,14 @@ export class Island {
   private screenSince: number | null = null;
   private callSince: number | null = null;
   private recordTicker: number | null = null;
-  /** false = the red pill is completely static: "REC" instead of a clock that repaints every second, and no animation.
-   *  (Recording was making the whole desktop run below 60 fps; this removes everything the island repaints during a recording.) */
-  private static readonly LIVE_REC_CLOCK = false;
+  /** true = the red pill shows a live m:ss clock (h:mm:ss past an hour) instead of the static word "REC".
+   *  The clock only touches one text node once a second. Set false to go back to the fully static pill if recording ever hurts fps. */
+  private static readonly LIVE_REC_CLOCK = true;
+  private static fmtClock(secs: number): string {
+    const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), sec = secs % 60;
+    const ss = String(sec).padStart(2, "0");
+    return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+  }
   /** Set while the SCREEN recording is paused: the clock shows this many ms, frozen (the backend does not count pauses). */
   private screenPausedMs: number | null = null;
   private promoting = false;
@@ -579,7 +589,7 @@ export class Island {
     void watchContext((c) => { this.autoCtx = c; this.syncAutoHide(); });
     // Chat is an active workspace, not a transient notification. Keep it open while
     // the user is composing/reading, including the first empty Chat launch.
-    this.fsm.holdOpen = () => State.lyricsOpen || State.view === "prompt" || State.view === "camera" || State.recognitionBusy || this.pulseBanner;
+    this.fsm.holdOpen = () => State.lyricsOpen || State.view === "prompt" || State.view === "camera" || State.recognitionBusy || this.pulseBanner || mochiCarry.active;   // mochiCarry: the Mochi is being dragged out of its tab
     this.fsm.onTransition = (from, to) => {
       // One line per open / close, with what caused it: coucou.log is where to look
       // when the island does something unexpected.
@@ -1954,7 +1964,20 @@ export class Island {
 
   // ── Geometry ────────────────────────────────────────────────────────────────
 
+  /**
+   * ATTACHED island only (the floating island is never touched): style.css pushes a tab's content 10px down so the
+   * title is not swallowed by the clipped top edge. These tabs are sized for their content, so they get those 10px
+   * back at the bottom, otherwise their last row ends up squashed against / under the rounded bottom corners.
+   */
   private targetSize(): { w: number; h: number; r: number } {
+    const s = this.targetSizeBase();
+    if (State.islandPosition === "attached" && State.mode === "expanded" && ATTACHED_ROOM_VIEWS.has(State.view) && s.h <= 270) {
+      return { ...s, h: s.h + ATTACHED_ROOM };
+    }
+    return s;
+  }
+
+  private targetSizeBase(): { w: number; h: number; r: number } {
     // The volume HUD only ever lives in the compact notch (see onVolume).
     if (this.volumeHudOn && State.mode === "compact" && !this.downloadIsSecondary()) {
       if (this.volumeHud.dataset.activityKind === "download" && this.volumeHud.dataset.downloadCompact !== "1") {
@@ -3199,7 +3222,7 @@ export class Island {
         el.classList.remove("paused");
       } else if (sec.id === "record" && this.recordingSince !== null) {
         const secs = Math.max(0, Math.floor(this.recElapsedMs() / 1000));
-        const text = !Island.LIVE_REC_CLOCK ? (this.recPaused() ? "Paused" : "REC") : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+        const text = Island.LIVE_REC_CLOCK ? Island.fmtClock(secs) : (this.recPaused() ? "Paused" : "REC");
         key = `rec|${text.length}|${this.recPaused() ? "p" : "r"}`;
         if (slot.id !== "record" || !el.querySelector(".sec-text")) {
           el.replaceChildren(h("i", { class: "sec-dot sec-rec" }), h("span", { class: "sec-text" }));
@@ -3225,7 +3248,7 @@ export class Island {
       let chip = el.querySelector<HTMLElement>(".sec-extra");
       if (withRec) {
         const rs = Math.max(0, Math.floor(this.recElapsedMs() / 1000));
-        const rt = !Island.LIVE_REC_CLOCK ? (this.recPaused() ? "Paused" : "REC") : `${Math.floor(rs / 60)}:${String(rs % 60).padStart(2, "0")}`;
+        const rt = Island.LIVE_REC_CLOCK ? Island.fmtClock(rs) : (this.recPaused() ? "Paused" : "REC");
         if (!chip) {
           chip = h("span", { class: "sec-extra", title: "Recording" }, h("i", { class: "sec-dot sec-rec" }), h("span", { class: "sec-text" }));
           el.append(chip);

@@ -10,7 +10,7 @@
 //      character is moving, ~10 Hz otherwise), and turns click-through off only while
 //      the cursor is over a rectangle the page reported (the character or its menu).
 //   3. Commands used by the page: mascot_boot, mascot_set_rects, mascot_set_active,
-//      mascot_monitor, mascot_open_chat.
+//      mascot_monitor, mascot_open_chat, mascot_raise, mascot_carry.
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
@@ -57,6 +57,9 @@ struct State {
     started: AtomicBool,
     /// Someone just saved prefs: re-read them now instead of waiting for the slow safety poll.
     refresh: AtomicBool,
+    /// The Mochi is being dragged out of the island's Mochi tab: the press began in the ISLAND window, so this
+    /// window never sees the release. The first tick the button is up, "mascot-drop" tells the page where.
+    carry: AtomicBool,
 }
 
 fn st() -> &'static State {
@@ -73,6 +76,7 @@ fn st() -> &'static State {
         screen: Mutex::new(None),
         started: AtomicBool::new(false),
         refresh: AtomicBool::new(true),
+        carry: AtomicBool::new(false),
     })
 }
 
@@ -341,6 +345,16 @@ fn cursor_loop(app: AppHandle) {
         let Ok(origin) = win.outer_position() else { continue };
         let scale = win.scale_factor().unwrap_or(1.0);
         let Some((cx, cy)) = platform::cursor_physical() else { continue };
+        // Carrying the Mochi out of the island: the button went up, so this is where it was let go (checked before
+        // the monitor test below, so a release anywhere is reported; the page clamps it onto its own screen).
+        if st().carry.load(Ordering::Relaxed) && !platform::left_button_down() {
+            st().carry.store(false, Ordering::Relaxed);
+            let _ = app.emit_to(
+                LABEL,
+                "mascot-drop",
+                CursorPayload { x: (cx - origin.x as f64) / scale, y: (cy - origin.y as f64) / scale },
+            );
+        }
         // The control thread may still be moving the overlay between displays.
         // Don't interpret a cursor position from a different display using this
         // window's old origin; overlapping desktop coordinates can otherwise
@@ -461,4 +475,25 @@ pub fn mascot_monitor(app: AppHandle, mode: String) {
 pub fn mascot_open_chat(app: AppHandle) {
     // The island's tray handler (src/main.ts) opens the Chat tab on "chat".
     let _ = app.emit_to(island::WINDOW_LABEL, "tray", "chat".to_string());
+}
+
+/// Puts the overlay above the island (and everything else that is always on top), so the Mochi is drawn over the
+/// island while it is dragged to or from it. Off and on again, because asking for "on top" twice does nothing.
+#[tauri::command]
+pub fn mascot_raise(app: AppHandle) {
+    if let Some(win) = app.get_webview_window(LABEL) {
+        let _ = win.set_always_on_top(false);
+        let _ = win.set_always_on_top(true);
+    }
+}
+
+/// The page took over a Mochi that the user is dragging out of the island's Mochi tab (`on`), or is done with it.
+/// While on, the cursor thread reports the release as "mascot-drop".
+#[tauri::command]
+pub fn mascot_carry(app: AppHandle, on: bool) {
+    st().carry.store(on, Ordering::Relaxed);
+    if on {
+        st().active.store(true, Ordering::Relaxed); // full-rate cursor from the first frame
+        mascot_raise(app);
+    }
 }

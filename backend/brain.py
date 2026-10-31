@@ -21,6 +21,7 @@ from openai import OpenAI  # Groq is OpenAI-compatible; we just change the base_
 import ui
 import perf
 import memory
+import reply_style
 from config import (
     SYSTEM_INSTRUCTIONS, CONVO_MEMORY_TURNS, CONVO_HISTORY_HARD_CAP,
     LLM_API_KEY, LLM_BASE_URL, LLM_MODEL,
@@ -206,12 +207,12 @@ def _retry_after(e: Exception) -> float:
         return 2.0
 
 
-def _chat_completion(client, model_name, messages):
+def _chat_completion(client, model_name, messages, max_tokens=None):
     """One chat call. Some models (e.g. gpt-oss on Groq) occasionally try to call
     a built-in tool such as web.run, which the API rejects with 400 tool_use_failed
     because we don't offer tools. Retry once with an explicit no-tools nudge."""
     try:
-        return client.chat.completions.create(model=model_name, messages=messages, temperature=0.2, max_tokens=_MAX_REPLY_TOKENS)
+        return client.chat.completions.create(model=model_name, messages=messages, temperature=0.2, max_tokens=max_tokens or _MAX_REPLY_TOKENS)
     except Exception as e:
         msg = str(e)
         if "tool_use_failed" not in msg and "called a tool" not in msg:
@@ -223,15 +224,16 @@ def _chat_completion(client, model_name, messages):
                        "Answer in plain text now, using only the Live Search Data above if any, "
                        "otherwise your own knowledge, and say briefly if you are unsure.",
         }]
-        return client.chat.completions.create(model=model_name, messages=nudged, temperature=0.2, max_tokens=_MAX_REPLY_TOKENS)
+        return client.chat.completions.create(model=model_name, messages=nudged, temperature=0.2, max_tokens=max_tokens or _MAX_REPLY_TOKENS)
 
 
-def _stream_reply(client, model_name, messages, on_text) -> str:
+def _stream_reply(client, model_name, messages, on_text, max_tokens=None, max_sentences=0) -> str:
     """Same request as _chat_completion, but streamed: every piece of text goes to `on_text` as it
     arrives (the voice starts on the first sentence). Raises only if the stream fails BEFORE any text
     came, so the caller can retry normally with nothing said yet; a failure half way keeps what was said."""
-    stream = client.chat.completions.create(model=model_name, messages=messages, temperature=0.2, stream=True, max_tokens=_MAX_REPLY_TOKENS)
+    stream = client.chat.completions.create(model=model_name, messages=messages, temperature=0.2, stream=True, max_tokens=max_tokens or _MAX_REPLY_TOKENS)
     parts: list = []
+    limiter = reply_style.SentenceLimiter(max_sentences) if max_sentences else None
     try:
         for chunk in stream:
             try:
@@ -242,8 +244,17 @@ def _stream_reply(client, model_name, messages, on_text) -> str:
                 continue
             if not parts:
                 perf.mark("llm_first_token")
-            parts.append(delta)
-            on_text(delta)
+            if limiter is not None:
+                delta = limiter.feed(delta)          # Short: nothing after the 2nd sentence is spoken or shown
+            if delta:
+                parts.append(delta)
+                on_text(delta)
+            if limiter is not None and limiter.done:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+                break
     except Exception as e:
         if not parts:
             raise
@@ -372,8 +383,9 @@ def ask_brain(prompt: str, history: list, intent: str = "unknown", on_text=None)
         # search_facts(prompt) once the list grows large enough that
         # relevance filtering becomes necessary.
         facts = memory.all_facts()
-        system_content = SYSTEM_INSTRUCTIONS
-        _style = _style_hint()  # Settings > AI > reply style (balanced adds nothing)
+        _rs = reply_style.current()                       # Settings > AI > Reply length & style
+        system_content = reply_style.system_prompt(SYSTEM_INSTRUCTIONS, _rs)
+        _style = _style_hint()
         if _style:
             system_content += "\n\n" + _style
         if facts:
@@ -391,7 +403,10 @@ def ask_brain(prompt: str, history: list, intent: str = "unknown", on_text=None)
         for turn in history[-CONVO_MEMORY_TURNS:]:
             messages.append({"role": "user", "content": turn["user"]})
             messages.append({"role": "assistant", "content": turn["lyra"]})
-        messages.append({"role": "user", "content": user_content})
+        _note = reply_style.user_note(_rs)                # repeated next to the question: models obey it best there
+        messages.append({"role": "user", "content": user_content + (f"\n\n{_note}" if _note else "")})
+        trace(f"reply style: {_rs} (max {reply_style.max_tokens(_rs)} tokens, "
+              f"{reply_style.max_sentences(_rs) or 'no'} sentence cap)")
 
         # ------------------------------------------------------------------
         # 7. Call Groq and measure latency
@@ -406,7 +421,7 @@ def ask_brain(prompt: str, history: list, intent: str = "unknown", on_text=None)
             _stream_rl = None
             if on_text is not None:
                 try:
-                    reply = _stream_reply(client, model_name, messages, on_text)
+                    reply = _stream_reply(client, model_name, messages, on_text, reply_style.max_tokens(_rs), reply_style.max_sentences(_rs))
                 except Exception as stream_err:
                     # Nothing was said yet: fall through to the normal request below.
                     ui.log.warning("brain: streaming failed (%s); using a normal request.", str(stream_err)[:160])
@@ -416,22 +431,22 @@ def ask_brain(prompt: str, history: list, intent: str = "unknown", on_text=None)
                 try:
                     if _stream_rl is not None:
                         raise _stream_rl
-                    response = _chat_completion(client, model_name, messages)
+                    response = _chat_completion(client, model_name, messages, reply_style.max_tokens(_rs))
                 except Exception as primary_err:
                     fb = _fallback_client()  # Settings > AI > fallback provider
                     if fb is not None:
                         ui.log.warning("brain: %s failed (%s); trying fallback provider.", model_name, str(primary_err)[:160])
                         client, model_name = fb
-                        response = _chat_completion(client, model_name, messages)
+                        response = _chat_completion(client, model_name, messages, reply_style.max_tokens(_rs))
                     elif _is_rate_limit(primary_err):
                         # No fallback set: wait the shortest sensible time (never the provider's 13-33 s) and retry once.
                         wait_s = min(_retry_after(primary_err), 4.0)
                         ui.log.warning("brain: rate limited; retrying once in %.1fs.", wait_s)
                         time.sleep(wait_s)
-                        response = _chat_completion(client, model_name, messages)
+                        response = _chat_completion(client, model_name, messages, reply_style.max_tokens(_rs))
                     else:
                         raise
-                reply = (response.choices[0].message.content or "").strip()
+                reply = reply_style.cut_sentences((response.choices[0].message.content or "").strip(), reply_style.max_sentences(_rs))
                 usage = getattr(response, "usage", None)
         elapsed = time.time() - t0
         tps = f", {usage.completion_tokens / elapsed:.1f} tok/s" if usage and elapsed > 0 else ""

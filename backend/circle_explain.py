@@ -1,6 +1,6 @@
 """Lyra — circle to explain.
 
-After Ctrl+Shift + circling something, Lyra asks what the user wants to know (circle_ask), then
+After tapping Ctrl, holding it and circling something, Lyra asks what the user wants to know (circle_ask), then
 this module turns the answer into a short guided explanation: the vision model looks at the
 circled picture and returns up to MAX_STEPS steps, each a spoken sentence plus (optionally) a shape
 to draw on the screen (circle / underline / arrow / box / line) around the thing it is talking about.

@@ -8,37 +8,22 @@
 import "./activityPreviews.css";
 import { h } from "../views/dom";
 import { SNAPSHOTS } from "./activitySnapshots";
+import { snapshotScene } from "./screenPreview";
 import type { LiveActivity } from "../core/state";
 
-/** Logical size of the "desktop" stage every snapshot is placed on (scaled to the tile by `fitStage`). */
-const STAGE_W = 420;
-
-/** Scales the fixed-size stage to the tile it sits in. */
-function fitStage(stage: HTMLElement, host: HTMLElement): void {
-  const apply = () => {
-    const w = host.clientWidth;
-    if (w > 0) stage.style.setProperty("--k", String(w / STAGE_W));
-  };
-  apply();
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(apply).observe(host);
-}
-
-/** The preview scene for one Live Activity (goes inside `.ptile-scene`). */
+/** The preview scene for one Live Activity (goes inside `.ptile-scene`): the real island DOM on the new desktop. */
 export function activityScene(id: LiveActivity): HTMLElement {
   const snap = SNAPSHOTS[id];
-  const stage = h("div", { class: "ap-stage" });
-  if (snap) {
-    stage.innerHTML = snap.html;
-    const island = stage.firstElementChild as HTMLElement | null;
-    if (island) {
-      island.classList.add("ap-island");
-      island.dataset.act = id;
-      island.style.width = `${snap.w}px`;
-      island.style.height = `${snap.h}px`;
-    }
-  }
-  const desk = h("span", { class: "mini-desk ap-desk" }, stage);
-  // Fit once the tile is in the document and has a width.
-  requestAnimationFrame(() => fitStage(stage, desk));
-  return desk;
+  const holder = h("div", {});
+  if (!snap) return snapshotScene(holder, 120, 34);
+  holder.innerHTML = snap.html;
+  const island = holder.firstElementChild as HTMLElement | null;
+  if (!island) return snapshotScene(holder, 120, 34);
+  island.classList.add("ap-island");
+  island.dataset.act = id;
+  for (const [k, v] of [["position", "relative"], ["inset", "auto"], ["margin", "0"], ["left", "0"], ["top", "0"], ["transform", "none"]]) island.style.setProperty(k, v, "important");
+  island.style.width = `${snap.w}px`;
+  island.style.height = `${snap.h}px`;
+  island.style.pointerEvents = "none";
+  return snapshotScene(island, snap.w, snap.h);
 }

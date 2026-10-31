@@ -8,3 +8,21 @@
   animation: hxFloat 1.4s ease-out forwards; }
 @keyframes hxFloat { 0% { opacity: 0; transform: translate(0, 0) scale(.6); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx, 0), -78px) scale(1.15) rotate(12deg); } }
 @media (prefers-reduced-motion: reduce) { .hx-fx { animation-duration: .01s; } }
+
+/* Dragging the Mochi out onto the screen and back (views/home.ts, mascot/carry.ts) */
+.hx-mochi-spot { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.hx-mochi-spot:active { cursor: grabbing; }
+.hx-mochi-spot .hx-mochi-host { transition: transform .4s var(--spring-pop), opacity .08s linear; }
+.hx-nest { position: absolute; left: 50%; top: 46%; width: 96px; height: 96px; margin: -48px 0 0 -48px; z-index: 0; border-radius: 50%;
+  border: 2px dashed rgba(255, 255, 255, .2); display: grid; place-items: center; text-align: center; pointer-events: none;
+  opacity: 0; transform: scale(.78); transition: opacity .25s ease, transform .4s var(--spring-pop), border-color .18s ease, background .18s ease; }
+.hx-nest span { padding: 0 12px; font: 600 10px/1.25 var(--font, system-ui, sans-serif); color: rgba(255, 255, 255, .5); }
+.hx-mochi-spot.hx-away, .hx-mochi-spot.hx-carried { cursor: default; }
+.hx-mochi-spot.hx-away .hx-nest, .hx-mochi-spot.hx-carried .hx-nest { opacity: 1; transform: scale(1); }
+.hx-mochi-spot.hx-away .hx-mochi-host, .hx-mochi-spot.hx-carried .hx-mochi-host { opacity: 0 !important; transform: scale(.55) !important; }
+.hx-mochi-spot.hx-away::after, .hx-mochi-spot.hx-carried::after { opacity: 0; }
+.hx-mochi-spot.hx-nest-hot .hx-nest { transform: scale(1.1); border-color: rgba(165, 139, 255, .95); background: rgba(165, 139, 255, .16); }
+.hx-mochi-spot.hx-nest-hot .hx-nest span { color: rgba(255, 255, 255, .9); }
+.hx-mochi-host.hx-land { animation: hxLand .6s var(--spring-pop) both; }
+@keyframes hxLand { 0% { opacity: 0; transform: scale(.55); } 35% { opacity: 1; } 60% { transform: scale(1.12); } 100% { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .hx-mochi-host.hx-land { animation-duration: .01s; } .hx-nest { transition-duration: .01s; } }

@@ -14,7 +14,8 @@ import { h, clear } from "../views/dom";
 import { FEATURES, FEATURE_GROUPS, featureEnabled, type FeatureDef } from "../core/features";
 import { filesHost } from "./files";
 import { visiblePoll, type VisiblePoll } from "../core/visiblePoll";
-import { featurePreview } from "./featurePreviews";
+import { islandScene, navScene as navScreen, themeScene } from "./screenPreview";
+import { featurePreview } from "./featureScenes";
 import { activityScene } from "./activityPreviews";
 import { onTourSignal } from "../core/tour";
 // >>> phase-8 begin
@@ -30,7 +31,7 @@ import { appsCards } from "./appsPanel";
 import { WHATSAPP_BG, WHATSAPP_GLYPH } from "./whatsappIcon";
 import { SETTINGS_GOTO_KEY } from "../core/appsApi";
 import { AUTOHIDE_HINT, AUTOHIDE_MODES, normalizeAutoHide } from "../core/autohide";
-import { createCharacter, gazeToward, type EmoteName } from "../mascot/character";
+import { createCharacter, gazeToward } from "../mascot/character";
 // >>> phase-0 begin
 import { p0KeyStatus } from "./panels/p0_keystatus";
 // <<< phase-0 end
@@ -642,16 +643,7 @@ function islandCard(notify: Prefs, extra: HTMLElement[] = []): HTMLElement {
   };
 
   for (const meta of themes) {
-    const preview = h("div", {
-      class: "theme-mini-island",
-      style: `--theme-material:${meta.material};--theme-accent:${meta.accent};--theme-glow:${meta.glow}`,
-      "aria-hidden": "true",
-    },
-      h("span", { class: "mini-dot" }),
-      h("span", { class: "mini-line one" }),
-      h("span", { class: "mini-line two" }),
-      h("span", { class: "mini-pill" }),
-    );
+    const preview = themeScene({ material: meta.material, accent: meta.accent, glow: meta.glow });
 
     const option = h("button", {
       class: `theme-option${meta.id === currentTheme ? " on" : ""}`,
@@ -1586,28 +1578,6 @@ function previewTile(label: string, on: boolean, scene: HTMLElement, onPick: () 
   return b;
 }
 
-/** shape: "notch" = flat top fused to the screen edge; "island" = floating pill. */
-function shapeScene(shape: "notch" | "island", inner = "", mochiEmote: EmoteName | null = null): HTMLElement {
-  const pill = h("span", { class: `mini-island ${shape}` });
-  pill.innerHTML = inner || '<i class="mi-dot"></i><i class="mi-bar"></i>';
-  // Only the island previews in General carry your Mochi (same character and shape as the real one).
-  if (mochiEmote) {
-    const host = h("span", { class: "mi-mochi" });
-    const mochi = createCharacter(host, { tight: true, sharp: 2 });
-    mochi.setEmote(mochiEmote);
-    onMochiShape((sh) => mochi.setShape?.(sh));
-    pill.prepend(host);
-  }
-  return h("span", { class: "mini-desk" }, pill);
-}
-
-/** Material looks of the compact island (also drawn in the live preview). */
-const ISLAND_MATERIALS: Record<string, string> = {
-  black: "background:#000;",
-  frost: "background:linear-gradient(180deg,#000 0%,rgba(8,7,6,.92) 52%,rgba(86,72,60,.62) 100%);backdrop-filter:blur(8px);",
-  glass: "background:rgba(255,255,255,.16);backdrop-filter:blur(10px) saturate(170%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28);",
-};
-
 function radioTiles(options: Array<[string, string]>, current: string, onPick: (v: string) => void, kind: (v: string) => HTMLElement): HTMLElement {
   const wrap = h("div", { class: "ptiles" });
   const render = (cur: string) => {
@@ -1626,18 +1596,11 @@ function displayCards(): { look: HTMLElement; behaviour: HTMLElement[] } {
   // The island as it will look: one big preview that follows every choice below.
   let shape = ex.shapeNotchless as "notch" | "island";
   let material = ex.compactStyle as string;
+  type Mat = "black" | "frost" | "glass";
   const live = h("div", { class: "island-live" });
   const paintLive = () => {
     clear(live);
-    const scene = shapeScene(shape, '<em class="mi-search">Search or ask Lyra</em><i class="mi-mic"></i>', "happy");
-    const pill = scene.querySelector<HTMLElement>(".mini-island")!;
-    pill.style.cssText = ISLAND_MATERIALS[material] || "";
-    const rest = shapeScene("island", "", "idle");
-    rest.querySelector<HTMLElement>(".mini-island")!.style.cssText = "background:#000;";
-    live.append(
-      h("div", { class: "il-col" }, scene, h("span", { class: "il-cap", text: "Open" })),
-      h("div", { class: "il-col" }, rest, h("span", { class: "il-cap", text: "Resting" })),
-    );
+    live.append(h("div", { class: "il-col solo" }, islandScene({ shape, material: material as Mat, state: "rest" })));
   };
 
   const notchless = radioTiles([["notch", "Notch"], ["island", "Dynamic Island"]], shape, (v) => {
@@ -1646,41 +1609,18 @@ function displayCards(): { look: HTMLElement; behaviour: HTMLElement[] } {
     // Windows screens have no hardware notch, so this is the shape that is actually drawn.
     writeIslandPosition(v === "notch" ? "attached" : "floating");
     paintLive();
-  }, (v) => shapeScene(v as "notch" | "island", "", "idle"));
+  }, (v) => islandScene({ shape: v as "notch" | "island", material: material as Mat, state: "rest" }));
 
-  const compactScene = (v: string): HTMLElement => {
-    const scene = shapeScene("island", "", "idle");
-    const pill = scene.querySelector<HTMLElement>(".mini-island");
-    if (pill) pill.style.cssText = ISLAND_MATERIALS[v] || "";
-    return scene;
-  };
+  const compactScene = (v: string): HTMLElement => islandScene({ shape, material: v as Mat, state: "rest" });
   const compactStyle = radioTiles([["black", "Black"], ["frost", "Frost"], ["glass", "Glass"]], material, (v) => {
     material = v;
     writeExtras({ compactStyle: v as "black" | "frost" | "glass" });
     paintLive();
   }, compactScene);
   // Tab navigation: the wheel (with the Mochi · Music · Chat dock) or a scroller that shows three tabs at a time.
-  const navScene = (v: string): HTMLElement => {
-    const wrap = h("div", { class: "nav-scene" });
-    wrap.style.cssText = "display:flex;align-items:center;justify-content:center;gap:4px;height:46px;";
-    const dot = (on = false) => { const d = h("i", {}); d.style.cssText = `display:block;width:10px;height:10px;border-radius:50%;background:${on ? "#fff" : "rgba(255,255,255,.35)"};`; return d; };
-    if (v === "wheel" || v === "both") {
-      const ring = h("div", {}); ring.style.cssText = "position:relative;width:40px;height:40px;border-radius:50%;border:1.5px solid rgba(255,255,255,.3);";
-      [0, 72, 144, 216, 288].forEach((a, i) => { const d = dot(i === 0); d.style.cssText += `position:absolute;left:15px;top:15px;transform:rotate(${a}deg) translateY(-15px);`; ring.append(d); });
-      wrap.append(ring);
-    }
-    if (v === "scroller" || v === "both") {
-      const cap = h("div", {}); cap.style.cssText = "display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:14px;border:1.5px solid rgba(255,255,255,.3);";
-      cap.append(dot(true), dot(), dot());
-      const more = h("span", { text: "›" }); more.style.cssText = "color:rgba(255,255,255,.6);font-weight:700;margin-left:2px;";
-      cap.append(more);
-      wrap.append(cap);
-    }
-    return wrap;
-  };
   const navStyle = radioTiles([["wheel", "Tab wheel"], ["scroller", "Scroller"], ["both", "Both"]], ex.navStyle, (v) => {
     writeExtras({ navStyle: v as "wheel" | "scroller" | "both" });
-  }, navScene);
+  }, (v) => navScreen(v as "wheel" | "scroller" | "both"));
   const hideCompact = toggle(ex.hideCompact, (v) => writeExtras({ hideCompact: v }));
   const keepClipboard = toggle(ex.keepClipboard, (v) => { writeExtras({ keepClipboard: v }); void fetch(`${LYRA}/clipboard/keep`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keep: v }) }).catch(() => undefined); });
   paintLive();
@@ -2093,7 +2033,7 @@ function featuresCards(featPrefs: Prefs): HTMLElement[] {
   const gameApps = h("input", { class: "input", value: String(featPrefs.data.game_mode_apps ?? ""), placeholder: "valorant.exe, cs2.exe" }) as HTMLInputElement;
   gameApps.addEventListener("input", () => featPrefs.set("game_mode_apps", gameApps.value));
   const gameMode = card("Game mode",
-    item("Switch Lyra's key shortcuts off while you play", "Right Ctrl, Ctrl+Win, Ctrl+Shift and Ctrl+CapsLock are fully removed during a game, so nothing of Lyra sits in the keyboard path. Press Ctrl+Alt+L to talk to her meanwhile, or say “Hey Lyra”.",
+    item("Switch Lyra's key shortcuts off while you play", "Right Ctrl, Ctrl+Win, tap-and-hold Ctrl and Ctrl+CapsLock are fully removed during a game, so nothing of Lyra sits in the keyboard path. Press Ctrl+Alt+L to talk to her meanwhile, or say “Hey Lyra”.",
       toggle(featPrefs.data.feature_game_mode !== false, (v) => featPrefs.set("feature_game_mode", v))),
     item("Treat full-screen programs as games", "Browsers, video players and slide shows are ignored.",
       toggle(featPrefs.data.game_mode_fullscreen !== false, (v) => featPrefs.set("game_mode_fullscreen", v))),
@@ -2435,7 +2375,7 @@ async function showOnboarding(opts: { replay?: boolean } = {}): Promise<void> {
       rows.push(way("Right Ctrl", "Hold it while you talk, release when you're done."));
       rows.push(way("Left Alt", "Hold it and dictate: your words are pasted into the app in front."));
       rows.push(way("Ctrl + Win", "Open the chat tab and type. It is also in the island tabs."));
-      if (choices.features.circle_ask) rows.push(way("Ctrl + Shift", "Hold it and circle something on screen to ask about it."));
+      if (choices.features.circle_ask) rows.push(way("Tap Ctrl, then hold Ctrl", "Tap Ctrl, press it again and hold it while you circle something on screen to ask about it."));
       rows.push(way("Tray icon", "Open Settings, pause Lyra, or quit. Replay this tour from Settings → Features."));
       body.append(h("div", { class:"ready-list" }, ...rows));
     }

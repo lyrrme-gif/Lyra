@@ -1129,7 +1129,8 @@ def _shortcut_summary() -> str:
             parts.append(f"{pretty(combo)} = typing mode")
     except Exception:
         pass
-    for key, default, label in (("shortcut_circle_combo", "lctrl", "circle to ask"), ("shortcut_wheel_combo", "ctrl+capslock", "tab wheel")):
+    parts.append("tap Ctrl then hold Ctrl = circle to ask")
+    for key, default, label in (("shortcut_wheel_combo", "ctrl+capslock", "tab wheel"),):
         try:
             combo = settings_store.get(key)
             combo = default if combo is None else str(combo)
@@ -1199,6 +1200,11 @@ def main():
         record_hotkey.apply()
     except Exception as e:
         ui.log.debug("record hotkeys not started: %s", e)
+    try:    # the other keyboard shortcuts (play / pause, next, open a tab ...): each has its own key in Settings -> Shortcuts
+        import hotkeys
+        hotkeys.apply()
+    except Exception as e:
+        ui.log.debug("keyboard shortcuts not started: %s", e)
     recognizer = sr.Recognizer()
 
     # Build the Windows app index once at startup. This lets Lyra launch

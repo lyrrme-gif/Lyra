@@ -116,7 +116,7 @@ class Base(unittest.TestCase):
 class Routing(Base):
     def test_not_ours_returns_none(self):
         for phrase in ["open chrome", "open notes.txt in code", "what is the error rate of this model",
-                       "run macro hello", "run routine morning", "hello there", "play some music",
+                       "run routine morning", "hello there", "play some music",
                        "explain this screen", "delete the file test.txt"]:
             self.assertIsNone(dev.try_dev(phrase, {}), phrase)
 
@@ -277,7 +277,7 @@ class RunScript(Base):
     def test_no_allowed_folders(self):
         dev._update(lambda c: c.__setitem__("allowed_folders", []))
         self.assertIn("No folders are allowed", dev.try_dev("run hello.py", {}))
-        self.assertIsNone(dev.try_dev("run macro hello", {}))
+        self.assertIsNone(dev.try_dev({}))
 
     def test_ambiguous_name(self):
         sub = self.allowed / "sub"; sub.mkdir()

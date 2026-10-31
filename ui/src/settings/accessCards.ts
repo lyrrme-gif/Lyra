@@ -1,7 +1,6 @@
-// Settings → Features: the three things that can act on, or read from, your PC.
+// Settings → Features: the things that can act on, or read from, your PC.
 //   • Screen guide: what Lyra may do (point only / ask before each click / whole task).
 //   • Google Calendar & Gmail: sign in (read-only), see the state, disconnect.
-//   • Macros: what is recorded, where it is stored, and delete.
 // The on/off switches are the normal Features rows; this file adds the details.
 
 import { whenVisible } from "./lazy";
@@ -99,47 +98,6 @@ function googleCard({ card, item, lyra }: AccessDeps): HTMLElement {
   return googleBox;
 }
 
-interface MacroInfo { rules: string[]; path: string; macros: Array<{ name: string; steps: number; duration: number; created: string }> }
-
-function macrosCard({ card, item, lyra }: AccessDeps): HTMLElement {
-  const rules = h("div", { class: "hint", style: "display:flex;flex-direction:column;gap:6px" });
-  const list = h("div", { style: "display:flex;flex-direction:column;gap:6px" });
-  const where = h("span", { class: "hint" });
-  const status = h("span", { class: "hint", style: "margin-left:10px" });
-  const wipe = h("button", { class: "btn", type: "button", text: "Delete all macros" }) as HTMLButtonElement;
-  const render = async () => {
-    const info = await api<MacroInfo>(lyra, "/macros");
-    if (!info) { note(status, down(), false); return; }
-    rules.replaceChildren(...info.rules.map((t) => h("span", { text: `• ${t}` })));
-    where.textContent = `Stored in: ${info.path}`;
-    wipe.disabled = info.macros.length === 0;
-    list.replaceChildren(...(info.macros.length ? info.macros.map((m) => {
-      const del = h("button", { class: "btn", type: "button", text: "Delete" }) as HTMLButtonElement;
-      del.addEventListener("click", async () => {
-        if (!window.confirm(`Delete the macro “${m.name}”?`)) return;
-        await api(lyra, "/macros/delete", { name: m.name });
-        void render();
-      });
-      const when = m.created ? ` · ${m.created.slice(0, 10)}` : "";
-      return h("div", { style: "display:flex;align-items:center;gap:10px" },
-        h("span", { style: "flex:1", text: `${m.name} — ${m.steps} steps${when}` }), del);
-    }) : [h("span", { class: "hint", text: "No macros saved." })]));
-  };
-  wipe.addEventListener("click", async () => {
-    if (!window.confirm("Delete ALL macros? This can't be undone.")) return;
-    const r = await api<{ deleted: number }>(lyra, "/macros/delete", { all: true });
-    note(status, r ? `Deleted ${r.deleted}.` : down(), !!r);
-    void render();
-  });
-  void render();
-  return card("Macros — your privacy",
-    item("What is recorded", "Read this before you record one.", rules),
-    item("Where it is stored", "Plain JSON in Lyra's data folder. Nothing leaves this PC.", where),
-    item("Your macros", "Lyra asks before every recording and before every replay. Esc twice stops a replay.", list),
-    item("Delete everything", "Removes the file for good.", h("span", {}, wipe, status)),
-  );
-}
-
 export function accessCards(deps: AccessDeps): HTMLElement[] {
-  return [guideCard(deps), googleCard(deps), macrosCard(deps)];
+  return [guideCard(deps), googleCard(deps)];
 }

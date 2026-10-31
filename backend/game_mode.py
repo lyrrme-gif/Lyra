@@ -4,7 +4,7 @@ While a game is running, Lyra removes EVERY global key listener she owns, so not
 keyboard path of the game (or of its anti-cheat):
 
     Right Ctrl      push-to-talk + Ctrl+Win chat   ptt.py   a low-level keyboard hook  -> hook uninstalled, thread ended
-    Ctrl+Shift      Circle to ask  circle_ask.py a key-state poller         -> poller thread ended
+    Ctrl tap + hold Circle to ask  circle_ask.py a key-state poller         -> poller thread ended
     Ctrl+CapsLock   tab wheel      tab_wheel.py  a key-state poller         -> poller thread ended
 
 While game mode is on none of them exists: no hook, no polling. When the game closes, the ones that were
@@ -49,7 +49,7 @@ _WM_HOTKEY, _WM_QUIT = 0x0312, 0x0012
 _HOTKEY_ID = 0x4C59          # "LY"
 
 # The key listeners game mode removes: module name -> the Settings feature that owns it (None = always on).
-_COMPONENTS: tuple[tuple[str, str | None], ...] = (("ptt", None), ("circle_ask", "circle_ask"), ("tab_wheel", "tab_wheel"))
+_COMPONENTS: tuple[tuple[str, str | None], ...] = (("ptt", None), ("circle_ask", "circle_ask"), ("tab_wheel", "tab_wheel"), ("hotkeys", None))
 
 # Full-screen windows that are not games: never trigger game mode (lower-case file names).
 _NOT_GAMES = frozenset({

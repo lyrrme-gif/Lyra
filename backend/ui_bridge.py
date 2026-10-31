@@ -34,7 +34,7 @@ _PREF_PATHS = ("/settings/privacy", "/settings/notifications", "/settings/ai", "
 # Endpoints that show or change personal data. Browsers always send Origin on cross-site
 # requests, so only Lyra's own windows (and curl, which sends none) may use these.
 _GUARDED = ("/clipboard", "/memory", "/shortcuts", "/settings/export", "/settings/import", 
-            "/settings/reset", "/backend/", "/logs/", "/about", "/volume/", "/diagnostics", "/screen/", "/todos", "/calendar", "/schedule", "/routines", "/stats", "/controls", "/wallpaper", "/files/", "/plugins", "/apps", "/gcal", "/google/", "/macros", "/record", "/camera", "/study", "/mascot", "/dictation", "/voice/offline", "/trace", "/settings-log", "/spotify/play")
+            "/settings/reset", "/backend/", "/logs/", "/about", "/volume/", "/diagnostics", "/screen/", "/todos", "/calendar", "/schedule", "/routines", "/stats", "/controls", "/wallpaper", "/files/", "/plugins", "/apps", "/gcal", "/google/", "/record", "/camera", "/study", "/mascot", "/dictation", "/voice/offline", "/trace", "/settings-log", "/spotify/play")
 _OWN_ORIGINS = {
     "tauri://localhost", "http://tauri.localhost", "https://tauri.localhost",
     "http://localhost:1420", "http://127.0.0.1:1420",
@@ -696,10 +696,6 @@ class Handler(BaseHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             self._json(200, ollama_support.status(probe=(qs.get("probe") or [""])[0] in ("1", "true")))
             return
-        if parsed.path == "/macros":
-            import macros
-            self._json(200, macros.privacy_info())          # rules, file path and the saved macros (never their keystrokes)
-            return
         if parsed.path == "/google/status":
             import google_workspace
             self._json(200, google_workspace.status())
@@ -1056,14 +1052,6 @@ class Handler(BaseHTTPRequestHandler):
             import google_workspace
             self._json(200, {"ok": True, "message": google_workspace.connect()})
             return
-        if parsed.path == "/macros/delete":
-            import macros
-            if msg.get("all") is True:
-                self._json(200, {"ok": True, "deleted": macros.delete_all()})
-            else:
-                ok = macros.delete_macro(str(msg.get("name") or ""))
-                self._json(200, {"ok": ok, "deleted": 1 if ok else 0})
-            return
         if parsed.path == "/google/disconnect":
             import google_workspace
             self._json(200, {"ok": True, "message": google_workspace.disconnect()})
@@ -1324,6 +1312,12 @@ class Handler(BaseHTTPRequestHandler):
                     record_hotkey.apply()
                 except Exception as e:
                     log.warning("record hotkeys apply failed: %s", e)
+            if any(str(k).startswith("shortcut_") and str(k).endswith("_combo") for k in msg):
+                try:
+                    import hotkeys
+                    hotkeys.apply()
+                except Exception as e:
+                    log.warning("keyboard shortcuts apply failed: %s", e)
             self._json(200, {"ok": True, **data})
             return
 
@@ -1730,7 +1724,7 @@ def start_bridge() -> bool:
     try:
         if _ss.feature_on("circle_ask"):
             import circle_ask
-            # Hold Ctrl+Shift and circle something on screen; the answer runs as a normal command.
+            # Tap Ctrl, then hold it, and circle something on screen; the answer runs as a normal command.
             circle_ask.start(on_ask=_handle_chat_message)
     except Exception as e:  # optional; never block the bridge
         log.warning("Circle to ask failed to start: %s", e)
@@ -1743,7 +1737,7 @@ def start_bridge() -> bool:
         log.warning("Tab wheel shortcut failed to start: %s", e)
     try:
         import game_mode
-        # While a game runs, the key listeners (Right Ctrl, Ctrl+Win, Ctrl+Shift, Ctrl+CapsLock) are removed. The watcher
+        # While a game runs, the key listeners (Right Ctrl, Ctrl+Win, tap-and-hold Ctrl, Ctrl+CapsLock) are removed. The watcher
         # reads the "Game mode" switch every poll, so Settings works both ways without a restart.
         game_mode.start(_push_event)
     except Exception as e:  # optional; never block the bridge

@@ -513,11 +513,6 @@ export function buildApps(onResize?: () => void): ViewHost {
     }
     paintLightbox();
     syncBig();
-    const rest = apps.filter((x) => !x.connected);
-    if (rest.length && !stack.length && !current?.compose) {
-      foot.replaceChildren(h("span", { text: `${rest.map((x) => x.title).join(", ")} ${rest.length > 1 ? "are" : "is"} not set up. ` }),
-        h("button", { class: "ap-link", type: "button", text: "Open Settings", onclick: (e: Event) => { e.stopPropagation(); openSettings(); } }));
-    }
   }
 
   async function refreshThread(force = false): Promise<void> {

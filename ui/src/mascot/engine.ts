@@ -6,14 +6,13 @@ import { createCharacter, type Character, type EmoteName } from "./character";
 import { native, savePref, type MonitorMode, type Rect } from "./native";
 import type { Overlay } from "./overlay";
 import { emitAway, emitMochiSound } from "./dock";
+import { emitCarryState, emitNestQuery, type CarryStart, type NestInfo } from "./carry";
 import { MOCHI_KINDS, mochiMode } from "../core/mochiSound";
+import { CHAR_DEFS, RAGE_LINES } from "./characters";
 import { isReallyVisible, onVisibilityChange } from "../core/visibility";
 
 export type SizeName = "small" | "medium" | "large";
 export const SIZE_PX: Record<SizeName, number> = { small: 64, medium: 84, large: 112 };
-
-/** What the Knight says as the pokes pile up (poke 1 = nothing, he just draws the nail). */
-const KNIGHT_LINES = ["", "...", "Stop.", "Enough!", "I WARN YOU!", "NO MORE!!"];
 
 export interface DrawSpec { shape: string; x0: number; y0: number; x1: number; y1: number }   // 0-1 fractions of the screen
 export interface TourStep { x: number; y: number; text?: string; ms?: number; emote?: EmoteName; draw?: DrawSpec }
@@ -42,6 +41,13 @@ const HOME_Y = 40;
 const DOCK_BODY_PX = 30;      // body width of the Mochi inside the notch (see notchMochi.ts)
 const BODY_W_FRAC = 0.684;    // body width / character box width
 const AWAY_BEAT_MS = 4000;
+// Dragging the Mochi between the island and the screen (see carry.ts).
+const CARRY = { k: 90, maxV: 2600 };         // follows the cursor a little tighter than the old follow
+const BODY_CENTRE = 58 / 120;                // the body's centre sits this far (of the box) above the bottom anchor
+const CARRY_FAILSAFE_MS = 25_000;            // a carry whose release never arrived is let go after this long
+const ZONE_MARGIN = 18;                      // how far outside the island's shape still counts as "on the island"
+const NOTCH_ZONE = { halfW: 170, h: 84 };    // the notch area: counts while the island is hidden or only a notch
+const HOP_MS = 560;                          // the little bounce when it is put down on the screen
 const SLEEP_AFTER_MS = 180_000;
 const EMOTES = new Set<string>([
   "idle", "happy", "think", "talk", "listen", "surprised", "sad", "sleep", "wave", "point", "celebrate", "error", "dizzy",
@@ -118,6 +124,17 @@ export class Engine {
   private stay = false;                                      // "Mochi stays on screen": never docks by itself
 
   private dragging = false;
+  // Put down on the screen by the user: it stays there until it is dragged back onto the island (or sent home).
+  private placed: { x: number; y: number } | null = null;
+  // Held in the cursor's hand after being pulled out of the island's Mochi tab (the release comes from Rust).
+  private carry: { gx: number; gy: number; pop: number; pop0: number; since: number } | null = null;
+  // A flight back into the island: eased, with an arc, ending in dock().
+  private flight: { t0: number; dur: number; arc: number; from: { x: number; y: number; p: number }; to: { x: number; y: number; p: number }; done: () => void } | null = null;
+  private nest: (NestInfo & { at: number }) | null = null;
+  private overZone = false;        // held above the island: it will land there
+  private lastNestQ = 0;
+  private hop = 0;                 // when it was put down (the bounce), 0 = none
+  private pop = 1;                 // the scale last applied (1 = full size, small = shrunk into the notch)
   private away = false;           // true while the Mochi is out of the notch
   private awayBeat = 0;
   private homeTimer = 0;
@@ -179,7 +196,7 @@ export class Engine {
   }
 
   /** "Stay on screen" setting, or kept out after an explanation. */
-  private stays(): boolean { return this.stay || this.keepOut; }
+  private stays(): boolean { return this.stay || this.keepOut || !!this.placed; }
 
   /** Stay on screen: the Mochi comes out and parks by the subtitles; off: it goes back to the notch. */
   setStay(on: boolean): void {
@@ -187,7 +204,7 @@ export class Engine {
     this.stay = on;
     if (this.suspended || this.dragging) return;
     if (on) { if (!this.away && !this.scripted) void this.goPark(); }
-    else if (this.away && !this.atCaption && !this.scripted && !this.keepOut) void this.comeHome();
+    else if (this.away && !this.atCaption && !this.scripted && !this.keepOut && !this.placed) void this.comeHome();
   }
 
   setCursor(x: number, y: number): void {
@@ -232,7 +249,7 @@ export class Engine {
     if (this.suspended) return;
     this.caption = { w: Math.max(40, c.w), h: Math.max(30, c.h), lift: Math.max(0, c.lift ?? 0) };
     if (this.atCaption) { this.holdAtCaption(); return; }
-    if (this.scripted) return; // a tour / goto / point owns the Mochi right now
+    if (this.scripted || this.carry || this.flight) return; // a tour / goto / point / drag owns the Mochi right now
     void this.goCaption();
   }
 
@@ -295,6 +312,7 @@ export class Engine {
 
   /** One mascot event from the backend (see the event contract in the plan). */
   command(c: MascotCmd): void {
+    if ((this.carry || this.flight) && c.cmd !== "cursor") return;   // in the user's hand (or flying in): not now
     const num = (v: unknown, d: number) => (typeof v === "number" && isFinite(v) ? v : d);
     switch (c.cmd) {
       case "say": this.wake(); void this.doSay(String(c.text ?? ""), num(c.ms, 4000)); break;
@@ -316,6 +334,7 @@ export class Engine {
   }
 
   destroy(): void {
+    if (this.carry) void native.carry(false);
     this.dead = true;
     cancelAnimationFrame(this.raf);
     window.clearTimeout(this.timer);
@@ -325,10 +344,168 @@ export class Engine {
     this.actor.remove();
   }
 
+  // ── Dragging between the island and the screen (see carry.ts) ─────────────
+  /** The island's shape and where its Mochi tab keeps the Mochi (answer to our query, see queryNest). */
+  setNest(n: NestInfo): void { this.nest = { ...n, at: performance.now() }; }
+
+  private queryNest(): void { this.lastNestQ = performance.now(); emitNestQuery(); }
+  private freshNest(): NestInfo | null {
+    return this.nest && performance.now() - this.nest.at < 4000 ? this.nest : null;
+  }
+
+  /** Is (x, y) on the island? Its real shape when the island told us, and always the notch area. */
+  private overIsland(x: number, y: number): boolean {
+    const n = this.freshNest();
+    if (n && n.rect.w > 0 && n.rect.h > 0) {
+      const ox = this.W / 2 - n.winW / 2;
+      const m = ZONE_MARGIN;
+      if (x >= ox + n.rect.x - m && x <= ox + n.rect.x + n.rect.w + m && y >= n.rect.y - m && y <= n.rect.y + n.rect.h + m) return true;
+    }
+    return Math.abs(x - this.W / 2) <= NOTCH_ZONE.halfW && y <= NOTCH_ZONE.h;
+  }
+
+  /** The user pulled the Mochi out of the island's Mochi tab: it hops out of the tab into the cursor's hand. */
+  carryStart(c: CarryStart): void {
+    if (this.suspended || this.gaming || this.dead) { emitCarryState({ end: "island" }); return; }   // nowhere to put it down
+    window.clearTimeout(this.homeTimer);
+    window.clearTimeout(this.keepOutTimer);
+    this.cancelFlight();
+    this.stop();
+    this.atCaption = false;
+    this.keepOut = false;
+    this.placed = null;
+    this.setMonitor("island");
+    // Starts exactly where the Mochi sits in the tab (island coordinates -> this window's), at the tab's size.
+    const pop0 = clamp(c.body / (BODY_W_FRAC * this.size), 0.4, 3);
+    this.pos = { x: this.W / 2 - c.winW / 2 + c.fx, y: c.fy + pop0 * this.size * BODY_CENTRE };
+    this.vel = { x: 0, y: 0 };
+    if (!this.away) {
+      this.away = true;
+      this.schedule();
+      this.actor.style.display = "";
+      this.ch.setActive?.(true);
+      this.awayBeat = performance.now();
+      emitAway(true);
+    }
+    this.setPop(pop0);
+    this.carry = { gx: c.gx, gy: c.gy, pop: pop0, pop0, since: performance.now() };
+    this.dragging = true;
+    this.actor.classList.add("dragging");
+    this.wake();
+    this.lastMoveAt = performance.now();
+    this.shownEmote = null;
+    this.queryNest();
+    void native.carry(true);     // Rust reports where the button is let go ("mascot-drop") and raises this window
+  }
+
+  /** The button was let go (Rust), at (x, y) in this window; outside the screen = wherever it was last. */
+  carryDrop(x: number, y: number): void {
+    const c = this.carry;
+    if (!c) return;
+    this.carry = null;
+    void native.carry(false);
+    this.dragging = false;
+    this.actor.classList.remove("dragging");
+    const ok = Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x < this.W && y < this.H;
+    if (ok) this.cursor = { x, y, seen: true };
+    this.releaseMochi(this.cursor.seen ? this.cursor.x : this.pos.x, this.cursor.seen ? this.cursor.y : this.pos.y);
+  }
+
+  /** Let go of the Mochi (from either direction): over the island it flies in, anywhere else it stays on the screen. */
+  private releaseMochi(x: number, y: number): void {
+    this.overZone = false;
+    if (this.overIsland(x, y)) this.dockIn();
+    else this.placeHere();
+  }
+
+  /** Put down on the screen: a little bounce, and it stays there until it is dragged back onto the island. */
+  private placeHere(): void {
+    const s = this.size;
+    this.pos.x = clamp(this.pos.x, s / 2, this.W - s / 2);
+    this.pos.y = clamp(this.pos.y, s, this.H);
+    this.placed = { x: this.pos.x, y: this.pos.y };
+    this.keepOut = false;
+    this.vel = { x: 0, y: 0 };
+    this.hop = performance.now();
+    this.lastMoveAt = performance.now();
+    this.scriptEmote = { name: "happy", until: performance.now() + 1500 };
+    emitCarryState({ end: "screen" });
+  }
+
+  /** Flies into the island: into the Mochi tab where its Mochi sits, or else into the notch; then it docks. */
+  private dockIn(): void {
+    const n = this.freshNest();
+    let to: { x: number; y: number; p: number };
+    if (n?.spot) {
+      const p = clamp(n.spot.body / (BODY_W_FRAC * this.size), 0.4, 3);
+      to = { x: this.W / 2 - n.winW / 2 + n.spot.cx, y: n.spot.cy + p * this.size * BODY_CENTRE, p };
+    } else {
+      const h = this.homePos();
+      to = { x: h.x, y: h.y, p: clamp(DOCK_BODY_PX / (BODY_W_FRAC * this.size), 0.3, 0.9) };
+    }
+    const dist = Math.hypot(to.x - this.pos.x, to.y - this.pos.y);
+    this.flyTo(to, clamp(280 + dist * 0.5, 340, 760), clamp(dist * 0.2, 16, 90), () => {
+      this.placed = null;
+      this.scripted = false;
+      this.scriptEmote = null;
+      this.dock();
+      emitCarryState({ end: "island" });
+    });
+  }
+
+  private flyTo(to: { x: number; y: number; p: number }, dur: number, arc: number, done: () => void): void {
+    this.stop();
+    const now = performance.now();
+    this.flight = { t0: now, dur, arc, from: { x: this.pos.x, y: this.pos.y, p: this.pop }, to, done };
+    this.vel = { x: 0, y: 0 };
+    this.scripted = true;
+    this.scriptEmote = { name: "happy", until: now + dur + 250 };
+    this.setFacing(to.x >= this.pos.x ? 1 : -1);
+  }
+
+  /** A script (or a new drag) takes over in mid-flight: the Mochi stays out, so the island's tab keeps its nest. */
+  private cancelFlight(): void {
+    if (!this.flight) return;
+    this.flight = null;
+    emitCarryState({ end: "screen" });
+  }
+
+  /** Where the held Mochi's anchor goes: the cursor keeps hold of the same spot on its body while it shrinks. */
+  private carryTarget(): { x: number; y: number } | null {
+    const c = this.carry;
+    if (!c || !this.cursor.seen) return null;
+    const k = c.pop / c.pop0;
+    return {
+      x: clamp(this.cursor.x - c.gx * k, this.size / 2, this.W - this.size / 2),
+      y: this.cursor.y - c.gy * k + c.pop * this.size * BODY_CENTRE,
+    };
+  }
+
+  private stepFlight(now: number): void {
+    const f = this.flight;
+    if (!f) return;
+    const t = clamp((now - f.t0) / f.dur, 0, 1);
+    const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;      // ease in and out
+    this.pos.x = f.from.x + (f.to.x - f.from.x) * e;
+    this.pos.y = f.from.y + (f.to.y - f.from.y) * e - Math.sin(Math.PI * t) * f.arc;   // a little hop on the way
+    this.setPop(f.from.p + (f.to.p - f.from.p) * e);
+    this.vel = { x: 0, y: 0 };
+    if (t >= 1) { this.flight = null; f.done(); }
+  }
+
+  /** How high the bounce lifts it right now (px): two decaying hops after it is put down. */
+  private hopLift(now: number): number {
+    if (!this.hop) return 0;
+    const t = (now - this.hop) / HOP_MS;
+    if (t >= 1) { this.hop = 0; return 0; }
+    return Math.abs(Math.sin(t * Math.PI * 2.5)) * 26 * (1 - t);
+  }
+
   // ── Scripts (say / goto / point / tour / home) ────────────────────────────
   private begin(): number {
     window.clearTimeout(this.homeTimer);
     window.clearTimeout(this.keepOutTimer);
+    this.cancelFlight();
     this.atCaption = false;
     this.leave();
     this.runId++;
@@ -343,7 +520,7 @@ export class Engine {
   private async end(id: number): Promise<void> {
     if (id !== this.runId) return;
     if (this.stays() && this.away && !this.forceHome) {   // stays out: park by the subtitles instead of going home
-      const spot = this.captionSpot();
+      const spot = this.placed ?? this.captionSpot();      // where the user put it down, else beside the subtitles
       await this.walkTo(spot.x, spot.y, WALK);
       if (id !== this.runId) return;
       this.scripted = false;
@@ -387,6 +564,7 @@ export class Engine {
 
   private async comeHome(): Promise<void> {
     this.keepOut = false;
+    this.placed = null;
     if (!this.away) return;
     const id = this.begin();
     this.scripted = true;
@@ -397,16 +575,14 @@ export class Engine {
     this.forceHome = false;
   }
 
-  /** After the user drags it somewhere, it walks home by itself. */
-  private scheduleHome(ms: number): void {
-    window.clearTimeout(this.homeTimer);
-    this.homeTimer = window.setTimeout(() => { if (!this.dragging && !this.stays()) void this.comeHome(); }, ms);
-  }
-
   /** Scale: shrunk to the notch size at home, full size once it is a little way out. */
   private applyPop(dist: number): void {
     const min = clamp(DOCK_BODY_PX / (BODY_W_FRAC * this.size), 0.3, 0.9);
-    const pop = min + (1 - min) * clamp((dist - 14) / 200, 0, 1);
+    this.setPop(min + (1 - min) * clamp((dist - 14) / 200, 0, 1));
+  }
+
+  private setPop(pop: number): void {
+    this.pop = pop;
     this.scaler.style.transform = `scale(${((this.size / 120) * pop).toFixed(3)})`;
   }
 
@@ -458,7 +634,11 @@ export class Engine {
     if (!this.atCaption) return;
     this.atCaption = false;
     if (!this.away) return;
-    if (this.stays()) { this.scripted = false; this.scriptEmote = null; return; } // stays where it is, beside the subtitles
+    if (this.stays()) {                       // stays out: beside the subtitles, or back where the user put it down
+      this.scripted = false; this.scriptEmote = null;
+      if (this.placed) void this.walkTo(this.placed.x, this.placed.y, WALK);
+      return;
+    }
     void this.comeHome();
   }
 
@@ -598,17 +778,18 @@ export class Engine {
       this.ov.hideBubble();
       window.clearTimeout(this.keepOutTimer);          // not stuck on the screen: back to the island after a few seconds
       this.keepOutTimer = window.setTimeout(() => {
-        if (this.keepOut && !this.stay && !this.dragging && id === this.runId) void this.comeHome();
+        if (this.keepOut && !this.stay && !this.placed && !this.dragging && id === this.runId) void this.comeHome();
       }, 6000);
       return;
     }
-    await this.goHome(id);
+    if (!this.placed) await this.goHome(id);
     if (id !== this.runId) return;
     await this.end(id);
   }
 
   private async doHome(): Promise<void> {
     this.keepOut = false;
+    this.placed = null;
     const id = this.begin();
     this.scripted = true;
     this.setMonitor("island");
@@ -659,6 +840,8 @@ export class Engine {
       if (this.gaming) return;                        // never take a click away from the game
       if (e.button !== 0) return;
       this.actor.setPointerCapture(e.pointerId);
+      void native.raise();             // drawn over the island too, so it can be dragged onto it
+      this.queryNest();
       down = { x: e.clientX, y: e.clientY, gx: e.clientX - this.pos.x, gy: e.clientY - this.pos.y };
       moved = false;
     });
@@ -668,6 +851,7 @@ export class Engine {
         moved = true;
         this.dragging = true;
         this.actor.classList.add("dragging");
+        this.cancelFlight();
         this.stop();
         this.wake();
       }
@@ -684,14 +868,14 @@ export class Engine {
       this.dragging = false;
       this.actor.classList.remove("dragging");
       try { this.actor.releasePointerCapture(e.pointerId); } catch { /* already released */ }
-      if (wasDrag) this.scheduleHome(4000);
+      if (wasDrag) this.releaseMochi(e.clientX, e.clientY);     // onto the island: it flies in; anywhere else: it stays there
       if (!wasDrag) {
         this.wake();
         const now = performance.now();
         taps.push(now);
         while (taps.length && now - taps[0] > 3000) taps.shift();
-        if (this.shapeId === "knight") {
-          // The Knight never gets dizzy: every poke in a row (while he is still angry) draws more of his nail and makes him angrier.
+        if (CHAR_DEFS[this.shapeId]) {
+          // No Mochi gets dizzy any more: every poke in a row (while it is still angry) makes it angrier, each in its own way (see RAGE_LINES in characters.ts).
           this.knightRage = now - this.knightLast > 4200 ? 1 : Math.min(6, this.knightRage + 1);
           this.knightLast = now;
           const lvl = this.knightRage;
@@ -700,7 +884,7 @@ export class Engine {
           void mochiMode().then((m) => {
             if (m === "speak") return;
             emitMochiSound("rage");
-            const line = KNIGHT_LINES[lvl - 1];
+            const line = RAGE_LINES[this.shapeId]?.[lvl - 1];
             if (line) this.ov.say(line, 1500);
           });
         } else if (taps.length >= 5) {
@@ -727,7 +911,7 @@ export class Engine {
       window.clearTimeout(petTimer);
       petTimer = window.setTimeout(() => {
         if (this.dragging || this.scriptEmote || this.asleep || this.gaming) return;
-        if (this.shapeId === "knight" && performance.now() - this.knightLast < 6000) return;   // still angry: no cuddles
+        if (performance.now() - this.knightLast < 6000) return;   // still angry: no cuddles
         this.scriptEmote = { name: Math.random() < 0.7 ? "love" : "shy", until: performance.now() + 2600 };
       }, 1300);
     });
@@ -810,6 +994,7 @@ export class Engine {
       return;
     }
     if (now - this.awayBeat > AWAY_BEAT_MS) { this.awayBeat = now; emitAway(true); }
+    if (this.carry && now - this.carry.since > CARRY_FAILSAFE_MS) this.carryDrop(-1, -1);   // the release never came
 
     // Idle behaviour: wander after 20 s, sleep after 3 min.
     if (!this.scripted && !this.dragging && !this.asleep && !this.music && idleFor > SLEEP_AFTER_MS) {
@@ -830,13 +1015,18 @@ export class Engine {
     // Where to go.
     let target: { x: number; y: number } | null = null;
     let params = FOLLOW;
-    if (!this.dragging) {
+    if (this.carry) {
+      target = this.carryTarget();                  // held in the cursor's hand
+      params = CARRY;
+    } else if (!this.dragging) {
       if (this.walk) { target = this.walk; params = this.walk.params; }
       // Cursor tracking is for gaze only. Keep the body parked unless a
       // scripted walk or idle wander explicitly gives it a target.
     }
 
-    if (target) {
+    if (this.flight) {
+      this.stepFlight(now);                         // flying into the island
+    } else if (target) {
       const c = 2 * Math.sqrt(params.k) * 0.92;
       this.vel.x += (params.k * (target.x - this.pos.x) - c * this.vel.x) * dt;
       this.vel.y += (params.k * (target.y - this.pos.y) - c * this.vel.y) * dt;
@@ -855,7 +1045,24 @@ export class Engine {
     }
     this.pos.x = clamp(this.pos.x, this.size / 2, this.W - this.size / 2);
     this.pos.y = clamp(this.pos.y, HOME_Y, this.H);
-    { const h = this.homePos(); this.applyPop(Math.hypot(this.pos.x - h.x, this.pos.y - h.y)); }
+    if (this.carry) {                               // grows from the tab's size to its normal size as it leaves
+      this.carry.pop += (1 - this.carry.pop) * (1 - Math.exp(-dt * 9));
+      this.setPop(this.carry.pop);
+    } else if (this.flight) {
+      // stepFlight set the scale
+    } else if (this.placed) {                       // put down by the user: full size wherever it is (even near the notch)
+      this.setPop(this.pop + (1 - this.pop) * (1 - Math.exp(-dt * 10)));
+    } else {
+      const h = this.homePos();
+      this.applyPop(Math.hypot(this.pos.x - h.x, this.pos.y - h.y));
+    }
+
+    // Held above the island (either direction): it looks happy and the island lights up its nest.
+    if (this.dragging) {
+      const over = this.cursor.seen && this.overIsland(this.cursor.x, this.cursor.y);
+      if (over !== this.overZone) { this.overZone = over; emitCarryState({ over }); }
+      if (now - this.lastNestQ > 300) this.queryNest();   // keep the island's shape fresh while dragging
+    }
 
     const speed = Math.hypot(this.vel.x, this.vel.y);
 
@@ -898,7 +1105,8 @@ export class Engine {
     if (want !== this.shownEmote) { this.shownEmote = want; this.ch.setEmote(want); }
 
     // Place everything.
-    this.actor.style.transform = `translate(${(this.pos.x - this.size / 2).toFixed(1)}px, ${(this.pos.y - this.size).toFixed(1)}px)`;
+    const lift = this.hopLift(now);
+    this.actor.style.transform = `translate(${(this.pos.x - this.size / 2).toFixed(1)}px, ${(this.pos.y - this.size - lift).toFixed(1)}px)`;
     this.ov.placeBubble(this.pos.x, this.pos.y, this.size, this.W, this.H);
 
     const active = this.dragging || this.scripted || !!this.walk || speed > 8;
@@ -916,7 +1124,7 @@ export class Engine {
     if (this.gaming) return "gaming";                  // a game is in front: it plays too
     if (this.scriptEmote && (this.scriptEmote.until === 0 || now < this.scriptEmote.until)) return this.scriptEmote.name;
     this.scriptEmote = null;
-    if (this.dragging) return "surprised";
+    if (this.dragging) return this.overZone ? "happy" : "surprised";
     if (this.asleep) return "sleep";
     if (this.stateEmote && (this.stateEmote.until === 0 || now < this.stateEmote.until)) return this.stateEmote.name;
     this.stateEmote = null;

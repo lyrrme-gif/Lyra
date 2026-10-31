@@ -2657,6 +2657,10 @@ input[type="range"]::-webkit-slider-thumb {
 }
 #island[data-position="attached"] #island-clip { border-radius: 0 0 28px 28px; }
 #island[data-position="attached"]::after { top: auto; bottom: 1px; opacity: .28; }
+/* The compact (resting) attached notch is only 38px tall, so the fixed 28px above rounded it off far too early.
+   Same shape as the preview in Settings > General: the bottom corners are half the notch's height. */
+#island[data-position="attached"][data-mode="compact"] { border-radius: 0 0 19px 19px !important; }
+#island[data-position="attached"][data-mode="compact"] #island-clip { border-radius: 0 0 19px 19px; }
 
 /* v24: settings gets a real scroll viewport; the card/content is allowed to
    exceed the Island height instead of being clipped by the absolute view. */
@@ -2691,6 +2695,23 @@ input[type="range"]::-webkit-slider-thumb {
    edge stays fully rounded. Keep the navigation dock above the glass. */
 #island[data-position="attached"] + #tab-dock { z-index: 4000; }
 #island[data-position="attached"] #content { padding-bottom: 38px; }
+
+/* v30: ATTACHED island only (floating is untouched). The v25 shift above (translateY 10px) plus the 38px bottom padding
+   took ~28px away from every tab, so rows overlapped (Timer's ruler and button, the Calendar's "+"), the Record
+   button was cut off and tabs had a dead strip at the bottom. These tabs now start 10px lower with a normal 10px
+   bottom padding, and island.ts makes them 10px taller (ATTACHED_ROOM_VIEWS) so they get the room they were designed for. */
+#island[data-position="attached"][data-mode="expanded"]:is([data-view="overview"], [data-view="music"], [data-view="recognition"], [data-view="timer"], [data-view="weather"], [data-view="calendar"], [data-view="todo"], [data-view="stats"], [data-view="controls"], [data-view="wallpaper"], [data-view="record"], [data-view="volume"], [data-view="clipboard"]) #content {
+  top: 10px;
+  transform: none;
+  padding-bottom: 10px;
+}
+/* Camera is a full-bleed picture: no 10px strip above it and no gap under it, the island's own rounded corners clip it. */
+#island[data-position="attached"][data-mode="expanded"][data-view="camera"] #content {
+  top: 0;
+  transform: none;
+  padding: 0;
+  border-radius: 0 0 28px 28px;
+}
 
 /* v28: navigation dock is a first-class surface, not part of the view content. */
 #tab-dock { z-index: 9000 !important; }

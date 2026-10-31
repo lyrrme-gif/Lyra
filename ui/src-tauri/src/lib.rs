@@ -288,6 +288,8 @@ pub fn run() {
             mascot::mascot_set_active,
             mascot::mascot_monitor,
             mascot::mascot_open_chat,
+            mascot::mascot_raise,
+            mascot::mascot_carry,
             wheel::wheel_open,
             wheel::wheel_close,
             wheel::wheel_pick,

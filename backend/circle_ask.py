@@ -1,11 +1,11 @@
 """Lyra — Circle to ask.
 
-Hold Ctrl+Shift: a glowing flame follows your cursor and leaves a trail. Circle
-anything with the mouse — the screen stays live, nothing freezes. When the circle
-closes, Lyra grabs that part of the screen and answers ("What is this?").
+Tap Ctrl, then press it again and KEEP HOLDING it (either Ctrl key): a glowing flame follows your
+cursor and leaves a trail. Circle anything with the mouse: the screen stays live, nothing freezes. When the
+circle closes, Lyra grabs that part of the screen and answers ("What is this?").
 
-  Let go of Ctrl+Shift early .... cancels
-  Quick Ctrl+Shift taps ......... untouched (Ctrl+Shift+T, keyboard-layout switch, ...)
+  Let go of Ctrl early ............ cancels (so does Esc)
+  A single tap, Ctrl+C, Ctrl+Click  untouched
 
 New: when the circle closes, Lyra asks "Are you confused about something? What do you want to know?",
 listens by herself, and (with the Lyra mascot on) the Mochi walks over, points, draws on the screen and
@@ -16,7 +16,7 @@ turning auto-answer off (config.CIRCLE_AUTO_ANSWER = False): then Lyra just says
 "Circled — ask about it" and the next thing you say (hold Right Ctrl) or type is the question.
 
 No extra installs: the overlay is a click-through, per-pixel-alpha Win32 window drawn
-with Pillow, and the hotkey just watches the real key state.
+with Pillow, and the tap-then-hold is found by watching the real key state.
 """
 
 from __future__ import annotations
@@ -35,7 +35,9 @@ import ui
 
 log = ui.log
 
-HOLD_SECONDS = 0.25       # how long Ctrl+Shift must be held (and nothing else pressed)
+TAP_MAX_SECONDS = 0.30    # the first tap: Ctrl down and up again within this long, with nothing else pressed
+TAP_GAP_SECONDS = 0.40    # the second press must start within this long after the first tap ended
+HOLD_SECONDS = 0.15       # ...and be held this long (nothing else pressed) before the flame starts
 PENDING_TTL = 90.0        # seconds the circled picture waits for a question
 MIN_STROKE_PX = 28        # smaller scribbles are ignored so a stray click doesn't fire
 SESSION_MAX_SECONDS = 25.0   # give up if nobody circles anything
@@ -45,10 +47,8 @@ DEFAULT_QUESTION = "What is this? Explain it briefly."
 MAX_SIDE = 1280           # longest side sent to the vision model
 
 # Virtual-key codes
-_CTRL = frozenset({0xA2})      # Left Ctrl only (user choice)
-_SHIFT = frozenset({0xA2})     # same key: "ctrl and shift" both mean Left Ctrl now
-_WIN = frozenset({0x5B, 0x5C})
-_MODS = _CTRL | _SHIFT | _WIN | {0x11}   # 0x11 = generic Ctrl, down whenever Left Ctrl is
+_CTRL = (0xA2, 0xA3)           # Left and Right Ctrl: tap then hold of either one starts it
+_VK_ESCAPE = 0x1B
 
 # ── the circled picture waiting for a question ───────────────────────────────────
 
@@ -447,9 +447,10 @@ def _cursor() -> tuple[int, int]:
     return int(p.x), int(p.y)
 
 
-def _keys_held() -> bool:
+def _keep_going() -> bool:
+    """A Ctrl key is still held and Esc is not: the circle session carries on."""
     gk = ctypes.windll.user32.GetAsyncKeyState
-    return any(gk(v) & 0x8000 for v in _CTRL) and any(gk(v) & 0x8000 for v in _SHIFT)
+    return any(gk(v) & 0x8000 for v in _CTRL) and not (gk(_VK_ESCAPE) & 0x8000)
 
 
 # ── one circling session ─────────────────────────────────────────────────────────
@@ -467,7 +468,7 @@ def _notify(title: str, subtitle: str = "", phase: str = "info", ms: int = 6000)
 
 
 def _circle_session():
-    """Show the flame while Ctrl+Shift is held; return (circled crop (PIL), its rectangle in screen
+    """Show the flame while Ctrl is held (Esc cancels); return (circled crop (PIL), its rectangle in screen
     pixels) or None."""
     import screen_capture
     try:                                                 # cursor, capture and mascot must all use physical px
@@ -513,7 +514,7 @@ def _circle_session():
     sampler = threading.Thread(target=_sample, name="circle-sampler", daemon=True)
     sampler.start()
     try:
-        while time.monotonic() < end and _keys_held():
+        while time.monotonic() < end and _keep_going():
             now = time.monotonic()
             cur = _cursor()
             with plock:
@@ -731,52 +732,52 @@ def launch() -> bool:
     return True
 
 
-# ── hotkey: hold Ctrl+Shift ──────────────────────────────────────────────────────
+# ── hotkey: tap Ctrl, then hold it
 # Polls the real key state ~65x/s instead of using a keyboard hook: nothing can get
 # stuck or silently stop firing, and it never touches the keys it watches.
 
 POLL_SECONDS = 0.015
-_OTHER_KEYS = [v for v in range(0x08, 0xFF) if v not in _MODS and v != 0xE8]   # 0xE8 = the dummy key used with Alt/Win
-DEFAULT_COMBO = "lctrl"        # Settings -> Shortcuts -> Circle to ask (shortcut_circle_combo) can change it
-SPEC_RELOAD_SECONDS = 1.0      # re-read the combo this often: a change in Settings applies at once
+_OTHER_KEYS = [v for v in range(0x08, 0xFF) if v not in (0x10, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C, 0xE8)]   # every key that is not a modifier
 
 
-def _current_spec():
-    """The combo from Settings (hotkey_spec.Spec), or None when the user removed the shortcut."""
-    import hotkey_spec
-    try:
-        import settings_store
-        raw = settings_store.get("shortcut_circle_combo")
-        return hotkey_spec.parse(DEFAULT_COMBO if raw is None else str(raw))
-    except Exception:  # noqa: BLE001
-        return hotkey_spec.parse(DEFAULT_COMBO)
+class DoubleTapDetector:
+    """True once, when Ctrl has been tapped and then pressed again and HELD: the first press is a quick tap (down and up
+    within `tap` seconds), the second starts within `gap` seconds of it and is held `hold` seconds, and no other
+    key is pressed meanwhile (Ctrl+C, Ctrl+Click ... never count). The caller keeps circling while Ctrl stays down."""
 
-
-class HoldDetector:
-    """True once, when Ctrl+Shift has been held `hold` seconds with nothing else pressed.
-    Typing a shortcut (Ctrl+Shift+T) or adding Win blocks it until both keys are let go."""
-
-    def __init__(self, hold: float | None = None):
+    def __init__(self, tap: float | None = None, gap: float | None = None, hold: float | None = None):
+        self.tap = TAP_MAX_SECONDS if tap is None else tap
+        self.gap = TAP_GAP_SECONDS if gap is None else gap
         self.hold = HOLD_SECONDS if hold is None else hold
-        self.t0, self.fired, self.blocked = None, False, False
+        self.down_at: float | None = None      # when the current press started
+        self.tainted = False                   # something else was pressed during this press (or it was held too long)
+        self.first_end: float | None = None    # when the first tap ended (None = no first tap waiting)
+        self.is_second = False                 # this press follows a clean first tap
+        self.fired = False
 
-    def update(self, now: float, ctrl: bool, shift: bool, win: bool, other: bool) -> bool:
-        if not (ctrl or shift):
-            self.t0, self.fired, self.blocked = None, False, False
+    def update(self, now: float, ctrl: bool, other: bool) -> bool:
+        if ctrl:
+            if self.down_at is None:
+                self.down_at, self.tainted, self.fired = now, False, False
+                self.is_second = self.first_end is not None and now - self.first_end <= self.gap
+                if not self.is_second:
+                    self.first_end = None
+            if other:
+                self.tainted = True
+            if self.is_second:
+                if not self.tainted and not self.fired and now - self.down_at >= self.hold:
+                    self.fired, self.first_end = True, None
+                    return True
+            elif now - self.down_at > self.tap:
+                self.tainted = True               # held too long to be a first tap
             return False
-        if other or win:
-            self.blocked = True
-        if not (ctrl and shift) or self.blocked:
-            self.t0 = None
+        if self.down_at is None:
+            if self.first_end is not None and now - self.first_end > self.gap:
+                self.first_end = None
             return False
-        if self.fired:
-            return False
-        if self.t0 is None:
-            self.t0 = now
-            return False
-        if now - self.t0 >= self.hold:
-            self.fired = True
-            return True
+        first_tap = not self.is_second and not self.tainted and now - self.down_at <= self.tap
+        self.down_at, self.is_second = None, False
+        self.first_end = now if first_tap else None
         return False
 
 
@@ -790,30 +791,14 @@ def _poll_loop() -> None:
     def down(vks) -> bool:
         return any(gk(v) & 0x8000 for v in vks)
 
-    def down_vk(vk: int) -> bool:
-        return bool(gk(vk) & 0x8000)
-
-    det = HoldDetector()
+    det = DoubleTapDetector()
     warned = False
-    spec, spec_at = _current_spec(), time.monotonic()
-    others = spec.other_vks if spec else ()
     while _started:
         try:
-            now = time.monotonic()
-            if now - spec_at >= SPEC_RELOAD_SECONDS:
-                new = _current_spec()
-                if (new.text if new else None) != (spec.text if spec else None):
-                    det = HoldDetector()
-                spec, spec_at = new, now
-                others = spec.other_vks if spec else ()
-            if spec is None:                           # the user removed the shortcut
-                time.sleep(0.25)
-                continue
-            # Same rule as before for any combo: the whole combo held `hold` seconds with nothing else pressed.
-            any_part, whole = spec.any_down(down_vk), spec.all_down(down_vk)
-            other = any_part and down(others)
-            if det.update(now, any_part, whole, False, other):
-                log.info("Circle to ask: %s held, flame on", spec.text)
+            ctrl = down(_CTRL)
+            other = ctrl and down(_OTHER_KEYS)
+            if det.update(time.monotonic(), ctrl, other):
+                log.info("Circle to ask: Ctrl tapped, then held: flame on")
                 launch()
         except Exception as e:
             if not warned:
@@ -823,7 +808,7 @@ def _poll_loop() -> None:
 
 
 def start(on_ask=None) -> bool:
-    """Arm the hold-Ctrl+Shift hotkey. `on_ask(text)` runs `text` as a Lyra command when a
+    """Arm the tap-then-hold-Ctrl hotkey. `on_ask(text)` runs `text` as a Lyra command when a
     circle is finished. Safe to call once; never raises."""
     global _started, _on_ask, _poll_thread
     if on_ask is not None:
@@ -845,13 +830,12 @@ def start(on_ask=None) -> bool:
     _started = True
     _poll_thread = threading.Thread(target=_poll_loop, daemon=True, name="lyra-circle-hotkey")
     _poll_thread.start()
-    spec = _current_spec()
-    log.info("Circle to ask: hold %s to circle anything", spec.text if spec else "(no shortcut set)")
+    log.info("Circle to ask: tap Ctrl, then hold it, to circle anything")
     return True
 
 
 def is_running() -> bool:
-    """True while the Ctrl+Shift watcher thread is alive."""
+    """True while the tap-then-hold-Ctrl watcher thread is alive."""
     return bool(_started and _poll_thread is not None and _poll_thread.is_alive())
 
 
@@ -900,7 +884,7 @@ if __name__ == "__main__":
         print(f"    circled picture: {_pending['size'][0]}x{_pending['size'][1]} px" if _pending else "    (no picture)")
 
     start(on_ask=demo)
-    print("\nNow hold Ctrl+Shift and circle something with the mouse (Ctrl+C to quit)...")
+    print("\nNow tap Ctrl, press it again and hold it while you circle something (Ctrl+C to quit)...")
     try:
         while True:
             time.sleep(1)

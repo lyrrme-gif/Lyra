@@ -560,7 +560,7 @@ def _plan_steps(img, goal: str):
 
 
 def _pick_area(img, question: str):
-    """Whole-screen request -> the part of the screen the question is about, like a Ctrl+Shift circle.
+    """Whole-screen request -> the part of the screen the question is about, like a Ctrl circle.
     One cheap vision call over a numbered 4x3 grid; returns (crop, (x0, y0, x1, y1) px) or None when
     it can't tell or the content fills the screen anyway (then the whole screen is used)."""
     try:
@@ -617,7 +617,7 @@ def _explain_screen(question: str) -> str | None:
         except Exception:  # noqa: BLE001
             ocr_ok = False
         area = None if ocr_ok else _pick_area(img, question)
-        if area:                      # same as Ctrl+Shift: a small "circled" crop of just the content
+        if area:                      # same as the Ctrl circle: a small "circled" crop of just the content
             crop, (ax0, ay0, ax1, ay1) = area
             rect = (m["left"] + ax0, m["top"] + ay0, m["left"] + ax1, m["top"] + ay1)
             img = crop

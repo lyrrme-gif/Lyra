@@ -28,7 +28,7 @@
 .tr-res.pill .tr-out { flex: 1 1 auto; min-width: 0; font-size: 15px; }
 
 /* ── Voice translation = the Settings → Features preview, scaled ──────────────────────────────────
-   Source: settings/featurePreviews.css  `.fp .isl.w` / `.fp .tx` / `.fp .arr` / `.fp .sw2`.
+   Source: settings/screenPreview.css  `.fp .isl.w` / `.fp .tx` / `.fp .arr` / `.fp .sw2`.
    Every value below is the preview's value × --tp-s (island px = preview px × 2). */
 .tr-voice { --tp-s: 2; }
 .tp { display: none; position: absolute; inset: 0; align-items: center; gap: calc(6px * var(--tp-s, 2)); padding: calc(6px * var(--tp-s, 2)) calc(9px * var(--tp-s, 2)); box-sizing: border-box; cursor: pointer; overflow: hidden; }

@@ -170,7 +170,9 @@ function starPath(x: CanvasRenderingContext2D, ro: number, ri: number) {
   x.closePath();
 }
 
-import { CHAR_DEFS, type CharDef, type Look, type Persona, type Moves, type Fx, type EaseName } from "./characters";
+/** Shapes whose anger throws sparks. */
+const EMBER_SHAPES = new Set(["knight", "fox", "hornet", "lantern", "grimm"]);
+import { CHAR_DEFS, angerBase, angerFront, type CharDef, type Look, type Persona, type Moves, type Fx, type EaseName } from "./characters";
 
 // ── Skins (hats, glasses, masks) ───────────────────────────────────────────────
 
@@ -257,7 +259,7 @@ export class BotEngine {
   shape = "cloud";
   setShape(name: string) {
     this.shape = CHAR_DEFS[name] ? name : "cloud";
-    if (this.shape !== "knight") { this.rage = 0; this.rageT = 0; }
+    this.rage = 0; this.rageT = 0;
   }
   /** The cloud specifically: it makes weather (rain, lightning, rainbows). */
   private get cloud(): boolean { return this.shape === "cloud" && !this.isMini; }
@@ -474,7 +476,7 @@ export class BotEngine {
   private slashDir = 1;
   /** How many pokes in a row (1 = first). Sets how angry it is, how fast it swings and whether it swings twice. */
   provoke(level: number) {
-    if (this.shape !== "knight") return;
+    if (!this.own) return;
     const n = now();
     const lv = Math.max(1, Math.min(6, Math.round(level)));
     this.rageT = Math.min(1, lv / 6);
@@ -483,8 +485,10 @@ export class BotEngine {
     this.slashDir = lv % 2 ? 1 : -1;
     this.slashAt = n;
     this.squash();
-    this.emit("spark", lv >= 5 ? 6 : lv >= 3 ? 3 : 1);
-    if (lv >= 4) setTimeout(() => { this.slashDir = -this.slashDir; this.slashAt = now(); this.emit("spark", 2); }, this.slashLen * 1000 * 0.62);   // a second cut right behind the first
+    const fx = this.shape === "cloud" ? "bolt" : EMBER_SHAPES.has(this.shape) ? "spark" : "dust";
+    this.emit(fx, lv >= 5 ? 3 : 1);
+    if (this.shape === "cloud") this.emit("rain", lv * 2);
+    if (lv >= 4) setTimeout(() => { this.slashDir = -this.slashDir; this.slashAt = now(); this.emit(fx, 2); }, this.slashLen * 1000 * 0.62);   // a second swing right behind the first
     this.interruptGreet();
   }
 
@@ -1028,7 +1032,7 @@ export class BotEngine {
       this.doQuirk(PW.quirk);                                          // a small habit of its own
     }
 
-    if (this.shape === "knight") {                                      // the Knight cools down when nobody pokes him
+    if (this.own) {                                                     // it cools down when nobody pokes it
       if (n - this.rageAt > 3.2) this.rageT = Math.max(0, this.rageT - dt * 0.3);
       this.rage += (this.rageT - this.rage) * (1 - Math.pow(0.0006, dt));
       if (this.rage < 0.004 && this.rageT === 0) this.rage = 0;
@@ -1036,7 +1040,7 @@ export class BotEngine {
       if (r > 0.2 && this.own) {
         this.tgTilt += Math.sin(t * (30 + 40 * r)) * 0.03 * (r - 0.15);          // trembling with anger
         this.tgSx += 0.05 * r; this.tgSy += 0.04 * r;                            // puffs up
-        if (!this.calm && r > 0.55 && Math.random() < 0.07) this.emit("spark", 1);
+        if (!this.calm && r > 0.45 && Math.random() < 0.07) this.emit(this.shape === "cloud" ? "rain" : EMBER_SHAPES.has(this.shape) ? "spark" : "sweat", 1);
       }
     }
     const kLook = 1 - Math.pow(0.0025, dt);
@@ -1152,9 +1156,11 @@ export class BotEngine {
     const body = this.bodyPath(rx, ry, R);
     const cdef = this.morph < 0.3 ? this.def : null;
     const look = cdef ? this.lookCtx(x, R, rx, ry, body) : null;
+    if (cdef && look && look.rage) cdef.furyBehind?.(look);
     if (cdef && look) cdef.behind?.(look);
     this.drawBody(x, body, R, rx, ry);
     if (cdef && look) cdef.base?.(look);
+    if (cdef && look && look.rage && !cdef.ownFury) angerBase(look, cdef.furyTint);
 
     const blushVal = Math.max(this.blush, this.tint * 0.5) * (1 - this.morph);
     if (blushVal > 0.01) {
@@ -1172,6 +1178,10 @@ export class BotEngine {
 
     this.drawEyes(x, body, R, rx, ry);
     if (cdef && look) cdef.front?.(look);
+    if (cdef && look && look.rage) {
+      if (!cdef.ownFury) angerFront(look, cdef.furyInk);
+      cdef.fury?.(look);
+    }
     if (this.morph > 0.05) this.drawMouth(x, body, R);
     if (this.controller && this.morph < 0.3 && !this.isMini) this.drawController(x, R, rx, ry);
 

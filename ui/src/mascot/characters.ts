@@ -94,6 +94,12 @@ export interface CharDef {
   /** Eye shape per emote, e.g. { love: "happy" }. */
   emoteEyes?: Partial<Record<string, string>>;
   persona?: Persona;
+  /** Rage (every poke in a row makes it angrier, see Look.rage): its own way of being angry. */
+  furyBehind?(l: Look): void;     // behind the body (flames, fur on end, a storm)
+  fury?(l: Look): void;           // over the face, after everything else (lightning, claws, steam, a weapon)
+  furyInk?: string;               // brow colour (default dark)
+  furyTint?: string;              // "r,g,b" the body flushes with (default red)
+  ownFury?: boolean;              // draws all of its anger itself (the Knight): skip the shared brows / flush / vein
   /** Own outline; without it the rounded blob is used. */
   path?(R: number, t: number): Path2D;
   /** Drawn behind the body: ears, tails, gills, leaves, feet. */
@@ -657,10 +663,19 @@ const easeOutQ = (k: number) => 1 - (1 - k) * (1 - k);
 const easeInQ = (k: number) => k * k;
 const easeInOutQ = (k: number) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
 
-/** The nail: a plain pale blade with a short crossguard, held at the right. `out` 0..1 = how far it is drawn. */
-function knightNail(l: Look, out: number): void {
+/** A swung tool held at the right: the Knight's nail (a pale blade) or the Panda's bamboo. `out` 0..1 = how far it is drawn. */
+type ToolKind = "nail" | "bamboo" | "needle" | "lantern" | "flame";
+/** Everything a swung tool draws (glows included) stays inside the canvas: a glow cut by its edge shows as a flat line. */
+function swingTool(l: Look, out: number, kind: ToolKind): void {
+  l.x.save();
+  l.x.beginPath(); l.x.rect(-l.R * 3, -l.R * 3, l.R * 6, l.R * 4.45); l.x.clip();
+  swingToolInner(l, out, kind);
+  l.x.restore();
+}
+function swingToolInner(l: Look, out: number, kind: ToolKind): void {
   const { x, R, rx, ry, t } = l;
   const rage = l.rage ?? 0, k = l.slashP ?? -1, dir = l.slashDir ?? 1;
+  const nail = kind === "nail";
   const px = rx * 0.9, py = ry * 0.42;                                       // the hand
   const rest = -1.2 + Math.sin(t * (8 + 34 * rage)) * 0.03 * rage;            // raised, trembling more the angrier it is
   let th = rest;
@@ -675,12 +690,13 @@ function knightNail(l: Look, out: number): void {
     const fade = k < 0.55 ? 1 : 1 - (k - 0.55) / 0.35;
     const a1 = Math.max(-1.8, th - 1.5), a2 = th;
     x.save();
-    x.beginPath(); x.rect(-R * 3, -R * 3, R * 6, R * 4.3); x.clip();          // never reaches the canvas edge (it would show as a flat red line)
+    x.beginPath(); x.rect(-R * 3, -R * 3, R * 6, R * 4.3); x.clip();          // never reaches the canvas edge (it would show as a flat line)
     x.lineCap = "round";
     x.translate(px, py);
     x.scale(dir, 1);                                                          // (mirrored swing: pivot stays at the hand)
-    x.strokeStyle = `rgba(255,${Math.round(190 - 110 * rage)},${Math.round(150 - 110 * rage)},${0.28 * fade})`;
-    x.lineWidth = R * 0.26;
+    const tr = { nail: "255,150,110", bamboo: "180,255,150", needle: "255,70,80", lantern: "255,190,80", flame: "255,70,50" }[kind];
+    x.strokeStyle = `rgba(${tr},${(kind === "flame" ? 0.5 : 0.28) * fade})`;
+    x.lineWidth = R * (kind === "flame" ? 0.38 : 0.26);
     x.beginPath(); x.arc(0, 0, R * 1.0 * sc, a1, a2); x.stroke();
     x.strokeStyle = `rgba(255,255,255,${0.85 * fade})`;
     x.lineWidth = R * 0.07;
@@ -692,35 +708,80 @@ function knightNail(l: Look, out: number): void {
   x.scale(dir, 1);
   x.rotate(th);
   x.lineJoin = "round"; x.lineCap = "round";
-  // handle (dark, wrapped)
-  x.strokeStyle = KN_VOID; x.lineWidth = R * 0.13;
-  x.beginPath(); x.moveTo(-R * 0.34 * sc, 0); x.lineTo(R * 0.02, 0); x.stroke();
-  x.strokeStyle = "rgba(190,190,230,.55)"; x.lineWidth = R * 0.02;
-  for (const w of [-0.26, -0.18, -0.1]) { x.beginPath(); x.moveTo(R * w * sc, -R * 0.06); x.lineTo(R * w * sc + R * 0.03, R * 0.06); x.stroke(); }
-  // guard
-  x.fillStyle = KN_MASK; x.strokeStyle = KN_RIM; x.lineWidth = R * 0.025;
-  x.beginPath(); x.rect(-R * 0.045, -R * 0.2, R * 0.09, R * 0.4); x.fill(); x.stroke();
-  // blade
-  const L = R * 1.4 * sc;
-  x.beginPath();
-  x.moveTo(R * 0.04, -R * 0.075); x.lineTo(L * 0.92, -R * 0.055); x.lineTo(L, 0); x.lineTo(L * 0.92, R * 0.055); x.lineTo(R * 0.04, R * 0.075); x.closePath();
-  x.fillStyle = "#fbfbff"; x.fill(); x.stroke();
-  if (rage > 0.15) {                                                          // the edge glows ember-red as it gets angry
-    x.strokeStyle = `rgba(255,${Math.round(150 - 90 * rage)},60,${Math.min(1, rage * 1.1)})`;
-    x.lineWidth = R * (0.03 + 0.04 * rage);
-    x.beginPath(); x.moveTo(R * 0.1, 0); x.lineTo(L * 0.96, 0); x.stroke();
+  if (nail) {
+    // handle (dark, wrapped)
+    x.strokeStyle = KN_VOID; x.lineWidth = R * 0.13;
+    x.beginPath(); x.moveTo(-R * 0.34 * sc, 0); x.lineTo(R * 0.02, 0); x.stroke();
+    x.strokeStyle = "rgba(190,190,230,.55)"; x.lineWidth = R * 0.02;
+    for (const w of [-0.26, -0.18, -0.1]) { x.beginPath(); x.moveTo(R * w * sc, -R * 0.06); x.lineTo(R * w * sc + R * 0.03, R * 0.06); x.stroke(); }
+    // guard
+    x.fillStyle = KN_MASK; x.strokeStyle = KN_RIM; x.lineWidth = R * 0.025;
+    x.beginPath(); x.rect(-R * 0.045, -R * 0.2, R * 0.09, R * 0.4); x.fill(); x.stroke();
+    // blade
+    const L = R * 1.4 * sc;
+    x.beginPath();
+    x.moveTo(R * 0.04, -R * 0.075); x.lineTo(L * 0.92, -R * 0.055); x.lineTo(L, 0); x.lineTo(L * 0.92, R * 0.055); x.lineTo(R * 0.04, R * 0.075); x.closePath();
+    x.fillStyle = "#fbfbff"; x.fill(); x.stroke();
+    if (rage > 0.15) {                                                        // the edge glows ember-red as it gets angry
+      x.strokeStyle = `rgba(255,${Math.round(150 - 90 * rage)},60,${Math.min(1, rage * 1.1)})`;
+      x.lineWidth = R * (0.03 + 0.04 * rage);
+      x.beginPath(); x.moveTo(R * 0.1, 0); x.lineTo(L * 0.96, 0); x.stroke();
+    }
+  } else if (kind === "bamboo") {
+    // bamboo: a green stick with nodes, thicker toward the hand
+    const L = R * 1.25 * sc;
+    x.strokeStyle = "#4f9a3a"; x.lineWidth = R * 0.22;
+    x.beginPath(); x.moveTo(-R * 0.3 * sc, 0); x.lineTo(L, 0); x.stroke();
+    x.strokeStyle = "#8fd06a"; x.lineWidth = R * 0.15;
+    x.beginPath(); x.moveTo(-R * 0.3 * sc, 0); x.lineTo(L, 0); x.stroke();
+    x.strokeStyle = "#3d7d2d"; x.lineWidth = R * 0.035;
+    for (const w of [0.18, 0.55, 0.92]) { x.beginPath(); x.moveTo(L * w, -R * 0.1); x.lineTo(L * w, R * 0.1); x.stroke(); }
+  } else if (kind === "needle") {
+    // Hornet's needle: a long thin silver pin with a loop at the grip and a red silk thread trailing from it
+    const L = R * 1.8 * sc;
+    x.strokeStyle = "rgba(255,60,70,.9)"; x.lineWidth = R * 0.03;
+    x.beginPath(); x.moveTo(-R * 0.1, 0);
+    for (let i = 1; i <= 8; i++) x.lineTo(-R * 0.1 - i * R * 0.08, Math.sin(i * 1.1 + t * 14) * R * (0.03 + 0.05 * rage) * i * 0.4);
+    x.stroke();
+    x.strokeStyle = "#e9ecf5"; x.lineWidth = R * 0.055;
+    x.beginPath(); x.moveTo(R * 0.04, 0); x.lineTo(L * 0.96, 0); x.stroke();
+    x.fillStyle = "#fff"; x.beginPath(); x.moveTo(L * 0.96, -R * 0.03); x.lineTo(L, 0); x.lineTo(L * 0.96, R * 0.03); x.closePath(); x.fill();
+    x.strokeStyle = "#cfd3e0"; x.lineWidth = R * 0.035;
+    x.beginPath(); x.ellipse(R * 0.0, 0, R * 0.075, R * 0.05, 0, 0, TAU); x.stroke();      // the eye of the needle
+    if (rage > 0.2) { x.strokeStyle = `rgba(255,80,90,${rage})`; x.lineWidth = R * 0.02; x.beginPath(); x.moveTo(R * 0.1, 0); x.lineTo(L * 0.94, 0); x.stroke(); }
+  } else if (kind === "lantern") {
+    // a lantern swung on a chain like a flail
+    const L = R * 1.15 * sc;
+    x.strokeStyle = "#2a2a33"; x.lineWidth = R * 0.05; x.setLineDash([R * 0.07, R * 0.04]);
+    x.beginPath(); x.moveTo(0, 0); x.lineTo(L, 0); x.stroke(); x.setLineDash([]);
+    const g = x.createRadialGradient(L + R * 0.12, 0, 0, L + R * 0.12, 0, R * (0.45 + 0.35 * rage));
+    g.addColorStop(0, `rgba(255,200,90,${0.7 + 0.3 * rage})`); g.addColorStop(1, "rgba(255,150,40,0)");
+    x.fillStyle = g; x.beginPath(); x.arc(L + R * 0.12, 0, R * (0.45 + 0.35 * rage), 0, TAU); x.fill();
+    x.fillStyle = "#ffe9a8"; x.strokeStyle = "#2a2a33"; x.lineWidth = R * 0.045;
+    x.beginPath(); x.rect(L, -R * 0.13, R * 0.24, R * 0.26); x.fill(); x.stroke();
+    x.beginPath(); x.moveTo(L + R * 0.08, -R * 0.13); x.lineTo(L + R * 0.08, R * 0.13); x.moveTo(L + R * 0.16, -R * 0.13); x.lineTo(L + R * 0.16, R * 0.13); x.stroke();
+  } else {
+    // a fireball on a burning arm (Grimm): crimson halo, a flame trailing behind and a white-hot core
+    const L = R * 1.1 * sc, fx = L, fr = R * (0.26 + 0.12 * rage);
+    const g = x.createRadialGradient(fx, 0, 0, fx, 0, fr * 2.2);
+    g.addColorStop(0, "rgba(255,230,160,.95)"); g.addColorStop(0.35, "rgba(255,90,50,.8)"); g.addColorStop(1, "rgba(200,20,40,0)");
+    x.fillStyle = g; x.beginPath(); x.arc(fx, 0, fr * 2.2, 0, TAU); x.fill();
+    x.fillStyle = "rgba(255,110,60,.9)";
+    x.beginPath(); x.moveTo(fx, -fr); x.quadraticCurveTo(fx - fr * 2.6, -fr * 0.3 + Math.sin(t * 20) * fr * 0.3, fx - fr * 3.4, 0); x.quadraticCurveTo(fx - fr * 2.6, fr * 0.3, fx, fr); x.closePath(); x.fill();
+    x.fillStyle = "#fff2c8"; x.beginPath(); x.arc(fx, 0, fr * 0.55, 0, TAU); x.fill();
+    x.strokeStyle = "rgba(20,10,20,.9)"; x.lineWidth = R * 0.12; x.beginPath(); x.moveTo(-R * 0.1, 0); x.lineTo(fx - fr, 0); x.stroke();       // the dark arm
   }
   x.restore();
   // the hand over the handle
   x.beginPath(); x.arc(px, py, R * 0.15, 0, TAU);
-  x.fillStyle = KN_VOID; x.fill();
+  x.fillStyle = nail ? KN_VOID : kind === "needle" ? "#8e1018" : "#23232b"; x.fill();
   x.strokeStyle = KN_RIM; x.lineWidth = R * 0.025; x.stroke();
 }
 
 const knight: CharDef = {
   label: "Knight", blurb: "Pale horned mask. Poke him and he draws his nail",
   top: [0.965, 0.96, 0.98], bottom: [0.8, 0.8, 0.86],
-  ink: KN_VOID, tintScale: 0.3, float: 0.012,
+  ink: KN_VOID, tintScale: 0.3, float: 0.012, ownFury: true,
   eyes: { idle: "wide", thinking: "wide", working: "wide", searching: "wide" },
   persona: {
     helloLen: 1.5, helloTilt: [0.05, 3, 0.02],
@@ -817,12 +878,437 @@ const knight: CharDef = {
       x.save(); x.strokeStyle = `rgba(255,90,40,${0.55 * rage})`; x.lineWidth = R * 0.06; x.stroke(l.body); x.restore();
     }
     const out = Math.min(1, rage * 6);                                        // the first poke already draws it
-    if (out > 0.02) knightNail(l, out);
+    if (out > 0.02) swingTool(l, out, "nail");
     if ((l.hello ?? 0) > 0.01) helloArm(l, { sx: l.rx * 0.84, sy: ry * 0.4, a0: -1.0, speed: 8, swing: 0.28, len: 0.8, w: 0.26, col: KN_VOID, rim: KN_RIM });
   },
 };
 
-export const CHAR_DEFS: Record<string, CharDef> = { cloud, fox, cat, bunny, panda, knight };
+// ── More Hollow Knight Mochis: Hornet, the Lantern bearer and Nightmare King Grimm ─────────────────────────
+// Same idea as the Knight: calm at first, and each poke in a row makes them angrier, each in their own way
+// (Hornet throws her needle, the Lantern bearer swings his lantern like a flail, Grimm sets everything on fire).
+
+/** Angry lids over the eyes in the colour of the face plate (the Knight's trick), with a dark edge. */
+function maskBrows(l: Look, plate: string, edge: string): void {
+  const { x, R } = l, rage = l.rage ?? 0;
+  if (rage < 0.02) return;
+  const a = Math.min(1, rage * 3.2);
+  x.save();
+  x.clip(l.body);
+  for (const e of l.eyes ?? []) {
+    const W = R * 0.34 * Math.max(0.5, e.fx), H = R * 0.4 * Math.max(0.5, e.fy);
+    const inner = -e.sd, ox = e.ex - inner * W, ix = e.ex + inner * W, top = e.ey - H;
+    x.beginPath();
+    x.moveTo(ox - inner * R * 0.1, top - R * 0.12); x.lineTo(ix + inner * R * 0.1, top - R * 0.12);
+    x.lineTo(ix + inner * R * 0.1, top + a * 0.62 * R); x.lineTo(ox - inner * R * 0.1, top + a * 0.06 * R);
+    x.closePath();
+    x.fillStyle = plate; x.fill();
+    x.strokeStyle = edge; x.lineWidth = R * (0.035 + 0.03 * rage); x.lineCap = "round";
+    x.beginPath(); x.moveTo(ox - inner * R * 0.1, top + a * 0.06 * R); x.lineTo(ix + inner * R * 0.1, top + a * 0.62 * R); x.stroke();
+  }
+  x.restore();
+}
+
+/** A tall, slim horn on one side (Hornet and the Lantern bearer). `k` 1 = Hornet's straighter horns, 2 = the long curved ones. */
+function tallHorn(l: Look, sd: number, k: 1 | 2, rot: number, fill: string, edge: string): void {
+  const { x, R, rx, ry } = l;
+  x.save();
+  x.translate(sd * rx * (k === 1 ? 0.3 : 0.38), -ry * 0.78);
+  x.scale(sd, 1);
+  x.rotate(rot);
+  x.beginPath();
+  if (k === 1) {
+    x.moveTo(-R * 0.12, R * 0.06);
+    x.bezierCurveTo(-R * 0.1, -R * 0.55, -R * 0.12, -R * 1.0, -R * 0.02, -R * 1.45);      // inner edge: almost straight up
+    x.bezierCurveTo(R * 0.2, -R * 1.0, R * 0.26, -R * 0.45, R * 0.14, R * 0.06);           // outer edge
+  } else {
+    x.moveTo(-R * 0.1, R * 0.06);
+    x.bezierCurveTo(-R * 0.1, -R * 0.5, R * 0.0, -R * 1.0, R * 0.5, -R * 1.45);            // sweeps out
+    x.bezierCurveTo(R * 0.3, -R * 0.9, R * 0.3, -R * 0.4, R * 0.14, R * 0.06);
+  }
+  x.closePath();
+  x.fillStyle = fill; x.fill();
+  x.strokeStyle = edge; x.lineWidth = R * 0.04; x.lineJoin = "round"; x.stroke();
+  x.restore();
+}
+
+/** Flame tongues around the head (Grimm; `n` tongues, `h` how tall). */
+function flames(l: Look, n: number, h: number, hot: number): void {
+  const { x, R, rx, ry, t } = l;
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI * 1.02 + (Math.PI * 1.04 * i) / (n - 1) + (i % 2 ? 0.06 : -0.06);
+    const hh = R * h * (0.75 + 0.25 * Math.sin(t * 9 + i * 2.3)), w = R * 0.14, sway = Math.sin(t * 6 + i * 1.7) * w;
+    for (const [sc, col] of [[1, `rgba(${200 + Math.round(55 * hot)},${20 + Math.round(70 * hot)},${50 - Math.round(20 * hot)},.9)`], [0.55, `rgba(255,${130 + Math.round(90 * hot)},90,.95)`]] as Array<[number, string]>) {
+      x.save();
+      x.translate(Math.cos(a) * rx * 0.94, Math.sin(a) * ry * 0.94);
+      x.rotate(a + Math.PI / 2);
+      x.beginPath();
+      x.moveTo(-w * sc, 0); x.quadraticCurveTo(-w * 1.1 * sc, -hh * 0.5 * sc, sway * sc, -hh * sc); x.quadraticCurveTo(w * 1.1 * sc, -hh * 0.5 * sc, w * sc, 0);
+      x.closePath(); x.fillStyle = col; x.fill();
+      x.restore();
+    }
+  }
+}
+
+// ── Hornet: a white mask with two tall horns, a red cloak, a needle. Angry: she throws the needle and the cloak flares. ──
+const HO_MASK = "#f6f4f7", HO_RED = "#d3222c", HO_RED2 = "#8c1019", HO_VOID = "#0d0d14";
+const hornet: CharDef = {
+  label: "Hornet", blurb: "Red cloak, tall horns. Poke her and the needle comes out",
+  top: [0.975, 0.965, 0.975], bottom: [0.84, 0.82, 0.86],
+  ink: HO_VOID, tintScale: 0.3, float: 0.012, ownFury: true,
+  eyes: { idle: "wide", thinking: "wide", working: "wide", searching: "wide" },
+  persona: knight.persona,
+  behind(l) {
+    const { x, R, rx, ry, t, sad, state } = l, rage = l.rage ?? 0;
+    const droop = sad || state === "sleeping" ? 0.25 : 0;
+    // the cloak: a red bell around the lower half, flaring out when she is angry, with a scalloped hem
+    const fl = 1 + 0.12 * rage, sw = Math.sin(t * 2.4) * R * 0.015;
+    const g = x.createLinearGradient(0, 0, 0, ry * 1.15);
+    g.addColorStop(0, HO_RED); g.addColorStop(1, HO_RED2);
+    x.save();
+    x.fillStyle = g; x.strokeStyle = "rgba(60,5,10,.6)"; x.lineWidth = R * 0.03; x.lineJoin = "round";
+    x.beginPath();
+    x.moveTo(-rx * 0.98 * fl, ry * 0.05);
+    x.quadraticCurveTo(-rx * 1.12 * fl, ry * 0.7, -rx * 0.9 * fl, ry * 1.08 + sw);
+    for (let i = 0; i < 4; i++) {
+      const x0 = -rx * 0.9 * fl + (rx * 1.8 * fl * i) / 4, x1 = -rx * 0.9 * fl + (rx * 1.8 * fl * (i + 1)) / 4;
+      x.quadraticCurveTo((x0 + x1) / 2, ry * (1.2 + (i % 2) * 0.03) + sw * (i % 2 ? 1 : -1), x1, ry * 1.08 - sw);
+    }
+    x.quadraticCurveTo(rx * 1.12 * fl, ry * 0.7, rx * 0.98 * fl, ry * 0.05);
+    x.closePath(); x.fill(); x.stroke();
+    x.restore();
+    for (const sd of [-1, 1]) tallHorn(l, sd, 1, 0.12 + 0.18 * rage - droop + Math.sin(t * 1.3 + sd) * 0.015 + Math.sin(t * 40) * 0.012 * rage, HO_MASK, "rgba(110,110,150,.85)");
+  },
+  base(l) {
+    const { x, R, rx, ry, body } = l, rage = l.rage ?? 0;
+    x.save(); x.clip(body);
+    const g = x.createLinearGradient(0, ry * 0.2, 0, ry);
+    g.addColorStop(0, "rgba(120,120,160,0)"); g.addColorStop(1, "rgba(120,120,160,.22)");
+    x.fillStyle = g; x.fillRect(-rx, ry * 0.2, rx * 2, ry * 0.9);
+    if (rage > 0.05) { x.fillStyle = `rgba(255,70,70,${0.28 * rage})`; x.fillRect(-rx, -ry, rx * 2, ry * 2); }
+    x.restore();
+  },
+  front(l) {
+    const { x, R, rx, ry, t } = l, rage = l.rage ?? 0;
+    // the red collar over the lower face
+    x.save(); x.clip(l.body);
+    x.beginPath();
+    x.moveTo(-rx, ry * 0.58);
+    for (let i = 0; i <= 6; i++) x.lineTo(-rx + (rx * 2 * i) / 6, ry * (0.58 + (i % 2 ? 0.1 : 0.0)) + Math.sin(t * 2 + i) * R * 0.01);
+    x.lineTo(rx, ry * 1.2); x.lineTo(-rx, ry * 1.2); x.closePath();
+    x.fillStyle = HO_RED; x.fill();
+    x.restore();
+    maskBrows(l, HO_MASK, HO_VOID);
+    if (rage > 0.02) { x.save(); x.strokeStyle = `rgba(255,70,70,${0.55 * rage})`; x.lineWidth = R * 0.06; x.stroke(l.body); x.restore(); }
+    const out = Math.min(1, rage * 6);
+    if (out > 0.02) swingTool(l, out, "needle");
+    if ((l.hello ?? 0) > 0.01) helloArm(l, { sx: rx * 0.84, sy: ry * 0.4, a0: -1.0, speed: 8, swing: 0.28, len: 0.8, w: 0.26, col: HO_RED2, rim: "rgba(60,5,10,.6)" });
+  },
+};
+
+// ── Lantern: a pale mask with very long curved horns and glowing orange eyes, a tattered black cloak and a lantern. ──
+const LA_MASK = "#f1efe9", LA_VOID = "#0e0d12", LA_GLOW = "#ffb347";
+const lantern: CharDef = {
+  label: "Lantern", blurb: "Glowing eyes, a lantern. Poke him and it becomes a flail",
+  top: [0.955, 0.945, 0.92], bottom: [0.8, 0.78, 0.75],
+  ink: "#ff9a2e", tintScale: 0.3, float: 0.014, ownFury: true,
+  eyes: { idle: "wide", thinking: "wide", working: "wide", searching: "wide" },
+  persona: knight.persona,
+  behind(l) {
+    const { x, R, rx, ry, t, sad, state } = l, rage = l.rage ?? 0;
+    const droop = sad || state === "sleeping" ? 0.3 : 0;
+    // tattered black cloak with a ragged hem
+    x.save();
+    x.fillStyle = LA_VOID; x.strokeStyle = "rgba(190,190,230,.3)"; x.lineWidth = R * 0.03; x.lineJoin = "round";
+    x.beginPath(); x.moveTo(-rx * 0.8, ry * 0.3); x.quadraticCurveTo(-rx * 0.95, ry * 0.8, -rx * 0.78, ry * 1.08);
+    for (let i = 0; i < 6; i++) {
+      const xa = -rx * 0.78 + (rx * 1.56 * i) / 6, xb = -rx * 0.78 + (rx * 1.56 * (i + 1)) / 6;
+      x.lineTo((xa + xb) / 2, ry * (1.2 + (i % 2) * 0.04) + Math.sin(t * 2.5 + i) * R * 0.015); x.lineTo(xb, ry * 1.08);
+    }
+    x.quadraticCurveTo(rx * 0.95, ry * 0.8, rx * 0.8, ry * 0.3); x.closePath(); x.fill(); x.stroke();
+    x.restore();
+    for (const sd of [-1, 1]) tallHorn(l, sd, 2, 0.1 + 0.16 * rage - droop + Math.sin(t * 1.2 + sd) * 0.015 + Math.sin(t * 40) * 0.012 * rage, LA_MASK, "rgba(120,110,100,.85)");
+  },
+  base(l) {
+    const { x, R, rx, ry, body } = l, rage = l.rage ?? 0;
+    x.save(); x.clip(body);
+    const g = x.createLinearGradient(0, ry * 0.2, 0, ry);
+    g.addColorStop(0, "rgba(130,110,90,0)"); g.addColorStop(1, "rgba(130,110,90,.25)");
+    x.fillStyle = g; x.fillRect(-rx, ry * 0.2, rx * 2, ry * 0.9);
+    if (rage > 0.05) { x.fillStyle = `rgba(255,150,40,${0.3 * rage})`; x.fillRect(-rx, -ry, rx * 2, ry * 2); }
+    x.restore();
+  },
+  front(l) {
+    const { x, R, rx, ry, t } = l, rage = l.rage ?? 0;
+    for (const e of l.eyes ?? []) {                                               // the eyes glow
+      const g = x.createRadialGradient(e.ex, e.ey, 0, e.ex, e.ey, R * (0.5 + 0.3 * rage));
+      g.addColorStop(0, `rgba(255,170,60,${0.3 + 0.3 * rage})`); g.addColorStop(1, "rgba(255,170,60,0)");
+      x.fillStyle = g; x.beginPath(); x.arc(e.ex, e.ey, R * (0.5 + 0.3 * rage), 0, TAU); x.fill();
+    }
+    maskBrows(l, LA_MASK, LA_VOID);
+    const out = Math.min(1, rage * 6);
+    if (out > 0.02) swingTool(l, out, "lantern");
+    // the lantern hangs under the chin while he is calm, and leaves his hand-chain when he swings it
+    const rest = 1 - out;
+    if (rest > 0.02) {
+      const sw = Math.sin(t * 1.8) * R * 0.05, cx = sw, cy = ry * 1.05;
+      x.save(); x.globalAlpha = rest;
+      const g = x.createRadialGradient(cx, cy + R * 0.12, 0, cx, cy + R * 0.12, R * 0.5);
+      g.addColorStop(0, "rgba(255,200,90,.75)"); g.addColorStop(1, "rgba(255,150,40,0)");
+      x.fillStyle = g; x.beginPath(); x.arc(cx, cy + R * 0.12, R * 0.5, 0, TAU); x.fill();
+      x.strokeStyle = LA_VOID; x.lineWidth = R * 0.03; x.beginPath(); x.moveTo(sw * 0.3, ry * 0.88); x.lineTo(cx, cy); x.stroke();
+      x.fillStyle = "#ffe9a8"; x.strokeStyle = LA_VOID; x.lineWidth = R * 0.04;
+      x.beginPath(); x.rect(cx - R * 0.09, cy, R * 0.18, R * 0.24); x.fill(); x.stroke();
+      x.restore();
+    }
+    if (rage > 0.02) { x.save(); x.strokeStyle = `rgba(255,150,40,${0.55 * rage})`; x.lineWidth = R * 0.06; x.stroke(l.body); x.restore(); }
+    if ((l.hello ?? 0) > 0.01) helloArm(l, { sx: rx * 0.84, sy: ry * 0.4, a0: -1.0, speed: 8, swing: 0.28, len: 0.8, w: 0.26, col: LA_VOID, rim: "rgba(190,190,230,.4)" });
+  },
+};
+
+// ── Grimm: Nightmare King Grimm. A black head with one great horn, a silver face with pink-red eyes, always a little on fire. ──
+const GR_PLATE = "#f2eef4", GR_VOID = "#12090f", GR_FLAME = "rgba(220,40,60,.6)";
+const grimm: CharDef = {
+  label: "Grimm", blurb: "Nightmare King. Flames grow with every poke",
+  top: [0.15, 0.1, 0.14], bottom: [0.05, 0.03, 0.06],
+  ink: "#e8465f", tintScale: 0.2, float: 0.014, ownFury: true,
+  rim: GR_FLAME,
+  eyes: { idle: "wide", thinking: "wide", working: "wide", searching: "wide" },
+  persona: knight.persona,
+  behind(l) {
+    const { x, R, rx, ry, t, state, sad } = l, rage = l.rage ?? 0;
+    // flames around the head: a few always, many and tall when he is angry
+    flames(l, 7 + Math.round(5 * rage), 0.28 + 0.45 * rage, rage);
+    // the great curved horn on top, sweeping back
+    const droop = sad || state === "sleeping" ? 0.25 : 0;
+    x.save();
+    x.translate(rx * 0.05, -ry * 0.8); x.rotate(-0.1 + 0.1 * rage - droop + Math.sin(t * 1.3) * 0.015);
+    x.beginPath();
+    x.moveTo(-R * 0.34, R * 0.1);
+    x.bezierCurveTo(-R * 0.36, -R * 0.5, -R * 0.65, -R * 1.0, -R * 1.12, -R * 1.3);          // outer edge sweeps left to the tip
+    x.bezierCurveTo(-R * 0.55, -R * 0.62, R * 0.12, -R * 0.35, R * 0.3, R * 0.1);              // inner edge back down (a fat crescent)
+    x.closePath();
+    x.fillStyle = "#2d0e1c"; x.fill();
+    x.strokeStyle = "rgba(255,90,100,.7)"; x.lineWidth = R * 0.04; x.lineJoin = "round"; x.stroke();
+    x.restore();
+  },
+  base(l) {
+    const { x, R, rx, ry, body } = l, rage = l.rage ?? 0;
+    x.save(); x.clip(body);
+    // the silver face plate the eyes sit on
+    const g = x.createLinearGradient(0, -ry * 0.4, 0, ry * 0.7);
+    g.addColorStop(0, GR_PLATE); g.addColorStop(1, "#c9c0cf");
+    x.fillStyle = g;
+    x.beginPath(); x.ellipse(0, ry * 0.12, rx * 0.8, ry * 0.58, 0, 0, TAU); x.fill();
+    x.strokeStyle = "rgba(10,5,10,.8)"; x.lineWidth = R * 0.035; x.stroke();
+    if (rage > 0.05) { x.fillStyle = `rgba(255,40,60,${0.22 * rage})`; x.fillRect(-rx, -ry, rx * 2, ry * 2); }
+    x.restore();
+  },
+  front(l) {
+    const { x, R } = l, rage = l.rage ?? 0;
+    for (const e of l.eyes ?? []) {                                               // a hot glow in the eyes
+      const g = x.createRadialGradient(e.ex, e.ey, 0, e.ex, e.ey, R * (0.4 + 0.3 * rage));
+      g.addColorStop(0, `rgba(255,90,110,${0.25 + 0.35 * rage})`); g.addColorStop(1, "rgba(255,90,110,0)");
+      x.fillStyle = g; x.beginPath(); x.arc(e.ex, e.ey, R * (0.4 + 0.3 * rage), 0, TAU); x.fill();
+    }
+    maskBrows(l, GR_PLATE, GR_VOID);
+    const out = Math.min(1, rage * 6);
+    if (out > 0.02) swingTool(l, out, "flame");
+  },
+};
+
+// ── Rage for everyone ───────────────────────────────────────────────────────────
+// Every poke in a row makes a Mochi angrier (Look.rage 0..1, see mochiBot.ts provoke()). The shared part is
+// a red flush, angry brows and the anime anger vein; on top of that each character is angry in its own way:
+// the Cloud turns into a thunderstorm, the Fox catches fire, the Cat puffs up and claws, the Bunny steams and
+// thumps, the Panda swings a bamboo stick, the Knight draws his nail.
+export const RAGE_LINES: Record<string, string[]> = {
+  cloud: ["", "Hmph.", "Grr...", "Enough!", "STORM TIME!", "THUNDER!!"],
+  fox: ["", "Hey.", "Grrr...", "Back off!", "I'm WARNING you!", "BURN!!"],
+  cat: ["", "Mrrp.", "Hsss...", "Stop it!", "HISSSS!", "CLAWS OUT!!"],
+  bunny: ["", "Hey!", "*thump*", "Stop poking!", "THUMP THUMP!", "NO MORE!!"],
+  panda: ["", "Mm.", "Grr...", "Enough!", "BAMBOO TIME!", "NO MORE!!"],
+  knight: ["", "...", "Stop.", "Enough!", "I WARN YOU!", "NO MORE!!"],
+  hornet: ["", "Hmph.", "Stay back.", "Enough!", "SHAW!", "GET AWAY!!"],
+  lantern: ["", "...", "Back.", "Enough.", "LIGHT BURNS!", "BURN!!"],
+  grimm: ["", "Hmm.", "Careful...", "The ritual...", "FEEL THE FLAME!", "NIGHTMARE!!"],
+};
+
+/** Red flush over the body (call before the eyes are drawn). */
+export function angerBase(l: Look, tint = "255,70,60"): void {
+  const rage = l.rage ?? 0;
+  if (rage < 0.03) return;
+  l.x.save();
+  l.x.clip(l.body);
+  l.x.fillStyle = `rgba(${tint},${0.3 * rage})`;
+  l.x.fillRect(-l.rx * 1.3, -l.ry * 1.3, l.rx * 2.6, l.ry * 2.6);
+  l.x.restore();
+}
+
+/** Angry brows over the eyes and the anger vein on the forehead (call after the face is drawn). */
+export function angerFront(l: Look, ink = "#2b1a1a"): void {
+  const { x, R, rx, ry, t } = l;
+  const rage = l.rage ?? 0;
+  if (rage < 0.03) return;
+  const a = Math.min(1, rage * 3.2);
+  x.save();
+  x.lineCap = "round"; x.strokeStyle = ink; x.lineWidth = R * (0.06 + 0.04 * rage);
+  for (const e of l.eyes ?? []) {
+    const W = R * 0.36 * Math.max(0.5, e.fx), top = e.ey - R * 0.36 * Math.max(0.5, e.fy), inner = -e.sd;
+    x.beginPath();
+    x.moveTo(e.ex - inner * W, top - a * 0.03 * R);                              // outer end: high
+    x.lineTo(e.ex + inner * W, top + a * 0.2 * R);                               // inner end: low = angry
+    x.stroke();
+  }
+  if (rage > 0.3) {                                                              // the vein mark
+    const pulse = 0.9 + 0.1 * Math.sin(t * (10 + 14 * rage)), s = R * 0.3 * pulse * Math.min(1, (rage - 0.2) * 2.5);
+    x.translate(rx * 0.7, -ry * 0.62);
+    x.strokeStyle = "#ff3b30"; x.lineWidth = R * 0.065;
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+      x.beginPath();
+      x.moveTo(sx * s * 0.2, sy * s * 0.9);
+      x.quadraticCurveTo(sx * s * 0.2, sy * s * 0.25, sx * s * 0.9, sy * s * 0.2);
+      x.stroke();
+    }
+  }
+  x.restore();
+}
+
+/** Bared teeth under the nose (Fox and Cat). */
+function growl(l: Look, y: number): void {
+  const { x, R } = l, rage = l.rage ?? 0;
+  if (rage < 0.45) return;
+  const k = Math.min(1, (rage - 0.4) * 1.8), dx = shiftX(l) * 0.9;
+  x.save();
+  x.translate(dx, y);
+  x.fillStyle = "#3a1420";
+  x.beginPath(); x.moveTo(-R * 0.17 * k, 0); x.quadraticCurveTo(0, R * 0.2 * k + Math.sin(l.t * 30) * R * 0.01, R * 0.17 * k, 0); x.quadraticCurveTo(0, R * 0.04, -R * 0.17 * k, 0); x.fill();
+  x.fillStyle = "#fff";
+  for (const sd of [-1, 1]) { x.beginPath(); x.moveTo(sd * R * 0.12 * k, R * 0.015); x.lineTo(sd * R * 0.06 * k, R * 0.015); x.lineTo(sd * R * 0.09 * k, R * 0.12 * k); x.closePath(); x.fill(); }
+  x.restore();
+}
+
+// Cloud: a thunderstorm. It darkens, drizzles (mochiBot), and every swing is a flash of lightning.
+cloud.furyTint = "35,40,95";
+cloud.furyBehind = (l) => {
+  const { x, R } = l, r = l.rage ?? 0;
+  if (r < 0.25) return;
+  const SR = R * 1.42, g = x.createRadialGradient(0, 0, R * 0.5, 0, 0, SR);
+  g.addColorStop(0, `rgba(45,50,100,${0.5 * (r - 0.2)})`); g.addColorStop(1, "rgba(45,50,100,0)");
+  x.fillStyle = g; x.beginPath(); x.arc(0, 0, SR, 0, TAU); x.fill();
+};
+cloud.fury = (l) => {
+  const { x, R, rx, ry } = l, k = l.slashP ?? -1, r = l.rage ?? 0;
+  if (k < 0 || k > 0.6) return;
+  const f = 1 - k / 0.6, sd = (l.slashDir ?? 1);
+  x.save();
+  x.save(); x.clip(l.body);
+  x.fillStyle = `rgba(255,255,230,${0.35 * f})`;                                 // the flash lights the whole body
+  x.fillRect(-rx * 1.4, -ry * 1.4, rx * 2.8, ry * 2.8);
+  x.restore();
+  x.lineJoin = "round"; x.lineCap = "round";
+  const pts: Array<[number, number]> = [[0.5, -1.05], [0.15, -0.5], [0.38, -0.42], [-0.1, 0.15], [0.12, 0.2], [-0.5, 1.0]];
+  x.scale(sd, 1);
+  for (const [w, col] of [[0.2, `rgba(255,220,80,${0.35 * f})`], [0.07, `rgba(255,255,255,${f})`]] as Array<[number, string]>) {
+    x.strokeStyle = col; x.lineWidth = R * w * (0.8 + 0.4 * r);
+    x.beginPath(); pts.forEach(([a, b], i) => (i ? x.lineTo(a * rx, b * ry) : x.moveTo(a * rx, b * ry))); x.stroke();
+  }
+  x.restore();
+};
+
+// Fox: it catches fire. Flames lick up around the body, more and bigger the angrier it is, and it bares its teeth.
+fox.furyTint = "255,95,30";
+fox.furyBehind = (l) => {
+  const { x, R, rx, ry, t } = l, r = l.rage ?? 0;
+  if (r < 0.12) return;
+  const n = 4 + Math.round(6 * r);
+  x.save();
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI * 0.98 + (Math.PI * 0.96 * i) / (n - 1) + (i % 2 ? 0.05 : -0.05);
+    const h = R * (0.28 + 0.5 * r) * (0.75 + 0.25 * Math.sin(t * 9 + i * 2.3)), w = R * (0.13 + 0.07 * r);
+    const sway = Math.sin(t * 6 + i * 1.7) * w * 0.9;
+    for (const [sc, col] of [[1, `rgba(255,${Math.round(110 - 40 * r)},30,${0.85})`], [0.58, "rgba(255,215,90,.95)"]] as Array<[number, string]>) {
+      x.save();
+      x.translate(Math.cos(a) * rx * 0.92, Math.sin(a) * ry * 0.92);
+      x.rotate(a + Math.PI / 2);
+      x.beginPath();
+      x.moveTo(-w * sc, 0); x.quadraticCurveTo(-w * 1.1 * sc, -h * 0.5 * sc, sway * sc, -h * sc); x.quadraticCurveTo(w * 1.1 * sc, -h * 0.5 * sc, w * sc, 0);
+      x.closePath(); x.fillStyle = col; x.fill();
+      x.restore();
+    }
+  }
+  x.restore();
+};
+fox.fury = (l) => growl(l, l.R * 0.46);
+
+// Cat: it puffs up (fur on end), bares its teeth and every swing is a claw swipe across the face.
+cat.furyTint = "255,90,110";
+cat.furyBehind = (l) => {
+  const { x, R, rx, ry, t } = l, r = l.rage ?? 0;
+  if (r < 0.15) return;
+  const n = 14 + Math.round(10 * r), len = R * (0.1 + 0.2 * r);
+  x.save();
+  x.fillStyle = CAT_FUR; x.strokeStyle = CAT_EDGE; x.lineWidth = R * 0.025; x.lineJoin = "round";
+  for (let i = 0; i < n; i++) {
+    const a = (Math.PI * 2 * i) / n + 0.2;
+    if (Math.sin(a) < -0.55) continue;                                           // the ears sit on top, no spikes there
+    const bx = Math.cos(a) * rx * 0.98, by = Math.sin(a) * ry * 0.98, j = 1 + 0.2 * Math.sin(t * 22 + i * 3);
+    x.beginPath();
+    x.moveTo(bx - Math.sin(a) * R * 0.09, by + Math.cos(a) * R * 0.09);
+    x.lineTo(bx + Math.cos(a) * len * j, by + Math.sin(a) * len * j);
+    x.lineTo(bx + Math.sin(a) * R * 0.09, by - Math.cos(a) * R * 0.09);
+    x.closePath(); x.fill(); x.stroke();
+  }
+  x.restore();
+};
+cat.fury = (l) => {
+  const { x, R, rx, ry } = l, k = l.slashP ?? -1;
+  growl(l, l.R * 0.42);
+  if (k < 0.1 || k > 0.8) return;
+  const f = k < 0.4 ? 1 : 1 - (k - 0.4) / 0.4, p = Math.min(1, (k - 0.1) / 0.25), sd = l.slashDir ?? 1;
+  x.save();
+  x.beginPath(); x.rect(-rx * 1.1, -ry * 1.05, rx * 2.2, ry * 2.1); x.clip();
+  x.scale(sd, 1);
+  x.lineCap = "round";
+  for (const off of [-1, 0, 1]) {                                                 // three claw marks
+    const ox = off * R * 0.3, x0 = -rx * 0.75 + ox, y0 = -ry * 0.8, x1 = x0 + (rx * 1.1) * p, y1 = y0 + (ry * 1.5) * p;
+    x.strokeStyle = `rgba(255,70,90,${0.4 * f})`; x.lineWidth = R * 0.16;
+    x.beginPath(); x.moveTo(x0, y0); x.lineTo(x1, y1); x.stroke();
+    x.strokeStyle = `rgba(255,255,255,${f})`; x.lineWidth = R * 0.05;
+    x.beginPath(); x.moveTo(x0, y0); x.lineTo(x1, y1); x.stroke();
+  }
+  x.restore();
+};
+
+// Bunny: steam puffs out of it, and it stomps: every swing is a thump with impact lines on the ground.
+bunny.furyTint = "255,80,100";
+bunny.fury = (l) => {
+  const { x, R, rx, ry, t } = l, r = l.rage ?? 0, k = l.slashP ?? -1;
+  if (r > 0.18) {                                                                 // steam from both sides of the head
+    for (const sd of [-1, 1]) for (let i = 0; i < 3; i++) {
+      const ph = ((t * (0.9 + r) + i / 3 + (sd > 0 ? 0.17 : 0)) % 1), a = (1 - ph) * Math.min(1, r * 1.6) * 0.8;
+      x.fillStyle = `rgba(255,255,255,${a})`; x.strokeStyle = `rgba(200,200,230,${a * 0.7})`; x.lineWidth = R * 0.02;
+      x.beginPath(); x.arc(sd * (rx * 0.86 + ph * R * 0.4), ry * 0.1 - ph * R * 0.95, R * (0.08 + 0.13 * ph), 0, TAU); x.fill(); x.stroke();
+    }
+  }
+  if (k >= 0 && k < 0.7) {                                                        // THUMP: impact lines under the feet
+    const f = 1 - k / 0.7;
+    x.strokeStyle = `rgba(255,255,255,${0.9 * f})`; x.lineWidth = R * 0.05; x.lineCap = "round";
+    for (const a of [-2.6, -2.1, -1.57, -1.05, -0.55]) {
+      const c = Math.cos(a), s = Math.sin(a) * -1;                                // fan pointing downward
+      x.beginPath(); x.moveTo(c * rx * 0.8, ry * 0.95 + s * R * 0.1); x.lineTo(c * (rx * 0.8 + R * 0.4 * (1 - f * 0.4)), ry * 0.95 + s * R * 0.4); x.stroke();
+    }
+  }
+};
+
+// Panda: it pulls out a bamboo stick and swings it, getting faster with every poke.
+panda.furyTint = "255,90,70";
+panda.furyInk = "#ffffff";
+panda.fury = (l) => {
+  const out = Math.min(1, (l.rage ?? 0) * 6);
+  if (out > 0.02) swingTool(l, out, "bamboo");
+};
+
+export const CHAR_DEFS: Record<string, CharDef> = { cloud, fox, cat, bunny, panda, knight, hornet, lantern, grimm };
 
 /** The characters you can pick. "mochi" (the old blob) is only kept for the little agent bots, never as a pick. */
-export const CHARACTER_IDS = ["cloud", "fox", "cat", "bunny", "panda", "knight"] as const;
+export const CHARACTER_IDS = ["cloud", "fox", "cat", "bunny", "panda", "knight", "hornet", "lantern", "grimm"] as const;

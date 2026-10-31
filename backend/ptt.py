@@ -419,7 +419,7 @@ _chat_held = False   # the chat key is physically down: key auto-repeat must not
 
 # "Switch to typing" (Settings -> Shortcuts): opens Lyra's chat bar from anywhere, whatever program is in front.
 # The key is never swallowed. Default Ctrl+Win (modifiers only, so it never clashes with app shortcuts such as Ctrl+T "new tab"). Talk is Right Ctrl,
-# and Left Alt / Left Ctrl belong to dictation and circle-to-ask.
+# and Left Alt belongs to dictation (tap-then-hold Ctrl is circle-to-ask).
 CHAT_DEFAULT_COMBO = "ctrl+meta"
 _NAMED_VKS = {"space": 0x20, "tab": 0x09, "enter": 0x0D, "backspace": 0x08, "escape": 0x1B, "capslock": 0x14,
               "insert": 0x2D, "delete": 0x2E, "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22,

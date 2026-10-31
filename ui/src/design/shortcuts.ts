@@ -14,9 +14,17 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: "dictate", label: "Dictate anywhere", hint: "Hold it and talk: your words are pasted into the app in front when you let go.", def: "lalt", scope: "dictation" },
   { id: "typing", label: "Open chat tab", hint: "Opens the Chat tab on the island so you can type, from any program.", def: "ctrl+meta", scope: "lyra" },
   { id: "wheel", label: "Tab wheel", hint: "Hold to open the wheel at your cursor, let go on a tab to open it.", def: "ctrl+capslock", scope: "lyra" },
-  { id: "circle", label: "Circle to ask", hint: "Hold and circle something on screen to ask about it.", def: "lctrl", scope: "lyra" },
   { id: "record", label: "Start / stop recording", hint: "Starts a screen recording, or stops and saves the one that is running.", def: "ctrl+alt+r", scope: "lyra" },
   { id: "pause", label: "Pause / resume recording", hint: "Pauses the recording that is running, or carries on.", def: "ctrl+alt+p", scope: "lyra" },
+  // Shortcuts for actions (backend hotkeys.py): each works ONLY through its key, no voice or typed command behind it.
+  { id: "media_play", label: "Play / pause music", hint: "Plays or pauses whatever is playing: Spotify, a browser, any player.", def: "ctrl+alt+space", scope: "lyra" },
+  { id: "media_next", label: "Next song", hint: "Skips to the next track.", def: "ctrl+alt+right", scope: "lyra" },
+  { id: "media_prev", label: "Previous song", hint: "Goes back to the previous track.", def: "ctrl+alt+left", scope: "lyra" },
+  { id: "volume_mute", label: "Mute / unmute", hint: "Mutes or unmutes the PC's sound.", def: "ctrl+alt+m", scope: "lyra" },
+  { id: "open_music", label: "Open Music tab", hint: "Opens the Music tab on the island.", def: "ctrl+alt+s", scope: "lyra" },
+  { id: "open_todo", label: "Open To-do tab", hint: "Opens your to-do list on the island.", def: "ctrl+alt+t", scope: "lyra" },
+  { id: "open_calendar", label: "Open Calendar tab", hint: "Opens the Calendar tab on the island.", def: "ctrl+alt+c", scope: "lyra" },
+  { id: "open_clipboard", label: "Open Clipboard tab", hint: "Opens the clipboard history on the island.", def: "ctrl+alt+v", scope: "lyra" },
 ];
 
 /** Combos Windows (or nearly every app) already owns. Warn, never silently allow. */

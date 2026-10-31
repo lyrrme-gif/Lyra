@@ -22,12 +22,15 @@ const SIDED_CODES: Record<string, string> = { ControlLeft: "lctrl", ControlRight
 const MODS = new Set(["ctrl", "alt", "shift", "meta"]);
 /** Features-group setting for each row that is not a voice key. */
 const FEATURE_KEY: Record<string, string> = {
-  typing: "shortcut_typing_combo", wheel: "shortcut_wheel_combo", circle: "shortcut_circle_combo",
+  typing: "shortcut_typing_combo", wheel: "shortcut_wheel_combo",
   record: "shortcut_record_combo", pause: "shortcut_pause_combo",
+  media_play: "shortcut_media_play_combo", media_next: "shortcut_media_next_combo", media_prev: "shortcut_media_prev_combo",
+  volume_mute: "shortcut_volume_mute_combo", open_music: "shortcut_open_music_combo", open_todo: "shortcut_open_todo_combo",
+  open_calendar: "shortcut_open_calendar_combo", open_clipboard: "shortcut_open_clipboard_combo",
 };
 const VOICE_KEY: Record<string, "p2_talk_key" | "p2_dictation_key"> = { talk: "p2_talk_key", dictate: "p2_dictation_key" };
 /** Windows registers these two itself: they need modifiers + one key, never a left/right-specific modifier. */
-const NEEDS_KEY = new Set(["record", "pause"]);
+const NEEDS_KEY = new Set(["record", "pause", "media_play", "media_next", "media_prev", "volume_mute", "open_music", "open_todo", "open_calendar", "open_clipboard"]);
 
 /** Why this row cannot take the combo, or null. */
 function rowProblem(id: string, combo: string): string | null {
@@ -42,6 +45,17 @@ function rowProblem(id: string, combo: string): string | null {
   return null;
 }
 
+/** Circle to ask is "tap Ctrl, then hold Ctrl" (either Ctrl key): fixed, so it is shown but not recorded. */
+function circleRow(): HTMLElement {
+  const keys = el("button", "keycap", "Tap Ctrl, hold Ctrl") as HTMLButtonElement;
+  keys.type = "button";
+  keys.disabled = true;
+  keys.title = "Tap Ctrl, then press it again and hold: this one is fixed";
+  const row = Row("Circle to ask", "Tap Ctrl, press it again and hold it while you circle something on screen. Let go to finish. Switch the feature off in Features.", keys);
+  row.dataset.s += " shortcut circle ask double ctrl tap hold";
+  return row;
+}
+
 export function buildShortcutList(): HTMLElement {
   const values: Record<string, string> = {};
   for (const d of SHORTCUTS) values[d.id] = d.def;
@@ -49,7 +63,7 @@ export function buildShortcutList(): HTMLElement {
 
   // Same look as before: one card, one row per shortcut, the keys as a keycap button on the right.
   const card = el("section", "card");
-  card.dataset.s = "keyboard shortcuts hotkeys keys talk dictate chat tab wheel circle recording record pause";
+  card.dataset.s = "keyboard shortcuts hotkeys keys talk dictate chat tab wheel circle recording record pause music song play next previous mute volume open tab todo calendar clipboard";
   card.append(el("h3", "", "Keyboard shortcuts"));
   const list = el("div", "group");
   card.append(list);
@@ -70,6 +84,7 @@ export function buildShortcutList(): HTMLElement {
   }
 
   for (const d of SHORTCUTS) {
+    if (d.id === "record") list.append(circleRow());          // Circle to ask sits between the wheel and the recording keys
     const press = el("button", "keycap") as HTMLButtonElement;      // click it, press the keys
     press.type = "button";
     const reset = el("button", "sc-reset", "Reset") as HTMLButtonElement;

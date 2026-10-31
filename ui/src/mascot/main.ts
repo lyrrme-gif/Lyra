@@ -8,6 +8,7 @@ import { Engine, type MascotCmd } from "./engine";
 import { IS_TAURI, native, onNative, type MascotPrefs, type ScreenInfo } from "./native";
 import { Overlay } from "./overlay";
 import { onCaptionPill, onMusic } from "./dock";
+import { onCarryStart, onNest } from "./carry";
 import { adaptivePoll, noteEvents } from "../core/pollLoop";
 import { installTracer } from "../core/trace";
 installTracer();
@@ -36,6 +37,10 @@ void (async () => {
   await onNative<ScreenInfo>("mascot-screen", applyScreen);
   await onNative<MascotPrefs>("mascot-prefs", applyPrefs);
   await onNative<boolean>("mascot-suspend", (on) => engine.setSuspended(on));
+  // The Mochi dragged between the island and the screen (see carry.ts).
+  await onCarryStart((c) => engine.carryStart(c));
+  await onNest((n) => engine.setNest(n));
+  await onNative<{ x: number; y: number }>("mascot-drop", (p) => engine.carryDrop(p.x, p.y));
   const boot = await native.boot();
   if (boot) {
     applyScreen(boot.screen);

@@ -147,6 +147,15 @@ export function recordingsCards(d: RecordingsDeps): HTMLElement[] {
   const hostEl = field("text", "127.0.0.1", "170px", (v) => save({ obs_host: v || "127.0.0.1" }));
   const portEl = field("number", "4455", "90px", (v) => save({ obs_port: Math.max(1, Math.min(65535, Number(v) || 4455)) }));
   const passEl = field("password", "only if OBS asks", "170px", (v) => save({ obs_password: v }));
+  const pathEl = field("text", "only if Lyra can't find OBS", "260px", (v) => save({ obs_path: v }));
+  // Same switch markup as the other Settings panels (no shared helper is passed to this panel).
+  const autoEl = h("button", { type: "button", class: "switch on", "aria-pressed": "true", "aria-label": "Open OBS in the background" });
+  autoEl.addEventListener("click", () => {
+    const next = !autoEl.classList.contains("on");
+    autoEl.classList.toggle("on", next);
+    autoEl.setAttribute("aria-pressed", String(next));
+    save({ obs_autostart: next });
+  });
   const obsNote = h("div", { style: "margin-top:6px;min-height:1.2em" });
   const testBtn = btn("Test connection", () => {
     testBtn.disabled = true; obsNote.style.color = ""; obsNote.textContent = "Connecting to OBS…";
@@ -156,14 +165,41 @@ export function recordingsCards(d: RecordingsDeps): HTMLElement[] {
       obsNote.textContent = j.message ?? (j.ok ? "Connected." : "Couldn't connect.");
     }).finally(() => { testBtn.disabled = false; });
   }) as HTMLButtonElement;
+  const QUALITY_HINTS: Record<string, string> = {
+    obs: "Lyra doesn't touch OBS's video settings: recordings use whatever OBS is set to.",
+    high: "High: 1080p at 60 fps. Sharpest and smoothest, biggest files.",
+    medium: "Medium: 720p at 30 fps. A good balance of sharpness and file size.",
+    low: "Low: 480p at 30 fps. Smallest files, lighter on the PC.",
+  };
+  const qualityHint = h("div", { class: "hint", text: QUALITY_HINTS.obs });
+  const qualityEl = h("select", { "aria-label": "Recording quality" },
+    h("option", { value: "obs", text: "OBS settings (default)" }),
+    h("option", { value: "high", text: "High · 1080p · 60 fps" }),
+    h("option", { value: "medium", text: "Medium · 720p · 30 fps" }),
+    h("option", { value: "low", text: "Low · 480p · 30 fps" })) as HTMLSelectElement;
+  qualityEl.addEventListener("change", () => {
+    qualityHint.textContent = QUALITY_HINTS[qualityEl.value] ?? "";
+    save({ obs_quality: qualityEl.value });
+  });
   void fetch(`${d.lyra}/settings/recordings`).then((r) => r.json()).then((j: Record<string, unknown>) => {
+    const q = String(j.obs_quality ?? "obs");
+    qualityEl.value = q in QUALITY_HINTS ? q : "obs";
+    qualityHint.textContent = QUALITY_HINTS[qualityEl.value];
+    const auto = j.obs_autostart !== false;
+    autoEl.classList.toggle("on", auto); autoEl.setAttribute("aria-pressed", String(auto));
+    pathEl.value = String(j.obs_path ?? "");
     hostEl.value = String(j.obs_host ?? "127.0.0.1"); portEl.value = String(j.obs_port ?? 4455); passEl.value = String(j.obs_password ?? "");
   }).catch(() => { /* backend not up: the defaults stay shown */ });
   const obsCard = d.card("Recording with OBS",
     d.item("How it works", "Lyra records through OBS Studio, so a recording looks exactly like one made in OBS (its capture, encoder and sound settings). In OBS open Tools → WebSocket Server Settings, tick “Enable WebSocket server” and press OK. Then press Test connection here.", null),
+    d.item("Open OBS by itself", "When you start a recording and OBS isn't open, Lyra opens it hidden in the system tray (no window) and leaves it there, so the next recording starts straight away. Needs OBS's tray icon enabled (OBS: Settings → General → System Tray).", autoEl),
+    d.item("OBS location", "Only needed if Lyra can't find OBS Studio: the obs64.exe file or the obs-studio folder.", pathEl),
     d.item("OBS address", "Leave it as it is when OBS runs on this PC.", hostEl),
     d.item("Port", "OBS's default is 4455.", portEl),
     d.item("Password", "Only if OBS asks for one (OBS: Tools → WebSocket Server Settings → Enable Authentication).", passEl),
     d.item("Check the connection", obsNote, testBtn));
-  return [obsCard, folderCard, listCard];
+  const qualityCard = d.card("Recording quality",
+    d.item("Quality", qualityHint, qualityEl),
+    d.item("Good to know", "Lyra sets this in OBS just before each recording starts, so it also becomes OBS's own video setting. It scales the recorded picture; your screen capture itself isn't changed. Takes effect on the next recording.", null));
+  return [obsCard, qualityCard, folderCard, listCard];
 }

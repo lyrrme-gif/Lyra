@@ -7,6 +7,7 @@
 
 import { createCharacter, gazeToward, type Character, type EmoteName } from "../mascot/character";
 import { AWAY_TIMEOUT_MS, onAway } from "../mascot/dock";
+import { carry, emitNest, onNestQuery } from "../mascot/carry";
 import { IS_TAURI, onEvent } from "../core/bridge";
 import { nowPlaying, onNowPlaying } from "../core/nowPlaying";
 import { isReallyVisible } from "../core/visibility";
@@ -93,6 +94,19 @@ export function mountNotchMochi(): void {
     away = a;
     sync();
     if (a) awayTimer = window.setTimeout(() => { away = false; sync(); }, AWAY_TIMEOUT_MS);
+  });
+
+  // ── Dragging the Mochi between the island and the screen (mascot/carry.ts) ──
+  // The overlay asks where the island is while the Mochi is dragged: its shape (so letting go over it flies the
+  // Mochi in) and, when the Mochi tab is open, where that tab keeps its Mochi (so it lands there, not in the notch).
+  void onNestQuery(() => {
+    const r = host.getBoundingClientRect();
+    const hidden = host.dataset.mode === "hidden" || r.width < 2;
+    emitNest({
+      winW: window.innerWidth,
+      rect: hidden ? { x: 0, y: 0, w: 0, h: 0 } : { x: r.left, y: r.top, w: r.width, h: r.height },
+      spot: hidden ? null : carry.spot(),
+    });
   });
 
   // ── Feature switch: same flag the overlay window follows (Settings → Lyra mascot) ──

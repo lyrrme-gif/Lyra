@@ -20,8 +20,9 @@ import base64
 import os
 import re
 import sys
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
 _TRACK_URL = re.compile(r"open\.spotify\.com/(?:intl-[a-z]+/)?track/([A-Za-z0-9]{22})")
@@ -135,7 +136,7 @@ def _oembed(tid: str) -> dict:
     try:
         r = requests.get("https://open.spotify.com/oembed",
                          params={"url": f"https://open.spotify.com/track/{tid}"},
-                         headers={"User-Agent": _UA}, timeout=5)
+                         headers={"User-Agent": _UA}, timeout=3)
         return r.json() if r.ok else {}
     except Exception:
         return {}
@@ -176,10 +177,21 @@ def _clean_query(q: str) -> str:
 def _search_web(query: str, n: int) -> list[dict]:
     q = _clean_query(query) or query
     found: dict[str, str] = {}
-    for variant in (f"site:open.spotify.com/track {q}", f"open.spotify.com track {q}", f"{q} spotify song"):
-        found = _ddg_ids(variant, n)
-        if found:
-            break
+    variants = (f"site:open.spotify.com/track {q}", f"open.spotify.com track {q}", f"{q} spotify song")
+    pool = ThreadPoolExecutor(max_workers=len(variants))
+    try:
+        futs = [pool.submit(_ddg_ids, v, n) for v in variants]
+        for fut in as_completed(futs, timeout=9):      # all at once: the first that finds songs wins
+            try:
+                found = fut.result()
+            except Exception:
+                found = {}
+            if found:
+                break
+    except Exception:
+        pass
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
     ids = list(found)[:n]
     if not ids:
         return []
@@ -249,20 +261,43 @@ def resolve_spotify_id(row: dict) -> str:
     return tid
 
 
+_ITUNES_GRACE = 1.2   # seconds to wait for exact Spotify ids once the (fast) iTunes list is ready
+last_source = ""
+
+
 def search(query: str, n: int = 4) -> list[dict]:
-    rows: list[dict] = []
+    """Ask every source at the same time. Spotify's own API wins, then the web search (exact Spotify
+    songs); the fast iTunes list is used when the web search is slow or finds nothing."""
+    global last_source
+    pool = ThreadPoolExecutor(max_workers=3)
+    futs = {pool.submit(_search_api, query, n): "api", pool.submit(_search_web, query, n): "web",
+            pool.submit(_search_itunes, query, n): "itunes"}
+    got: dict[str, list[dict]] = {}
+    pending = set(futs)
+    deadline, itunes_at = time.time() + 9, None
     try:
-        rows = _search_api(query, n)
-    except Exception:
-        rows = []
-    if not rows:
-        rows = _search_web(query, n)
-    if not rows:
-        try:
-            rows = _search_itunes(query, n)
-        except Exception:
-            rows = []
-    return rows
+        while pending and time.time() < deadline:
+            done, pending = wait(pending, timeout=0.1, return_when=FIRST_COMPLETED)
+            for f in done:
+                try:
+                    got[futs[f]] = f.result() or []
+                except Exception:
+                    got[futs[f]] = []
+            api_done = "api" in got
+            if got.get("api") or (api_done and got.get("web")):
+                break
+            if got.get("itunes") and itunes_at is None:
+                itunes_at = time.time()
+            if itunes_at is not None and time.time() - itunes_at > _ITUNES_GRACE:
+                break
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    for name in ("api", "web", "itunes"):
+        if got.get(name):
+            last_source = name
+            return got[name]
+    last_source = ""
+    return []
 
 
 def _norm(t: str) -> str:
@@ -285,12 +320,12 @@ def more_by(artist: str, skip: list[dict], n: int = 3) -> list[dict]:
         rows = []
     if not rows:
         try:
-            rows = _search_web(f"{artist} songs", 10)
+            rows = _search_itunes(artist, 12)
         except Exception:
             rows = []
     if not rows:
         try:
-            rows = _search_itunes(artist, 12)
+            rows = _search_web(f"{artist} songs", 10)
         except Exception:
             rows = []
     out: list[dict] = []
@@ -307,30 +342,54 @@ def more_by(artist: str, skip: list[dict], n: int = 3) -> list[dict]:
     return out
 
 
+_CACHE_S = 600
+_cache: dict[str, tuple[float, list[dict], list[dict], str]] = {}   # same search again = instant
+
+
 def show(query: str, n: int = 4) -> str:
     """Search Spotify and push the song cards to the island. Returns the reply to speak, or ''
     when nothing was found / it failed (the caller then falls back to the old behaviour)."""
+    t0 = time.time()
     try:
         import ui_bridge
-        rows = search(query, n)
-        if not rows:
-            try:
-                import ui
-                ui.log.warning("spotify island: no songs found for %r (web search blocked/offline?)", query)
+        key = _norm(query)
+        hit = _cache.get(key)
+        if hit and time.time() - hit[0] < _CACHE_S:
+            _, rows, more, more_title = hit
+            source = "cache"
+        else:
+            rows = search(query, n)
+            source = last_source
+            if not rows:
+                try:
+                    import ui
+                    ui.log.warning("spotify island: no songs found for %r (web search blocked/offline?)", query)
+                except Exception:
+                    pass
+                return ""
+            artist = _first_artist(rows[0]) or next((_first_artist(r) for r in rows if _first_artist(r)), "")
+            more, more_title = [], (f"More by {artist}" if artist else "")
+            pool = ThreadPoolExecutor(max_workers=1)
+            try:                                         # "more by" must never hold the cards back for long
+                more = pool.submit(more_by, artist, rows).result(timeout=3)
             except Exception:
-                pass
-            return ""
-        artist = _first_artist(rows[0]) or next((_first_artist(r) for r in rows if _first_artist(r)), "")
-        more: list[dict] = []
-        try:
-            more = more_by(artist, rows)
-        except Exception:
-            more = []
+                more = []
+            finally:
+                pool.shutdown(wait=False)
+            _cache[key] = (time.time(), rows, more, more_title)
         _last.clear()
         for r in rows + more:
             _last[r["track_id"]] = r
-        ui_bridge.push_search_results(query, rows, "Spotify", more=more,
-                                      more_title=(f"More by {artist}" if artist else ""))
+        ui_bridge.push_search_results(query, rows, "Spotify", more=more, more_title=more_title)
+        if rows and str(rows[0].get("url", "")).startswith("spotify:find:"):
+            # Most likely tap: look up its exact Spotify song now, so the tap itself is quick.
+            threading.Thread(target=resolve_spotify_id, args=(rows[0],), daemon=True).start()
+        try:
+            import ui
+            ui.log.info("spotify island: %d songs + %d more for %r in %d ms (%s)",
+                        len(rows), len(more), query, int((time.time() - t0) * 1000), source or "?")
+        except Exception:
+            pass
         return f"Here's what I found on Spotify for {query}."
     except Exception as e:
         try:
@@ -357,6 +416,13 @@ def _art_data_url(url: str) -> str | None:
     except Exception:
         pass
     return None
+
+
+def _wait_art(fut) -> str | None:
+    try:
+        return fut.result(timeout=2)
+    except Exception:
+        return None
 
 
 def _open_search(row: dict) -> str:
@@ -539,6 +605,9 @@ def play(ref: str) -> str:
         row = _last.get(tid, {})
     title = str(row.get("title") or "").strip()
     artist = str(row.get("channel") or "").strip()
+    art_pool = ThreadPoolExecutor(max_workers=1)
+    art_fut = art_pool.submit(_art_data_url, str(row.get("thumbnail") or ""))   # while the song starts
+    art_pool.shutdown(wait=False)
     cold = _spotify_titles() == []                   # Spotify not running: it needs a few seconds to start
     try:
         starter = getattr(os, "startfile")           # Windows: the spotify: URI opens the desktop app
@@ -560,7 +629,7 @@ def play(ref: str) -> str:
             ui_bridge.push_activity(
                 "song_play", f"Playing {title}" if title else "Playing on Spotify", phase="success",
                 subtitle=artist, app="spotify", duration_ms=5500,
-                icon_url=_art_data_url(str(row.get("thumbnail") or "")), url=f"spotify:track:{tid}",
+                icon_url=_wait_art(art_fut), url=f"spotify:track:{tid}",
             )
     except Exception:
         pass

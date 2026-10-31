@@ -21,7 +21,7 @@ export interface TranslatePrefill { src: string; dst: string; text: string; resu
 let prefill: TranslatePrefill | null = null;
 
 // ── Voice result = the Settings → Features preview, 1:1 ─────────────────────────────────────────
-// A voice translation shows the same black pill as the preview (settings/featurePreviews.ts, `translate`):
+// A voice translation shows the same black pill as the preview (settings/screenPreview.ts, `translate`):
 // source, arrow, translation on one row. Every preview measure is multiplied by PILL_SCALE
 // (island px = preview px × 2), so the layout, spacing and type keep the preview's proportions.
 const PILL_SCALE = 2;
