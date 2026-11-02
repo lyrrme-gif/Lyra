@@ -169,10 +169,15 @@ fn open_url(url: String) {
 #[tauri::command]
 fn open_in_vscode(path: Option<String>) -> bool {
     let Some(path) = path else { return false };
-    std::process::Command::new("code")
-        .arg(&path)
-        .spawn()
-        .is_ok()
+    let mut cmd = std::process::Command::new("code");
+    cmd.arg(&path);
+    // `code` is a .cmd launcher: without this flag a console window flashes on screen.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd.spawn().is_ok()
 }
 
 #[tauri::command]

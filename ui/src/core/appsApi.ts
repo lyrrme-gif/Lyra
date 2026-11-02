@@ -1,4 +1,4 @@
-// What the backend says about app plugins (WhatsApp, Spotify, ...): shared by the island's Apps tab and by
+// What the backend says about app plugins (WhatsApp): shared by the island's Apps tab and by
 // Settings → Apps, where an app is set up. See backend/plugins/apps.py for the data these mirror.
 
 export const APPS_BASE = "http://127.0.0.1:8765";

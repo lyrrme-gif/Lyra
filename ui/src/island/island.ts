@@ -3351,7 +3351,7 @@ export class Island {
     this.timerSeen = seen;
     if (finished && State.activityOn("timer") && !State.paused) {
       Sound.activity("timerDone");
-      if (State.mode !== "expanded") this.fx.show("success", { color: "#ff9f0a", originX: 26 });
+      if (State.mode !== "expanded") this.fx.show("success", { color: "#ff9f0a", originX: 26, act: "timer" });
     }
     const had = this.timerChip.active();
     this.timerChip.setItems(p);
@@ -3686,7 +3686,8 @@ export class Island {
     const musicOn = !timerOn && this.isSpotifyCompactActive() && !this.toastOn && !this.pulseOn && !this.lyraListening && !this.lyraSpeaking;
     const want: FxKind | null = timerOn ? "timer" : musicOn ? "music" : null;
     const urgent = timerOn && this.timerChip.el.classList.contains("urgent");
-    const key = want ? `${want}${urgent ? "!" : ""}` : "";
+    const glow = !want || State.glowOn(want === "timer" ? "timer" : "music");
+    const key = want ? `${want}${urgent ? "!" : ""}${glow ? "" : "~"}` : "";
     if (key === this.ambientKey) return;
     this.ambientKey = key;
     if (!want) { if (k) this.fx.hide(); return; }

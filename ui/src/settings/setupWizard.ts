@@ -773,7 +773,15 @@ export async function showSetupWizard(ctx: WizardCtx): Promise<void> {
   const pageWhatsApp = () => {
     const box = h("div", { class: "wz-wa" });
     const stat = h("div", { class: "wz-wa-status", text: "Checking…" });
-    let timer = 0, enabled = true, busy = false;
+    let timer = 0, enabled = true, busy = false, lastTry = 0;
+    // The QR code only exists once WhatsApp's helper is running. Settings → Apps starts it with its Connect button;
+    // this page has no such button, so it starts the helper itself (safe to call twice) and retries now and then.
+    const startWhatsApp = async (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastTry < 8000) return;
+      lastTry = now;
+      await appsPost("/apps/connect", { id: "whatsapp" });
+    };
     const paint = (s: { connected: boolean; account: string; qr?: AppView; down?: boolean; off?: boolean }) => {
       clear(box);
       if (s.down) { box.append(h("p", { class: "wz-small", text: "Lyra isn’t running yet, so WhatsApp can’t be linked now. You can do it later in Settings → Apps." })); return; }
@@ -781,7 +789,10 @@ export async function showSetupWizard(ctx: WizardCtx): Promise<void> {
       if (s.connected) { box.append(h("div", { class: "wz-wa-ok" }, h("span", { text: "✓" }), h("div", {}, h("strong", { text: "WhatsApp is connected" }), h("small", { text: s.account ? `Linked as ${s.account}. Your chats show up in the island’s Apps tab.` : "Your chats show up in the island’s Apps tab." })))); return; }
       const steps = ["Open WhatsApp on your phone", "Settings → Linked devices → Link a device", "Point the phone at this code"];
       box.append(h("div", { class: "wz-wa-qr" },
-        s.qr?.image ? h("img", { src: s.qr.image, alt: "QR code to scan", width: 188, height: 188 }) : h("div", { class: "wz-wa-wait", text: s.qr?.text || "Getting the code…" }),
+        s.qr?.image ? h("img", { src: s.qr.image, alt: "QR code to scan", width: 188, height: 188 })
+          : h("div", { class: "wz-wa-wait" },
+              h("span", { text: !s.qr?.text || /press connect/i.test(s.qr.text) ? "Getting the code…" : s.qr.text }),
+              h("button", { class: "wz-testbtn", type: "button", text: "Connect", onclick: () => { stat.textContent = "Starting WhatsApp…"; void startWhatsApp(true).then(() => poll()); } })),
         h("div", { class: "wz-wa-steps" }, h("strong", { text: "Scan to link" }), h("ol", {}, ...steps.map((t) => h("li", { text: t }))), h("small", { text: "The code refreshes by itself. This turns to a tick when it works." }))));
     };
     const poll = async () => {
@@ -793,7 +804,13 @@ export async function showSetupWizard(ctx: WizardCtx): Promise<void> {
         if (!enabled || !wa) { paint({ connected: false, account: "", off: true }); return; }
         if (wa.connected) { paint({ connected: true, account: wa.account }); stat.textContent = "Connected"; return; }
         stat.textContent = "Waiting for you to scan…";
-        const res = await appsPost<{ ok: boolean; view?: AppView }>("/apps/view", { id: "whatsapp", route: "" });
+        let res = await appsPost<{ ok: boolean; view?: AppView }>("/apps/view", { id: "whatsapp", route: "" });
+        if (res?.view?.type !== "qr") {
+          // No code yet: the helper is not running (or has stopped). Start it, then look again shortly.
+          await startWhatsApp();
+          await new Promise((r) => window.setTimeout(r, 700));
+          res = await appsPost<{ ok: boolean; view?: AppView }>("/apps/view", { id: "whatsapp", route: "" });
+        }
         paint({ connected: false, account: "", qr: res?.view });
       } finally { busy = false; }
     };

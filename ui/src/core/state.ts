@@ -14,6 +14,8 @@ export interface UiExtras {
   shapeNotched: "notch" | "island";
   shapeNotchless: "notch" | "island";
   activities: Partial<Record<LiveActivity, boolean>>;
+  /** Per-activity light show (edge glow, shockwaves, sparks, notch buzz). Missing key = on. Sounds are separate. */
+  glow: Partial<Record<LiveActivity, boolean>>;
   compactStyle: CompactStyle;
   /** Keep the island hidden even while music plays. */
   hideCompact: boolean;
@@ -26,7 +28,7 @@ export interface UiExtras {
 }
 export const EXTRAS_KEY = "lyra-ui-extras";
 
-export const DEFAULT_EXTRAS: UiExtras = { shapeNotched: "notch", shapeNotchless: "island", activities: {}, compactStyle: "black", hideCompact: false, keepChat: false, keepClipboard: false, navStyle: "wheel", features: {} };
+export const DEFAULT_EXTRAS: UiExtras = { shapeNotched: "notch", shapeNotchless: "island", activities: {}, glow: {}, compactStyle: "black", hideCompact: false, keepChat: false, keepClipboard: false, navStyle: "wheel", features: {} };
 
 export function readExtras(): UiExtras {
   try {
@@ -337,6 +339,11 @@ class AppState {
     if (owner && !this.featureOn(owner)) return false;
     if (a === "music" && this.extras.hideCompact) return false;
     return this.extras.activities[a] !== false;
+  }
+
+  /** True unless the user switched the glow of this Live Activity off in Settings → Live Activities. */
+  glowOn(a: LiveActivity): boolean {
+    return this.extras.glow?.[a] !== false;
   }
 
   subscribe(fn: Listener): () => void {

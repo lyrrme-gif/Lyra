@@ -15,6 +15,9 @@ for _name in ("stdout", "stderr"):
 if sys.stdin is None:
     sys.stdin = open(os.devnull, "r")
 
+# Hide the console window of every child process (powershell, shutdown, ffmpeg...). Must stay first.
+import no_console  # noqa: F401
+
 # pydub is imported by the audio/wake-word stack on some installations.
 # Give it a bundled ffmpeg binary when available so startup does not emit the
 # misleading "Couldn't find ffmpeg" warning. The recognition path itself uses

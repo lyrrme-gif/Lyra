@@ -17,7 +17,7 @@ import { islandScene, navScene as navScreen } from "./screenPreview";
 import { themePreview } from "./themePreview";
 import { getFeatures } from "../core/featuresCache";
 import { featurePreview } from "./featureScenes";
-import { activityScene, playActivityPreview } from "./activityPreviews";
+import { activityScene, playActivityPreview, replayActivityFx } from "./activityPreviews";
 import { showSetupWizard } from "./setupWizard";
 // >>> phase-8 begin
 import { updateCards } from "./panels/p8_updates";
@@ -1423,9 +1423,34 @@ async function applyUiImport(ui: unknown) {
 /** A tiny "desktop" scene with the island drawn on it; the tile is the radio button. */
 const SPEAKER_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5v5h3.6L12 18.5v-13L7.6 9.5H4z" fill="currentColor" stroke="none"/><path d="M15.4 9.2a4 4 0 0 1 0 5.6"/><path d="M18 6.6a7.6 7.6 0 0 1 0 10.8"/></svg>`;
 
+const GLOW_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2l1.9 5.2 5.2 1.9-5.2 1.9L12 17.4l-1.9-5.2L4.9 10.3l5.2-1.9z" fill="currentColor" stroke="none"/><path d="M18.6 15.6l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8z" fill="currentColor" stroke="none"/><path class="glow-slash" d="M4 4l16 16"/></svg>`;
+
 /** `onPlay`: adds a small speaker button to the tile (Live Activities: hear the real sound and see the light again). */
-function previewTile(label: string, on: boolean, scene: HTMLElement, onPick: () => void, sub = "", onPlay?: () => void): HTMLButtonElement {
+function previewTile(label: string, on: boolean, scene: HTMLElement, onPick: () => void, sub = "", onPlay?: () => void,
+  glow?: { on: boolean; onChange: (v: boolean) => void }): HTMLButtonElement {
   let snd: HTMLElement | null = null;
+  let glowBtn: HTMLElement | null = null;
+  if (glow) {
+    let gOn = glow.on;
+    glowBtn = h("span", { class: `ptile-glow${gOn ? "" : " off"}`, role: "switch", tabindex: "0" });
+    const paint = () => {
+      glowBtn!.classList.toggle("off", !gOn);
+      glowBtn!.setAttribute("aria-checked", String(gOn));
+      glowBtn!.title = gOn ? "Glow on: click to turn the light effect off" : "Glow off: click to turn the light effect on";
+      glowBtn!.setAttribute("aria-label", `Glow effect of ${label}`);
+    };
+    glowBtn.innerHTML = GLOW_ICON;
+    paint();
+    const flip = (e: Event) => {
+      e.stopPropagation();
+      e.preventDefault();
+      gOn = !gOn;
+      paint();
+      glow.onChange(gOn);
+    };
+    glowBtn.addEventListener("click", flip);
+    glowBtn.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter" || (e as KeyboardEvent).key === " ") flip(e); });
+  }
   if (onPlay) {
     snd = h("span", { class: "ptile-snd", role: "button", tabindex: "0", title: "Play its sound", "aria-label": `Play the sound of ${label}` });
     snd.innerHTML = SPEAKER_ICON;
@@ -1440,7 +1465,7 @@ function previewTile(label: string, on: boolean, scene: HTMLElement, onPick: () 
     snd.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter" || (e as KeyboardEvent).key === " ") go(e); });
   }
   const b = h("button", { class: on ? "ptile on" : "ptile", type: "button", "aria-pressed": on },
-    h("span", { class: "ptile-scene" }, scene, snd),
+    h("span", { class: "ptile-scene" }, scene, glowBtn, snd),
     h("span", { class: "ptile-label", text: label }),
     sub ? h("span", { class: "ptile-sub", text: sub }) : null,
   ) as HTMLButtonElement;
@@ -1538,7 +1563,16 @@ function liveCards(): HTMLElement[] {
       tile.classList.toggle("on", next);
       tile.setAttribute("aria-pressed", String(next));
       if (next) playActivityPreview(a.id, scene);        // switching an activity on lets you hear and see it
-    }, a.sub, () => playActivityPreview(a.id, scene));
+    }, a.sub, () => playActivityPreview(a.id, scene),
+    // Glow: the light show of this activity (clipboard has none). The sound is not affected.
+    a.id === "clipboard" ? undefined : {
+      on: ex.glow?.[a.id] !== false,
+      onChange: (v) => {
+        const cur = readExtras();
+        writeExtras({ glow: { ...cur.glow, [a.id]: v } });
+        replayActivityFx(scene);                          // show the new setting at once
+      },
+    });
     (groups[a.group] ??= []).push(tile);
   }
   const out: HTMLElement[] = [];
@@ -2018,7 +2052,7 @@ async function main() {
     features: later("features", "Features", "Turn any part of Lyra on or off. Island tabs change instantly; background helpers apply after a restart.", () => [...featuresCards(featurePrefs)]),
     apps: later("apps", "Apps", "Connect WhatsApp here. Once connected, your chats show up in the island's Apps tab.",
       () => [...appsCards({ card, item, toggle, confirmButton, flashSaved })]),
-    live: later("live", "Live Activities", "Choose which activities can take over the notch. Click a preview to turn it on or off.", () => [...liveCards()]),
+    live: later("live", "Live Activities", "Choose which activities can take over the notch. Click a preview to turn it on or off, and use its sparkle button to switch its glow effect on or off.", () => [...liveCards()]),
     shortcuts: later("shortcuts", "Shortcuts", "Keys that run Lyra.", () => []),
     files: later("files", "Files", "Choose folders Lyra can index and search.", () => [filesHost({ card, item, lyra, flashSaved })]),
     privacy: later("privacy", "Privacy & Memory", "What Lyra keeps and what she sends.", () => [...privacyCards(privacyPrefs), memoryHost(), backupCard()]),

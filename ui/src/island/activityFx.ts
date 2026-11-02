@@ -14,6 +14,7 @@
 
 import "./activityFx.css";
 import { isEco, onEcoChange } from "../core/eco";
+import { readExtras, type LiveActivity } from "../core/state";
 
 export type FxKind =
   | "message" | "call" | "reminder" | "timer" | "music"
@@ -27,6 +28,21 @@ export interface FxOpts {
   level?: number;
   /** Where the sparks start, from the left edge of the notch, in px (the icon sits there). */
   originX?: number;
+  /** Which Live Activity this light belongs to (decides whether its glow switch is on). Defaults to the kind's own. */
+  act?: LiveActivity;
+}
+
+/** The Live Activity each kind of light belongs to. `success` / `fail` default to Downloads; the timer passes `act`. */
+const KIND_ACTIVITY: Record<FxKind, LiveActivity> = {
+  message: "notifications", call: "calls", reminder: "reminders", timer: "timer", music: "music",
+  volume: "volume", brightness: "brightness", devices: "devices", disconnect: "devices",
+  download: "downloads", success: "downloads", fail: "downloads", listening: "listening",
+  recognition: "recognition", found: "recognition",
+};
+
+/** False when the user switched this activity's glow off (Settings → Live Activities). */
+export function glowEnabled(kind: FxKind, act?: LiveActivity): boolean {
+  return readExtras().glow?.[act ?? KIND_ACTIVITY[kind]] !== false;
 }
 
 export interface Fx {
@@ -87,7 +103,8 @@ export function buildFx(host: HTMLElement): Fx {
     show(kind, o = {}) {
       clearTimer();
       // Eco mode (light CPU): no light show at all. The sounds are not part of this and keep playing.
-      if (isEco()) { current = null; el.classList.remove("on"); host.classList.remove("afx-host"); delete host.dataset.afx; return; }
+      // The per-activity glow switch does the same: that activity gets no light (its sound is not affected).
+      if (isEco() || !glowEnabled(kind, o.act)) { current = null; el.classList.remove("on"); host.classList.remove("afx-host"); delete host.dataset.afx; return; }
       current = kind;
       // restart every animation: drop the class, force a reflow, put it back
       el.classList.remove("on");

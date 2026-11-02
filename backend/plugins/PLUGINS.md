@@ -35,7 +35,7 @@ PLUGIN = {
 
 
 ## App plugins (apps on the notch)
-A plugin can also be an **app**: something that lives on the notch, like Spotify's playlists or WhatsApp chats. It adds an `app` part to `PLUGIN` (with or without voice commands). It never draws its own screens: it returns plain data and Lyra shows it in the notch's own style.
+A plugin can also be an **app**: something that lives on the notch, like WhatsApp chats. It adds an `app` part to `PLUGIN` (with or without voice commands). It never draws its own screens: it returns plain data and Lyra shows it in the notch's own style.
 
 ```python
 PLUGIN = {

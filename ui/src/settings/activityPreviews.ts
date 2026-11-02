@@ -24,7 +24,7 @@ type Step = [FxKind, number, FxOpts?];
 /** What the notch does for each activity (the same kinds island.ts uses), as a loop. */
 const LOOPS: Partial<Record<LiveActivity, Step[]>> = {
   music: [["music", 6000]],
-  timer: [["timer", 3600], ["success", 2600, { color: "#ff9f0a", originX: 26 }]],
+  timer: [["timer", 3600], ["success", 2600, { color: "#ff9f0a", originX: 26, act: "timer" }]],
   volume: [["volume", 1900, { level: 0.85 }], ["volume", 1700, { level: 0.4 }]],
   brightness: [["brightness", 2300, { level: 0.95 }], ["brightness", 1700, { level: 0.3 }]],
   devices: [["devices", 3000, { originX: 24 }], ["disconnect", 2300]],
@@ -92,6 +92,12 @@ function attachFx(island: HTMLElement, id: LiveActivity): void {
   };
   replays.set(island, () => { i = 0; play(); });
   play();
+}
+
+/** Restarts the light of a preview (after its glow switch changed) without playing any sound. */
+export function replayActivityFx(scene: HTMLElement): void {
+  const island = scene.querySelector<HTMLElement>(".ap-island");
+  if (island) replays.get(island)?.();
 }
 
 /** The speaker button of a tile: plays this activity's real sound (and restarts its light). */

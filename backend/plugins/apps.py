@@ -1,7 +1,7 @@
 """Lyra — app plugins (Phase 4).
 
 A plugin file may add an "app" part next to (or instead of) its voice-command part. An app plugin is
-something that lives on the notch: Spotify's playlists, WhatsApp chats, ... It never ships its own
+something that lives on the notch: WhatsApp chats, ... It never ships its own
 screens. It hands Lyra plain data (a "view") and Lyra draws that in the notch's own style, so every app
 looks like the notch and not like the app it connects to.
 

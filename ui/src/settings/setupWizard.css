@@ -253,7 +253,7 @@
 .wz-wa { width: min(640px, 100%); margin-top: 16px; }
 .wz-wa-qr { display: flex; align-items: center; gap: 26px; padding: 18px; border-radius: 20px; background: #fff; box-shadow: 0 10px 26px -18px rgba(30, 40, 90, .5), 0 0 0 1px rgba(30, 40, 90, .07); }
 .wz-wa-qr img { flex: none; width: 188px; height: 188px; border-radius: 12px; background: #fff; }
-.wz-wa-wait { display: grid; place-items: center; flex: none; width: 188px; height: 188px; border-radius: 12px; background: #f1f3f9; color: var(--wz-soft); font-size: 13px; text-align: center; padding: 14px; }
+.wz-wa-wait { display: grid; place-items: center; align-content: center; gap: 12px; flex: none; width: 188px; height: 188px; border-radius: 12px; background: #f1f3f9; color: var(--wz-soft); font-size: 13px; text-align: center; padding: 14px; }
 .wz-wa-steps { display: flex; flex-direction: column; gap: 6px; } .wz-wa-steps strong { font-size: 18px; } .wz-wa-steps ol { margin: 2px 0 4px; padding-left: 20px; color: var(--wz-sub); font-size: 14.5px; line-height: 1.6; } .wz-wa-steps small { font-size: 12.5px; color: var(--wz-soft); }
 .wz-wa-ok { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 18px; background: #effaf2; box-shadow: 0 0 0 1px rgba(52, 199, 89, .4); } .wz-wa-ok > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #34c759; color: #fff; font-weight: 800; } .wz-wa-ok strong { display: block; font-size: 16px; } .wz-wa-ok small { color: var(--wz-sub); font-size: 13px; }
 .wz-wa-status { margin-top: 10px; min-height: 18px; text-align: center; font-size: 13px; color: var(--wz-soft); }
