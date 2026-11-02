@@ -20,7 +20,7 @@ _ACCENTS = {"fr": "àâçéèêëîïôùûœ", "es": "ñ¿¡áíóú", "de": "�
 
 # Default voice per language: (female, male)
 _VOICES = {
-    "en": ("en-US-AriaNeural", "en-US-GuyNeural"),
+    "en": ("en-US-JennyNeural", "en-US-GuyNeural"),
     "fr": ("fr-FR-DeniseNeural", "fr-FR-HenriNeural"),
     "es": ("es-ES-ElviraNeural", "es-ES-AlvaroNeural"),
     "de": ("de-DE-KatjaNeural", "de-DE-ConradNeural"),

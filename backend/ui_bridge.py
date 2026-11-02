@@ -214,6 +214,20 @@ def push_dictation_polish(text: str = "Polished version ready") -> None:
     })
 
 
+def push_live_text(text: str, source: str = "ptt", final: bool = False, app: str = "") -> None:
+    """What the user is saying RIGHT NOW, for the island: the streaming recognizer's partial words
+    (final=False), or the accurate text once it is known (final=True: the island swaps its live guess
+    for it). Display only: commands and pasted dictation always use the accurate transcript."""
+    _push_event({
+        "type": "live_text",
+        "text": str(text or "")[:400],
+        "source": "dictation" if source == "dictation" else "ptt",
+        "final": bool(final),
+        "app": str(app or "")[:60],
+        "ts": int(time.time() * 1000),
+    })
+
+
 def push_schedule(open_view: bool = False) -> None:
     """Tell the island the scheduled actions / routines changed (and optionally to show them)."""
     _push_event({"type": "schedule", "open": bool(open_view), "ts": int(time.time() * 1000)})
@@ -724,6 +738,7 @@ class Handler(BaseHTTPRequestHandler):
                 "ollama_vision_model": data.get("ollama_vision_model", ""),
                 "ollama_base_url": data.get("ollama_base_url", "http://localhost:11434"),
                 "ollama_timeout": data.get("ollama_timeout", 25),
+                "ollama_keep_alive": data.get("ollama_keep_alive", "1m"),
                 "has_openrouter": bool(data.get("openrouter_api_key")),
                 "has_gemini": bool(data.get("gemini_api_key")),
                 "has_groq": bool(data.get("groq_api_key")),
@@ -989,6 +1004,10 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path in ("/camera/reveal", "/camera/privacy-settings"):
             import camera_store
             self._json(200, camera_store.reveal_last() if parsed.path == "/camera/reveal" else camera_store.open_privacy_settings())
+            return
+        if parsed.path == "/record/builtin-test":
+            import wgc_recorder
+            self._json(200, wgc_recorder.selftest())
             return
         if parsed.path == "/record/obs-test":
             import screen_record
@@ -1263,7 +1282,7 @@ class Handler(BaseHTTPRequestHandler):
             for k in (
                 "provider", "openrouter_api_key", "gemini_api_key", "groq_api_key",
                 "openrouter_model", "gemini_model", "groq_model",
-                "ollama_model", "ollama_vision_model", "ollama_base_url", "ollama_timeout",
+                "ollama_model", "ollama_vision_model", "ollama_base_url", "ollama_timeout", "ollama_keep_alive",
             ):
                 if k in msg and msg[k] is not None:
                     val = str(msg[k]).strip()
@@ -1575,10 +1594,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/voice/test":
             # "Test voice": speak a sample line with the current voice, speaker and speed.
+            # Optional "text": a short preview line (the setup wizard speaks "Opening Spotify"). Plain text only, capped.
+            _line = " ".join(str(msg.get("text") or "").split())[:80] if isinstance(msg, dict) else ""
+
             def _run():
                 try:
                     import voice
-                    voice.test_voice()
+                    voice.test_voice(_line) if _line else voice.test_voice()
                 except Exception as e:
                     log.warning("test voice failed: %s", e)
             threading.Thread(target=_run, daemon=True, name="lyra-voice-test").start()

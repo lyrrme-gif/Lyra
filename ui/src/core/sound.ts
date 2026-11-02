@@ -1,4 +1,5 @@
 import { getFeatures } from "./featuresCache";
+import { ALWAYS_AUDIBLE, TAIL_S, playActivitySound, type ActivitySoundName, type ActivitySoundOpts } from "./activitySounds";
 // SoundEngine. Every Mochi character has its own set of the 28 sounds below, served at
 // /sounds/<character>/<name>.wav (cat, fox, cloud). The engine plays the set of the character picked in
 // Settings → Mochi and switches by itself when that pick changes. Default volume 0.12, slider range 0–0.2,
@@ -34,12 +35,7 @@ class SoundEngine {
     this.loading = (async () => {
       const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!Ctor) return;
-      const ctx = new Ctor();
-      this.ctx = ctx;
-      const master = ctx.createGain();
-      master.gain.value = this.volume;
-      master.connect(ctx.destination);
-      this.master = master;
+      this.ensure();
       await this.refreshCharacter(true);
     })();
     return this.loading;
@@ -118,32 +114,87 @@ class SoundEngine {
     this.enabled = on;
   }
 
-  /** Reminder alarm: a clear two-note chime, three rounds. Always audible, independent of UI sounds. */
-  alarm(rounds = 3) {
-    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!Ctor) return;
-    const ctx = this.ctx ?? (this.ctx = new Ctor());
-    void ctx.resume();
-    const out = ctx.createGain();
-    out.gain.value = 0.32;
-    out.connect(ctx.destination);
-    const bell = (freq: number, at: number) => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "sine";
-      o.frequency.value = freq;
-      g.gain.setValueAtTime(0.0001, at);
-      g.gain.exponentialRampToValueAtTime(1, at + 0.015);
-      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.7);
-      o.connect(g); g.connect(out);
-      o.start(at); o.stop(at + 0.75);
-    };
-    const t0 = ctx.currentTime + 0.05;
-    for (let r = 0; r < rounds; r++) {
-      const t = t0 + r * 1.25;
-      [880, 1318.5, 880, 1318.5].forEach((f, k) => bell(f, t + k * 0.2));
+  /** Creates the AudioContext and the master gain on demand (Settings previews never call preload). */
+  private ensure(): { ctx: AudioContext; master: GainNode } | null {
+    if (!this.ctx) {
+      const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return null;
+      this.ctx = new Ctor();
     }
-    this.idle();
+    if (!this.master) {
+      this.master = this.ctx.createGain();
+      this.master.gain.value = this.volume;
+      this.master.connect(this.ctx.destination);
+    }
+    return { ctx: this.ctx, master: this.master };
+  }
+
+  private alertBus: GainNode | null = null;
+  /** A second gain for alarms and invitations (calls, reminders, timers): never quieter than a sensible floor. */
+  private alerts(): GainNode | null {
+    const e = this.ensure();
+    if (!e) return null;
+    if (!this.alertBus) {
+      this.alertBus = e.ctx.createGain();
+      this.alertBus.connect(e.ctx.destination);
+    }
+    this.alertBus.gain.value = Math.max(this.volume, 0.1) * 4.4;
+    return this.alertBus;
+  }
+
+  private uiBus: GainNode | null = null;
+  /** Synthesized sounds are sparse (bells, air), so on average they are quieter than the sampled ones: lift them to match. */
+  private ui(): GainNode | null {
+    const e = this.ensure();
+    if (!e) return null;
+    if (!this.uiBus) {
+      this.uiBus = e.ctx.createGain();
+      this.uiBus.gain.value = 1.7;
+      this.uiBus.connect(e.master);
+    }
+    return this.uiBus;
+  }
+
+  /**
+   * The synthesized Live Activity sounds (core/activitySounds.ts): message, ring, reminder, timerDone,
+   * volume, connect, downloadDone, found ... Alarms and invitations are audible even with UI sounds off;
+   * everything else follows the island's sound switch. `preview` is the Settings speaker button: always audible.
+   */
+  activity(name: ActivitySoundName, opts: ActivitySoundOpts & { preview?: boolean } = {}) {
+    const loud = ALWAYS_AUDIBLE.has(name) || !!opts.preview;
+    if (!this.enabled && !loud) return;
+    const e = this.ensure();
+    if (!e) return;
+    const dest = loud ? this.alerts() : this.ui();
+    if (!dest) return;
+    if (this.idleTimer != null) { window.clearTimeout(this.idleTimer); this.idleTimer = null; }
+    void e.ctx.resume();
+    try {
+      const tail = playActivitySound(e.ctx, dest, name, opts);
+      // let the reverb tail ring out, then let the audio thread sleep
+      window.setTimeout(() => this.idle(), Math.ceil((tail || TAIL_S[name] || 1) * 1000) + 200);
+    } catch { /* a sound must never break the island */ }
+  }
+
+  private ringTimer: number | null = null;
+  /** An incoming call: ring now and every 2.6 s until `ringStop()` (answer, decline, the toast ending). */
+  ringStart() {
+    this.ringStop();
+    let n = 0;
+    const once = () => {
+      this.activity("ring");
+      if (++n >= 10) this.ringStop();
+    };
+    once();
+    this.ringTimer = window.setInterval(once, 2600);
+  }
+  ringStop() {
+    if (this.ringTimer != null) { window.clearInterval(this.ringTimer); this.ringTimer = null; }
+  }
+
+  /** Reminder alarm: the reminder fanfare, `rounds` times. Always audible, independent of UI sounds. */
+  alarm(rounds = 2) {
+    for (let r = 0; r < rounds; r++) window.setTimeout(() => this.activity("reminder"), r * 3300);
   }
 
   /** `force`: play even when the island's UI sounds are off (a Mochi sound stands in for speech). */

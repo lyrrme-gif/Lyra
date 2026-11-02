@@ -143,6 +143,13 @@ def clean_updates(updates: dict) -> dict:
             del out[k]
         elif k in out:
             out[k] = str(out[k]).strip()
+    if "ollama_keep_alive" in out:
+        v = str(out["ollama_keep_alive"]).strip().lower()
+        if _KEEP_OK.fullmatch(v):
+            out["ollama_keep_alive"] = v
+        else:
+            log.warning("ollama: ignoring bad keep-alive %r", out["ollama_keep_alive"])
+            del out["ollama_keep_alive"]
     if "ollama_timeout" in out:
         try:
             out["ollama_timeout"] = max(5, min(300, int(float(out["ollama_timeout"]))))
@@ -257,6 +264,122 @@ def _timeout(primary: bool) -> float:
     return float(SLOW_TIMEOUT)
 
 
+# ── Keeping the model in memory only as long as it is useful ────────────────────────────────
+# Ollama keeps a model loaded for 5 minutes after EVERY request that arrives through its OpenAI-style API (and
+# that API cannot change it), so a local model sat in video memory long after the last answer. Right after each
+# answer, and after a pre-warm, Lyra now tells Ollama to use the keep-alive chosen in Settings instead.
+
+DEFAULT_KEEP_ALIVE = "1m"
+_KEEP_OK = re.compile(r"-1|0|\d{1,4}[smh]")
+_arming: set[str] = set()
+_arm_lock = threading.Lock()
+
+
+def keep_alive_setting() -> str:
+    v = str(_cfg("ollama_keep_alive", DEFAULT_KEEP_ALIVE) or DEFAULT_KEEP_ALIVE).strip().lower()
+    return v if _KEEP_OK.fullmatch(v) else DEFAULT_KEEP_ALIVE
+
+
+def _ka_value(v: str):
+    """Ollama takes a duration string ("1m") or a number of seconds (0 = unload now, -1 = never)."""
+    return int(v) if v in ("0", "-1") else v
+
+
+def _post_native(path: str, payload: dict, timeout: float) -> None:
+    req = urllib.request.Request(base_url() + path, data=json.dumps(payload).encode("utf-8"),
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        r.read()
+
+
+def preload(model: str) -> None:
+    """Load the model into memory without generating a word (an empty prompt); it then expires after the keep-alive."""
+    ka = keep_alive_setting()
+    if ka == "0":
+        ka = DEFAULT_KEEP_ALIVE                        # "unload after each answer": the answer that follows still gains from a pre-warm
+    _post_native("/api/generate", {"model": model, "keep_alive": _ka_value(ka)}, 8.0)
+
+
+def arm_keep_alive(model: str | None) -> None:
+    """Call right AFTER an answer: sets how long the model stays loaded from now on (in the background)."""
+    model = str(model or "").strip()
+    if not model or keep_alive_setting() == "5m":      # 5 minutes is what Ollama does by itself
+        return
+    with _arm_lock:
+        if model in _arming:
+            return
+        _arming.add(model)
+
+    def run() -> None:
+        try:
+            _post_native("/api/generate", {"model": model, "keep_alive": _ka_value(keep_alive_setting())}, 5.0)
+        except Exception as e:                         # noqa: BLE001 - housekeeping must never matter
+            log.debug("ollama keep-alive not set: %s", e)
+        finally:
+            with _arm_lock:
+                _arming.discard(model)
+
+    threading.Thread(target=run, name="lyra-ollama-keepalive", daemon=True).start()
+
+
+class _StreamProxy:
+    """Hands the streamed chunks through unchanged; sets the keep-alive once the stream has ended (or was closed)."""
+
+    def __init__(self, stream, model):
+        self._s, self._m, self._done = stream, model, False
+
+    def _finish(self) -> None:
+        if not self._done:
+            self._done = True
+            arm_keep_alive(self._m)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            return next(self._s)
+        except BaseException:                          # StopIteration, errors, cancelled: the stream is over
+            self._finish()
+            raise
+
+    def close(self) -> None:
+        try:
+            c = getattr(self._s, "close", None)
+            if c:
+                c()
+        finally:
+            self._finish()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        self.close()
+        return False
+
+    def __getattr__(self, name):
+        return getattr(self._s, name)
+
+
+def _wrap_create(comps) -> None:
+    orig = comps.create
+
+    def create(*args, **kw):
+        model, stream = kw.get("model"), bool(kw.get("stream"))
+        try:
+            out = orig(*args, **kw)
+        except Exception:
+            arm_keep_alive(model)
+            raise
+        if stream:
+            return _StreamProxy(out, model)
+        arm_keep_alive(model)
+        return out
+
+    comps.create = create
+
+
 def _make_client(timeout: float):
     from openai import OpenAI
     key = (openai_base(), timeout)
@@ -264,6 +387,10 @@ def _make_client(timeout: float):
     if c is None:
         # max_retries=0: a timeout must hand over to the fallback at once, not be retried twice.
         c = OpenAI(base_url=key[0], api_key="ollama", timeout=timeout, max_retries=0)
+        try:
+            _wrap_create(c.chat.completions)
+        except Exception:                              # noqa: BLE001 - never block a client over housekeeping
+            pass
         _clients[key] = c
     return c
 
@@ -405,6 +532,7 @@ def status(probe: bool = False) -> dict[str, Any]:
         "model": model,
         "vision_model": vm,
         "timeout": int(_cfg("ollama_timeout", DEFAULT_FAST_TIMEOUT) or DEFAULT_FAST_TIMEOUT),
+        "keep_alive": keep_alive_setting(),
         "pull_command": pull_command(model or None),
         "vision_pull_command": pull_command(SUGGESTED_VISION),
     }

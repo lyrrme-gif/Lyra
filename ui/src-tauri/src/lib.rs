@@ -302,6 +302,19 @@ pub fn run() {
         // nothing of it lives in memory while it is shut.
         .setup(move |app| {
             let handle = app.handle().clone();
+            // Backend first. Installed build: start lyra-backend.exe if the bridge is down and WAIT until it answers.
+            // No window exists yet at this point (the island is built below), so the UI cannot open before the backend.
+            if let Some(bp) = handle.try_state::<BackendProcess>() {
+                backend::start_if_needed(&handle, &bp);
+            }
+            // The island window is declared with "create": false in tauri.conf.json: build it now, backend is up.
+            for cfg in app.config().app.windows.iter().filter(|w| !w.create) {
+                if handle.get_webview_window(&cfg.label).is_none() {
+                    if let Err(err) = WebviewWindowBuilder::from_config(&handle, cfg).and_then(|b| b.build()) {
+                        log::line(format!("window {}: build failed: {err}", cfg.label));
+                    }
+                }
+            }
             tray::build(&handle)?;
             // Bottom-of-screen caption pill (what Lyra heard / answered). Windows only.
             if cfg!(windows) {
@@ -329,11 +342,6 @@ pub fn run() {
             // for the feature settings endpoint before creating the window.
             if cfg!(windows) {
                 mascot::start(&handle);
-            }
-
-            // Installed build only: start lyra-backend.exe if the bridge is down.
-            if let Some(bp) = handle.try_state::<BackendProcess>() {
-                backend::start_if_needed(&handle, &bp);
             }
 
             // The installer may have switched "start with Windows" on: show the real state.

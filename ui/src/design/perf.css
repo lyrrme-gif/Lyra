@@ -6,3 +6,18 @@
 /* Equalizer bars: smooth, full 60 fps (the stepped ~20 updates/s version was removed). will-change keeps them
    on the compositor so they stay cheap. */
 #island :is(.m-music-wave i, .w-m-eq i, .cx-wave i, .rec-wave span, #spotify-compact-eq i) { will-change: transform; }
+
+/* The blurs backdrop-filter does not cover: `filter: blur()` blurs the element itself, on the GPU, every frame it is on screen.
+   - Tab switches softly blurred the whole panel (9px in, 2-4px out) for ~0.7 s: the slide + fade stays, the blur goes.
+   - The music tab's album "atmosphere" is a 28px blur at 16 % opacity under a 72 % black layer: almost invisible, costly.
+   Delete these lines to get the blur back. */
+#island .view, #island .view.on, #island .view.is-entering, #island .view.is-leaving { filter: none !important; }
+#island .m-ambience { filter: none !important; }
+
+/* Step 2 - nothing animates unseen. A tab that is not the open one (opacity 0 / visibility hidden, but still in the page), or
+   any tab while the island is collapsed to its small pill, keeps no looping animation running: those keep the compositor
+   and the main thread waking up for pixels nobody can see. They resume by themselves the moment the tab is shown. */
+#island .view:not(.on) *, #island .view:not(.on) *::before, #island .view:not(.on) *::after,
+#island:not([data-mode="expanded"]) .view *, #island:not([data-mode="expanded"]) .view *::before, #island:not([data-mode="expanded"]) .view *::after {
+  animation-play-state: paused !important;
+}

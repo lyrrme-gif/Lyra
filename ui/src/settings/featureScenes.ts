@@ -29,10 +29,7 @@ const SCENES: Record<string, string> = {
     <span class="tx">9:58</span><span class="tx m grow">focus</span><i class="dt pulse"></i></div>
     <div class="lines"><b class="l" style="width:54px"></b><b class="l" style="width:36px"></b></div>`,
 
-  tab_wheel: `<div class="wheel">
-    <i class="wd" style="--r:0deg;--d:0s"></i><i class="wd" style="--r:60deg;--d:.5s"></i><i class="wd" style="--r:120deg;--d:1s"></i>
-    <i class="wd" style="--r:180deg;--d:1.5s"></i><i class="wd" style="--r:240deg;--d:2s"></i><i class="wd" style="--r:300deg;--d:2.5s"></i>
-    <i class="wc"></i></div><span class="keys">Ctrl + CapsLock</span>`,
+  tab_wheel: `<div class="wheel"><i class="wd" style="--x:0px;--y:-25px;--d:0.0s"><svg viewBox="0 0 24 24"><path d="M4 6h11v7H8l-4 3zM17 9h3v8l-3-2h-5"/></svg></i><i class="wd" style="--x:22px;--y:-12.5px;--d:0.5s"><svg viewBox="0 0 24 24"><path d="M5 14v-2a7 7 0 0 1 14 0v2M5 14h3v5H5zM16 14h3v5h-3z"/></svg></i><i class="wd" style="--x:22px;--y:12.5px;--d:1.0s"><svg viewBox="0 0 24 24"><path d="M7 4h10M7 20h10M8 4c0 5 8 5 8 8s-8 3-8 8M16 4c0 5-8 5-8 8s8 3 8 8"/></svg></i><i class="wd" style="--x:0px;--y:25px;--d:1.5s"><svg viewBox="0 0 24 24"><path d="M12 11v5M12 7.6v.1M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/></svg></i><i class="wd" style="--x:-22px;--y:12.5px;--d:2.0s"><svg viewBox="0 0 24 24"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></i><i class="wd" style="--x:-22px;--y:-12.5px;--d:2.5s"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H4zM9 20h6M12 16v4"/></svg></i><i class="wc"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></i></div><span class="keys">Ctrl + CapsLock</span>`,
 
   weather: `<i class="win hi"></i>
     <div class="isl w"><i class="sun"></i><div class="col grow"><span class="tx">24°</span><b class="l" style="width:26px"></b></div><i class="cloud"></i></div>

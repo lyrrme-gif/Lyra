@@ -53,7 +53,9 @@ def _setting(key: str, default):
 
 
 def mode() -> str:
-    return _lang.normalize_mode(_setting("p1_stt_engine", "auto"))
+    """Lyra works with Parakeet only: the old auto / whisper choice is gone. (Whisper still answers on its own for a
+    language Parakeet cannot do, or if Parakeet fails to load, so speech never just stops.)"""
+    return "parakeet"
 
 
 def set_engine(name: str) -> str:
@@ -61,9 +63,10 @@ def set_engine(name: str) -> str:
     n = str(name or "").strip().lower()
     if n not in MODES:
         raise ValueError(f"unknown engine {name!r}; expected one of {', '.join(MODES)}")
+    # The engine is fixed to Parakeet now; any request is accepted but changes nothing.
     import settings_store
-    settings_store.set_many({"p1_stt_engine": n})
-    return n
+    settings_store.set_many({"p1_stt_engine": "parakeet"})
+    return "parakeet"
 
 
 # -- model folder + managers (lazy: importing this package costs nothing) --------------------------------
@@ -135,7 +138,8 @@ def cancel_download() -> None:
 
 
 def delete_model() -> tuple[bool, str]:
-    return get_downloader().delete()
+    """The voice model is required by Lyra: it can no longer be deleted from the app."""
+    return False, "The voice model is required by Lyra and can't be deleted."
 
 
 def parakeet_installed() -> bool:

@@ -18,6 +18,7 @@
     "windows": [
       {
         "label": "island",
+        "create": false,
         "title": "Lyra",
         "url": "index.html",
         "width": 240,

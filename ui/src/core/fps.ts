@@ -1,4 +1,5 @@
-/** Target frame time for every visible animation: ~60 fps. On a 120/144 Hz display rAF fires faster; a gate of
- *  15 ms (not 16.7) lets every second/third frame through, so 60 Hz screens get all frames and fast screens get
- *  60 fps instead of burning the GPU at 120+. Hidden/parked windows still stop their loops entirely. */
+/** Target frame time for every visible animation: ~60 fps. The Mochi characters (settings, island notch, previews) and the
+ *  other canvas animations draw through this one gate. A gate of 15 ms lets every frame through on a 60 Hz screen and
+ *  every 2nd on 120 Hz, so those screens get 60 fps (a 144 Hz screen gets 72). Hidden/parked windows still stop their loops
+ *  entirely. Set it to 30 to halve their GPU/CPU again (~30 fps). */
 export const FRAME_MS = 15;

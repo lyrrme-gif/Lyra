@@ -33,6 +33,9 @@ export interface Look {
   rage?: number;
   slashP?: number;
   slashDir?: number;       // +1 / -1: which way the current swing goes, so the strokes alternate
+  // Dizzy (shaken about too fast): how dizzy it is (0..1, eases in and out) and seconds since it started.
+  dizzy?: number;
+  dizzyT?: number;
 }
 
 export interface EyeSlot { sd: number; ex: number; ey: number; fx: number; fy: number }
@@ -71,6 +74,18 @@ export interface Persona {
   blinkMs?: [number, number];
 }
 
+/** A character's own way of being dizzy: how the body moves, where the eyes wander and what the eyes become. */
+export interface DizzyStyle {
+  /** Eye shape while dizzy ("spiral", "cross" ...). */
+  eyes: string;
+  /** Rocking of the body: [angle in radians, speed]. */
+  sway: [number, number];
+  /** Squash / stretch: [amount, speed] (the Bunny hops, the Panda rolls). */
+  bob?: [number, number];
+  /** Where the eyes wander (yaw, pitch) `t` seconds into the dizziness. */
+  gaze?: (t: number) => [number, number];
+}
+
 export interface CharDef {
   label: string;
   /** Short line for the picker. */
@@ -100,6 +115,10 @@ export interface CharDef {
   furyInk?: string;               // brow colour (default dark)
   furyTint?: string;              // "r,g,b" the body flushes with (default red)
   ownFury?: boolean;              // draws all of its anger itself (the Knight): skip the shared brows / flush / vein
+  /** Dizzy: its own way of reeling (see DizzyStyle) and its own things whirling around it. */
+  dizzy?: DizzyStyle;
+  dizzyBehind?(l: Look): void;    // behind the body (the back half of a ring, a whirlwind, dust)
+  dizzyFront?(l: Look): void;     // over the face (the front half of the ring, a tongue, a flicker)
   /** Own outline; without it the rounded blob is used. */
   path?(R: number, t: number): Path2D;
   /** Drawn behind the body: ears, tails, gills, leaves, feet. */
@@ -668,7 +687,7 @@ type ToolKind = "nail" | "bamboo" | "needle" | "lantern" | "flame";
 /** Everything a swung tool draws (glows included) stays inside the canvas: a glow cut by its edge shows as a flat line. */
 function swingTool(l: Look, out: number, kind: ToolKind): void {
   l.x.save();
-  l.x.beginPath(); l.x.rect(-l.R * 3, -l.R * 3, l.R * 6, l.R * 4.45); l.x.clip();
+  l.x.beginPath(); l.x.rect(-l.R * 3.25, -l.R * 3, l.R * 6.5, l.R * 5.45); l.x.clip();   // bottom edge at 2.45 R: the canvas has room down to ~2.7 R (character.ts UNDER)
   swingToolInner(l, out, kind);
   l.x.restore();
 }
@@ -690,7 +709,7 @@ function swingToolInner(l: Look, out: number, kind: ToolKind): void {
     const fade = k < 0.55 ? 1 : 1 - (k - 0.55) / 0.35;
     const a1 = Math.max(-1.8, th - 1.5), a2 = th;
     x.save();
-    x.beginPath(); x.rect(-R * 3, -R * 3, R * 6, R * 4.3); x.clip();          // never reaches the canvas edge (it would show as a flat line)
+    x.beginPath(); x.rect(-R * 3.25, -R * 3, R * 6.5, R * 5.3); x.clip();          // never reaches the canvas edge (it would show as a flat line)
     x.lineCap = "round";
     x.translate(px, py);
     x.scale(dir, 1);                                                          // (mirrored swing: pivot stays at the hand)
@@ -979,7 +998,7 @@ const hornet: CharDef = {
     for (const sd of [-1, 1]) tallHorn(l, sd, 1, 0.12 + 0.18 * rage - droop + Math.sin(t * 1.3 + sd) * 0.015 + Math.sin(t * 40) * 0.012 * rage, HO_MASK, "rgba(110,110,150,.85)");
   },
   base(l) {
-    const { x, R, rx, ry, body } = l, rage = l.rage ?? 0;
+    const { x, rx, ry, body } = l, rage = l.rage ?? 0;
     x.save(); x.clip(body);
     const g = x.createLinearGradient(0, ry * 0.2, 0, ry);
     g.addColorStop(0, "rgba(120,120,160,0)"); g.addColorStop(1, "rgba(120,120,160,.22)");
@@ -1006,7 +1025,7 @@ const hornet: CharDef = {
 };
 
 // ── Lantern: a pale mask with very long curved horns and glowing orange eyes, a tattered black cloak and a lantern. ──
-const LA_MASK = "#f1efe9", LA_VOID = "#0e0d12", LA_GLOW = "#ffb347";
+const LA_MASK = "#f1efe9", LA_VOID = "#0e0d12";
 const lantern: CharDef = {
   label: "Lantern", blurb: "Glowing eyes, a lantern. Poke him and it becomes a flail",
   top: [0.955, 0.945, 0.92], bottom: [0.8, 0.78, 0.75],
@@ -1029,7 +1048,7 @@ const lantern: CharDef = {
     for (const sd of [-1, 1]) tallHorn(l, sd, 2, 0.1 + 0.16 * rage - droop + Math.sin(t * 1.2 + sd) * 0.015 + Math.sin(t * 40) * 0.012 * rage, LA_MASK, "rgba(120,110,100,.85)");
   },
   base(l) {
-    const { x, R, rx, ry, body } = l, rage = l.rage ?? 0;
+    const { x, rx, ry, body } = l, rage = l.rage ?? 0;
     x.save(); x.clip(body);
     const g = x.createLinearGradient(0, ry * 0.2, 0, ry);
     g.addColorStop(0, "rgba(130,110,90,0)"); g.addColorStop(1, "rgba(130,110,90,.25)");
@@ -1307,6 +1326,205 @@ panda.fury = (l) => {
   const out = Math.min(1, (l.rage ?? 0) * 6);
   if (out > 0.02) swingTool(l, out, "bamboo");
 };
+
+// ── Dizzy for everyone ─────────────────────────────────────────────────────────
+// Shake the Mochi about too fast while it is held and it goes dizzy (engine.ts: trackWhirl). The engine moves the
+// body, wanders the eyes and swaps them for a spiral / cross as each DizzyStyle says; on top of that every character
+// has its own things whirling around it: the Cloud is caught in a whirlwind, the Fox kicks up dust and lolls its
+// tongue, the Cat sees fish, the Bunny sees carrots, the Panda rolls around in bamboo leaves, the Knight sees
+// Soul, Hornet gets tangled in her silk, the Lantern's light flickers and Lumaflies swarm, Grimm's flames spin.
+export const DIZZY_LINES: Record<string, string> = {
+  cloud: "Whoooa... the wind's spinning me!",
+  fox: "Ow... I chased my own tail...",
+  cat: "Mrrow... where did the floor go?",
+  bunny: "Hop... hop... everything's spinning!",
+  panda: "Rolling... rolling... bamboo everywhere...",
+  knight: "...the Soul is spinning.",
+  hornet: "Ugh... my silk... it's tangled.",
+  lantern: "My light... it's flickering!",
+  grimm: "The flames... they're spinning!",
+};
+
+/** Things circling a head (or the feet), like seeing stars. `front` picks the half that passes in front of the body;
+ *  the other half is drawn behind it (dizzyBehind), so the ring has depth. `draw` paints one item at (0, 0). */
+function halo(l: Look, front: boolean, n: number, speed: number, draw: (l: Look, i: number, ang: number) => void,
+              o: { w?: number; h?: number; y?: number } = {}): void {
+  const a = l.dizzy ?? 0;
+  if (a < 0.02) return;
+  const { x, R, rx, ry } = l, T = l.dizzyT ?? l.t;
+  const w = (o.w ?? 0.98) * rx, h = (o.h ?? 0.2) * R, y = (o.y ?? -1.0) * ry - (o.y === undefined ? R * 0.1 : 0);
+  for (let i = 0; i < n; i++) {
+    const ang = T * speed + (i / n) * TAU, depth = Math.sin(ang);
+    if ((depth >= 0) !== front) continue;
+    x.save();
+    x.globalAlpha = Math.min(1, a * 1.3);
+    x.translate(Math.cos(ang) * w, y + depth * h);
+    const s = (0.82 + 0.22 * depth) * 1.45;                                        // big enough to read on a small Mochi
+    x.scale(s, s);
+    draw(l, i, ang);
+    x.restore();
+  }
+}
+const ring = (n: number, speed: number, draw: (l: Look, i: number, ang: number) => void, o?: { w?: number; h?: number; y?: number }) =>
+  ({ back: (l: Look) => halo(l, false, n, speed, draw, o), front: (l: Look) => halo(l, true, n, speed, draw, o) });
+
+// Cloud: caught in a whirlwind. Wind streaks race around it and raindrops are flung out of it.
+{
+  const drops = ring(4, 4.6, (l) => { const { x, R } = l; x.fillStyle = "#8fd0ff"; x.beginPath(); x.ellipse(0, 0, R * 0.05, R * 0.1, 0, 0, TAU); x.fill(); });
+  cloud.dizzy = { eyes: "spiral", sway: [0.1, 3.2], bob: [0.025, 6.4], gaze: (t) => [Math.cos(t * 7) * 0.55, Math.sin(t * 7) * 0.3] };
+  cloud.dizzyBehind = (l) => {
+    const { x, R, rx, ry } = l, a = l.dizzy ?? 0, T = l.dizzyT ?? l.t;
+    if (a < 0.02) return;
+    x.save(); x.lineCap = "round"; x.lineWidth = R * 0.05;
+    for (let i = 0; i < 3; i++) {                                                  // wind streaks swirling round the body
+      const ph = T * (5 + i) + i * 2.1;
+      x.strokeStyle = `rgba(200,222,255,${0.75 * a})`;
+      x.beginPath(); x.ellipse(0, ry * (-0.2 + 0.28 * i), rx * (1.12 + 0.14 * i), ry * (0.3 + 0.06 * i), 0, ph, ph + 1.7); x.stroke();
+    }
+    x.restore();
+    drops.back(l);
+  };
+  cloud.dizzyFront = drops.front;
+}
+
+// Fox: it chased its own tail. Dust whirls round its feet and its tongue lolls out.
+{
+  const dust = ring(4, 6.2, (l) => { const { x, R } = l; x.fillStyle = "rgba(236,214,186,.85)"; x.beginPath(); x.arc(0, 0, R * 0.085, 0, TAU); x.fill(); }, { w: 1.08, h: 0.17, y: 0.92 });
+  fox.dizzy = { eyes: "spiral", sway: [0.15, 3.6], bob: [0.03, 7.2], gaze: (t) => [Math.cos(t * 8) * 0.6, Math.sin(t * 8) * 0.25] };
+  fox.dizzyBehind = dust.back;
+  fox.dizzyFront = (l) => {
+    dust.front(l);
+    const a = l.dizzy ?? 0;
+    if (a < 0.05) return;
+    const { x, R } = l, T = l.dizzyT ?? l.t, sw = Math.sin(T * 6) * R * 0.05;
+    x.save(); x.globalAlpha = Math.min(1, a * 1.5);
+    x.translate(shiftX(l) * 0.9, R * 0.44);
+    x.fillStyle = "#ff7d95"; x.strokeStyle = "#c04060"; x.lineWidth = R * 0.025; x.lineJoin = "round";
+    x.beginPath(); x.moveTo(-R * 0.09, 0); x.quadraticCurveTo(-R * 0.11, R * 0.3, sw, R * 0.32); x.quadraticCurveTo(R * 0.11, R * 0.3, R * 0.09, 0); x.closePath(); x.fill(); x.stroke();
+    x.beginPath(); x.moveTo(sw * 0.4, R * 0.06); x.lineTo(sw, R * 0.24); x.stroke();
+    x.restore();
+  };
+}
+
+// Cat: it sees fish and slowly topples (a big, lazy sway), with a tiny blep.
+{
+  const fish = ring(3, 3.4, (l, _i, ang) => {
+    const { x, R } = l;
+    x.rotate(Math.cos(ang) > 0 ? 0 : Math.PI);
+    x.fillStyle = "#6fd0ff"; x.strokeStyle = "#2f7fb0"; x.lineWidth = R * 0.02; x.lineJoin = "round";
+    x.beginPath(); x.ellipse(0, 0, R * 0.14, R * 0.075, 0, 0, TAU); x.fill(); x.stroke();
+    x.beginPath(); x.moveTo(-R * 0.12, 0); x.lineTo(-R * 0.25, -R * 0.08); x.lineTo(-R * 0.25, R * 0.08); x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = "#1c3d5c"; x.beginPath(); x.arc(R * 0.07, -R * 0.01, R * 0.016, 0, TAU); x.fill();
+  });
+  cat.dizzy = { eyes: "spiral", sway: [0.3, 1.9], bob: [0.02, 3.8], gaze: (t) => [Math.sin(t * 3) * 0.6, Math.cos(t * 2.2) * 0.28] };
+  cat.dizzyBehind = fish.back;
+  cat.dizzyFront = (l) => {
+    fish.front(l);
+    const a = l.dizzy ?? 0;
+    if (a < 0.05) return;
+    const { x, R } = l;
+    x.save(); x.globalAlpha = Math.min(1, a * 1.5);
+    x.translate(shiftX(l) * 0.9 + R * 0.06, R * 0.4);                              // a tiny blep
+    x.fillStyle = "#ff8fa8"; x.beginPath(); x.ellipse(0, R * 0.05, R * 0.06, R * 0.075, 0, 0, TAU); x.fill();
+    x.restore();
+  };
+}
+
+// Bunny: x_x, hopping on the spot, with carrots circling its head.
+{
+  const carrots = ring(3, 3.8, (l) => {
+    const { x, R } = l;
+    x.fillStyle = "#ff8a2b"; x.strokeStyle = "#c4601a"; x.lineWidth = R * 0.02; x.lineJoin = "round";
+    x.beginPath(); x.moveTo(-R * 0.15, 0); x.lineTo(R * 0.12, -R * 0.065); x.lineTo(R * 0.12, R * 0.065); x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = "#5fd16a"; x.beginPath(); x.ellipse(R * 0.17, -R * 0.03, R * 0.06, R * 0.03, -0.5, 0, TAU); x.ellipse(R * 0.17, R * 0.03, R * 0.06, R * 0.03, 0.5, 0, TAU); x.fill();
+  });
+  bunny.dizzy = { eyes: "cross", sway: [0.12, 4.6], bob: [0.075, 9.5], gaze: (t) => [Math.sin(t * 5) * 0.35, 0] };
+  bunny.dizzyBehind = carrots.back;
+  bunny.dizzyFront = carrots.front;
+}
+
+// Panda: it rolls around like a ball (a huge, slow rock) among spinning bamboo leaves.
+{
+  const leaves = ring(5, 3.0, (l, i, ang) => {
+    const { x, R } = l;
+    x.rotate(ang * 2 + i); x.fillStyle = i % 2 ? "#6fcf6a" : "#4fb85a"; x.strokeStyle = "#2f7d3a"; x.lineWidth = R * 0.018;
+    x.beginPath(); x.moveTo(-R * 0.15, 0); x.quadraticCurveTo(0, -R * 0.09, R * 0.15, 0); x.quadraticCurveTo(0, R * 0.09, -R * 0.15, 0); x.fill(); x.stroke();
+  }, { w: 1.05, h: 0.22 });
+  panda.dizzy = { eyes: "spiral", sway: [0.42, 2.3], bob: [0.02, 4.6], gaze: (t) => [Math.cos(t * 4) * 0.5, Math.sin(t * 4) * 0.3] };
+  panda.dizzyBehind = leaves.back;
+  panda.dizzyFront = leaves.front;
+}
+
+// Knight: he staggers and sees Soul, white orbs of it spinning round his head.
+{
+  const soul = ring(3, 4.8, (l) => {
+    const { x, R } = l, g = x.createRadialGradient(0, 0, 0, 0, 0, R * 0.2);
+    g.addColorStop(0, "rgba(255,255,255,.95)"); g.addColorStop(0.45, "rgba(190,215,255,.75)"); g.addColorStop(1, "rgba(150,180,255,0)");
+    x.fillStyle = g; x.beginPath(); x.arc(0, 0, R * 0.2, 0, TAU); x.fill();
+  });
+  knight.dizzy = { eyes: "spiral", sway: [0.2, 3.4], bob: [0.045, 6.8], gaze: (t) => [Math.sin(t * 4.2) * 0.5, Math.cos(t * 3.1) * 0.2] };
+  knight.dizzyBehind = soul.back;
+  knight.dizzyFront = soul.front;
+}
+
+// Hornet: she gets tangled in her own silk. A red thread whirls round her and she buzzes about.
+{
+  const beads = ring(2, 7.0, (l) => { const { x, R } = l; x.fillStyle = "#ff5a6e"; x.beginPath(); x.arc(0, 0, R * 0.06, 0, TAU); x.fill(); x.fillStyle = "rgba(255,255,255,.8)"; x.beginPath(); x.arc(-R * 0.02, -R * 0.02, R * 0.02, 0, TAU); x.fill(); });
+  hornet.dizzy = { eyes: "spiral", sway: [0.1, 9], bob: [0.02, 12], gaze: (t) => [Math.cos(t * 9) * 0.6, Math.sin(t * 9) * 0.35] };
+  hornet.dizzyBehind = (l) => {
+    const { x, R, rx, ry } = l, a = l.dizzy ?? 0, T = l.dizzyT ?? l.t;
+    if (a < 0.02) return;
+    x.save(); x.lineCap = "round"; x.lineWidth = R * 0.035; x.strokeStyle = `rgba(255,90,110,${0.85 * a})`;
+    for (let i = 0; i < 2; i++) {                                                  // the silk thread looping round her
+      const ph = T * 6.4 + i * 3.1;
+      x.beginPath(); x.ellipse(0, ry * 0.05, rx * (1.18 + 0.12 * i), ry * (0.62 + 0.1 * i), (i ? 0.5 : -0.5), ph, ph + 4.2); x.stroke();
+    }
+    x.restore();
+    beads.back(l);
+  };
+  hornet.dizzyFront = beads.front;
+}
+
+// Lantern: his light flickers (nearly goes out) while Lumaflies swarm round him.
+{
+  const flies = ring(4, 5.4, (l, i) => {
+    const { x, R } = l, g = x.createRadialGradient(0, 0, 0, 0, 0, R * 0.17);
+    g.addColorStop(0, "rgba(255,245,160,1)"); g.addColorStop(0.4, "rgba(255,220,90,.7)"); g.addColorStop(1, "rgba(255,200,60,0)");
+    x.globalAlpha *= 0.65 + 0.35 * Math.sin(l.t * 14 + i * 2);
+    x.fillStyle = g; x.beginPath(); x.arc(0, 0, R * 0.17, 0, TAU); x.fill();
+  });
+  lantern.dizzy = { eyes: "spiral", sway: [0.12, 3.8], bob: [0.03, 7.6], gaze: (t) => [Math.cos(t * 6) * 0.5, Math.sin(t * 6) * 0.3] };
+  lantern.dizzyBehind = flies.back;
+  lantern.dizzyFront = (l) => {
+    flies.front(l);
+    const a = l.dizzy ?? 0;
+    if (a < 0.05) return;
+    const { x, rx, ry, t } = l, flick = Math.max(0, Math.sin(t * 23) * Math.sin(t * 37 + 1));   // the light stutters
+    x.save(); x.clip(l.body);
+    x.fillStyle = `rgba(8,6,24,${0.45 * a * flick})`;
+    x.fillRect(-rx * 1.2, -ry * 1.2, rx * 2.4, ry * 2.4);
+    x.restore();
+  };
+}
+
+// Grimm: his flames spin round his head in a ring of fire.
+{
+  const fire = ring(5, 6.4, (l, i) => {
+    const { x, R, t } = l, f = 1 + 0.18 * Math.sin(t * 17 + i * 2.4);
+    x.scale(f, f);
+    for (const [sc, col] of [[1, "rgba(235,50,70,.95)"], [0.55, "rgba(255,190,90,.95)"]] as Array<[number, string]>) {
+      x.fillStyle = col; x.beginPath();
+      x.moveTo(-R * 0.08 * sc, R * 0.05 * sc);
+      x.quadraticCurveTo(-R * 0.1 * sc, -R * 0.1 * sc, 0, -R * 0.27 * sc);
+      x.quadraticCurveTo(R * 0.1 * sc, -R * 0.1 * sc, R * 0.08 * sc, R * 0.05 * sc);
+      x.quadraticCurveTo(0, R * 0.14 * sc, -R * 0.08 * sc, R * 0.05 * sc);
+      x.fill();
+    }
+  }, { w: 1.12, h: 0.24 });
+  grimm.dizzy = { eyes: "spiral", sway: [0.13, 4.2], bob: [0.03, 8.4], gaze: (t) => [Math.cos(t * 7) * 0.55, Math.sin(t * 7) * 0.3] };
+  grimm.dizzyBehind = fire.back;
+  grimm.dizzyFront = fire.front;
+}
 
 export const CHAR_DEFS: Record<string, CharDef> = { cloud, fox, cat, bunny, panda, knight, hornet, lantern, grimm };
 

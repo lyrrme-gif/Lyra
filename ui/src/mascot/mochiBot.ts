@@ -11,7 +11,7 @@ const Sound = { play(_name: string): void {} };
 
 export type EyeShape =
   | "pill" | "wide" | "dot" | "line" | "flat" | "happy" | "closed"
-  | "spiral" | "heart" | "star" | "tired" | "wink" | "cup" | "squint" | "content";
+  | "spiral" | "cross" | "heart" | "star" | "tired" | "wink" | "cup" | "squint" | "content";
 
 export type BadgeKind = "dots" | "bang" | "question" | "dot";
 
@@ -331,7 +331,8 @@ export class BotEngine {
     // The cloud has its own look for thinking / listening / dizzy (puffs, sound waves, orbiting stars), so it skips the badges.
     this.setBadge(this.own && (next === "thinking" || next === "question") ? null : this.cfg.badge);
     if (this.own && next === "question") this.tgTilt = 0;
-    if (this.own && next === "dizzy") for (let i = 0; i < 3; i++) this.emit("orbit", 1);
+    if (next === "dizzy" && prev !== "dizzy") this.dizzyClock = 0;
+    if (this.own && next === "dizzy" && !this.def?.dizzyFront) for (let i = 0; i < 3; i++) this.emit("orbit", 1);   // the characters with their own dizzy have their own things whirling
 
     switch (next) {
       case "finished":
@@ -470,6 +471,8 @@ export class BotEngine {
   // ── Rage (the Knight) ─────────────────────────────────────────────────────────────
   // Every poke (provoke) raises the target; the shown value eases toward it, then cools down when left alone.
   rageT = 0; rage = 0;
+  // Dizzy (shaken too fast): eased 0..1 amount, and seconds since it started. Each character reels its own way (CharDef.dizzy).
+  private dizzyAmt = 0; private dizzyClock = 0;
   private rageAt = -99;
   private slashAt = -99;
   private slashLen = 0.4;
@@ -910,7 +913,10 @@ export class BotEngine {
       tp = -0.06;
     }
     if (this.state === "sleeping") { ty = 0; tp = -0.14; }
-    if (this.state === "dizzy") { ty = Math.sin(t * 9) * 0.25; }
+    if (this.state === "dizzy") {
+      const dg = this.own ? this.def?.dizzy?.gaze : undefined;                      // its own way of seeing double
+      if (dg) [ty, tp] = dg(this.dizzyClock); else ty = Math.sin(t * 9) * 0.25;
+    }
     const working = this.own && !this.calm && (this.state === "thinking" || this.state === "working" || this.state === "searching");
     if (working && this.def?.persona?.workGaze) [ty, tp] = this.def.persona.workGaze(t);                          // its own way of looking while it works
     else if (working && this.shape === "fox") { ty = Math.sin(t * 1.7) * 0.55; tp = 0.12 + Math.sin(t * 2.9) * 0.05; }   // sniffing around: scans, nose down
@@ -1043,6 +1049,17 @@ export class BotEngine {
         if (!this.calm && r > 0.45 && Math.random() < 0.07) this.emit(this.shape === "cloud" ? "rain" : EMBER_SHAPES.has(this.shape) ? "spark" : "sweat", 1);
       }
     }
+    {                                                                     // dizzy: the body reels its own way
+      const on = this.own && this.state === "dizzy";
+      this.dizzyAmt += ((on ? 1 : 0) - this.dizzyAmt) * (1 - Math.pow(0.004, dt));
+      if (on) this.dizzyClock += dt;
+      else if (this.dizzyAmt < 0.01) { this.dizzyAmt = 0; this.dizzyClock = 0; }
+      const DZ = this.def?.dizzy;
+      if (DZ && this.dizzyAmt > 0.01) {
+        this.tgTilt += Math.sin(this.dizzyClock * DZ.sway[1]) * DZ.sway[0] * this.dizzyAmt;
+        if (DZ.bob) { const b = Math.sin(this.dizzyClock * DZ.bob[1]) * DZ.bob[0] * this.dizzyAmt; this.tgSy += b; this.tgSx -= b * 0.6; }
+      }
+    }
     const kLook = 1 - Math.pow(0.0025, dt);
     if (!this.locks.has("yaw")) this.yaw += (this.tgYaw - this.yaw) * kLook;
     if (!this.locks.has("pitch")) this.pitch += (this.tgPitch - this.pitch) * kLook;
@@ -1078,7 +1095,7 @@ export class BotEngine {
       if (this.cloud && this.state === "thinking" && n - this.lastFx > 1.9) { this.lastFx = n; this.emit("thought", 3); }
       if (this.cloud && (this.state === "thinking" || this.state === "working") && Math.random() < 0.05) this.emit("rain", 1);   // a drizzle while it works it out
       if (this.cloud && this.state === "question" && n - this.lastFx > 0.85) { this.lastFx = n; this.emit("wave", 2); }
-      if (this.state === "dizzy" && n - this.lastFx > 2.6) { this.lastFx = n; this.emit("orbit", 3); }
+      if (this.state === "dizzy" && !this.def?.dizzyFront && n - this.lastFx > 2.6) { this.lastFx = n; this.emit("orbit", 3); }
     }
 
     if (!this.calm && (this.vibing || this.dance) && n - this.lastNote > 0.75) {
@@ -1157,6 +1174,7 @@ export class BotEngine {
     const cdef = this.morph < 0.3 ? this.def : null;
     const look = cdef ? this.lookCtx(x, R, rx, ry, body) : null;
     if (cdef && look && look.rage) cdef.furyBehind?.(look);
+    if (cdef && look && look.dizzy) cdef.dizzyBehind?.(look);
     if (cdef && look) cdef.behind?.(look);
     this.drawBody(x, body, R, rx, ry);
     if (cdef && look) cdef.base?.(look);
@@ -1178,6 +1196,7 @@ export class BotEngine {
 
     this.drawEyes(x, body, R, rx, ry);
     if (cdef && look) cdef.front?.(look);
+    if (cdef && look && look.dizzy) cdef.dizzyFront?.(look);
     if (cdef && look && look.rage) {
       if (!cdef.ownFury) angerFront(look, cdef.furyInk);
       cdef.fury?.(look);
@@ -1212,6 +1231,8 @@ export class BotEngine {
       rage: this.rage,
       slashP: this.slashP(),
       slashDir: this.slashDir,
+      dizzy: this.dizzyAmt,
+      dizzyT: this.dizzyClock,
     };
   }
 
@@ -1348,7 +1369,9 @@ export class BotEngine {
 
   private drawEyes(x: CanvasRenderingContext2D, body: Path2D, R: number, rx: number, ry: number) {
     let shape: EyeShape = this.eyeOverride ?? (this.groove > 0.5 ? "happy" : (this.def?.eyes?.[this.state] as EyeShape | undefined) ?? this.cfg.eye);
-    if (shape === "spiral" && this.own) shape = "squint";
+    const dzEyes = this.own && this.state === "dizzy" ? this.def?.dizzy?.eyes : undefined;     // its own dizzy eyes
+    if (dzEyes) shape = dzEyes as EyeShape;
+    else if (shape === "spiral" && this.own) shape = "squint";
     if (this.morph > 0.5) {
       if (this.isChewing) shape = "happy";
       else if (this.slotHTarget > 0.05 || this.slotH > 0.1) shape = "cup";
@@ -1449,6 +1472,14 @@ export class BotEngine {
         x.stroke();
         break;
       }
+      case "cross":                                   // x  x  (knocked silly)
+        x.lineWidth = w * 0.26;
+        x.lineCap = "round";
+        x.beginPath();
+        x.moveTo(-w * 0.5, -h * 0.42); x.lineTo(w * 0.5, h * 0.42);
+        x.moveTo(w * 0.5, -h * 0.42); x.lineTo(-w * 0.5, h * 0.42);
+        x.stroke();
+        break;
       case "heart":
         x.fillStyle = "#FF4D6D";
         heartPath(x, w * 1.2);

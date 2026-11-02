@@ -2,7 +2,7 @@
    Lyra Settings · "Night sky" shell (inspired by Coucou's settings, not copied)
    Loaded LAST (see main.ts). Delete the import to go back to the macOS look.
    Dark-first: a pure-black sidebar with quiet line icons, a rounded night-sky
-   canvas for the page, a living banner per page (coucou/hero.ts).
+   canvas for the page.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 @property --hh { syntax: "<number>"; inherits: true; initial-value: 285; }
@@ -49,15 +49,12 @@ html body.settings-window .sidebar {
 }
 html body.settings-window .sidebar::-webkit-scrollbar { display: none; }
 
-/* brand: the Mochi + a bold wordmark, nothing else */
+/* brand: a bold wordmark, nothing else */
 html body.settings-window .brand {
   display: flex; align-items: center; gap: 12px; width: 100%; padding: 4px 6px 2px; margin: 0;
-  background: none; border: 0; box-shadow: none; border-radius: 16px; cursor: pointer; text-align: left; color: var(--cb-ink);
+  background: none; border: 0; box-shadow: none; border-radius: 16px; cursor: default; text-align: left; color: var(--cb-ink);
 }
 html body.settings-window .brand:hover:not(:disabled) { background: none; }
-html body.settings-window .brand-mochi { flex: 0 0 52px; width: 52px; display: block; transform-origin: 50% 100%; }
-html body.settings-window .brand-mochi { position: relative; }
-html body.settings-window .brand-mochi::before { content: ""; position: absolute; left: 8%; right: 8%; bottom: -3px; height: 10px; border-radius: 50%; background: radial-gradient(closest-side, oklch(from var(--d-ac) l c h / .35), transparent); pointer-events: none; }
 html body.settings-window .brand-name {
   font: 800 clamp(18px, 2.6vh, 22px)/1 var(--d-font-display); letter-spacing: .06em; text-transform: uppercase;
   color: #000; -webkit-text-fill-color: #000; background: none;
@@ -109,41 +106,10 @@ html body.settings-window .topbar {
   border: 0; padding: 12px 18px 6px; margin-bottom: -8px; pointer-events: none;
 }
 html body.settings-window .topbar > * { pointer-events: auto; }
-html body.settings-window .win-title { display: none; }           /* the banner carries the title now */
 html body.settings-window .nav-arrows { background: var(--cb-card); box-shadow: inset 0 0 0 1px var(--cb-line); }
 html body.settings-window .topbar .chip { background: var(--cb-card); border: 1px solid var(--cb-line); color: var(--cb-mute); }
 
 html body.settings-window .content { max-width: 1020px; padding: 8px 26px 44px; }
-html body.settings-window .panel > .sub { display: none; }          /* its text lives in the banner */
-
-/* ── Banner ────────────────────────────────────────────────────────────── */
-.hero {
-  --hh: 285;
-  position: relative; isolation: isolate; overflow: hidden; border-radius: 24px;
-  height: clamp(148px, 19.5vh, 198px); margin: 0 0 20px; color: #fff;
-  border: 1px solid hsl(var(--hh) 55% 42% / .32);
-  background:
-    radial-gradient(125% 160% at 104% -14%, hsl(var(--hh) 86% 33% / 1), transparent 62%),
-    radial-gradient(70% 110% at -8% 125%, hsl(calc(var(--hh) + 40) 75% 20% / .8), transparent 70%),
-    #020204;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .06);
-  transition: --hh .7s ease, border-color .7s;
-}
-.hero-stars { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
-.hero-lane { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
-.hero-copy { position: relative; z-index: 2; max-width: 52%; padding: clamp(16px, 3.4vh, 30px) clamp(20px, 2.6vw, 32px); pointer-events: none; }
-.hero-eyebrow { font: 700 10.5px var(--d-font-ui); letter-spacing: .2em; text-transform: uppercase; color: hsl(var(--hh) 95% 76%); }
-.hero-title { margin: 6px 0 8px; font: 800 clamp(30px, 4.9vh, 44px)/1.02 var(--d-font-display); letter-spacing: -.03em; color: #fff; text-shadow: 0 2px 30px hsl(var(--hh) 90% 50% / .45); }
-.hero-sub { margin: 0; max-width: 40ch; font: 500 clamp(13px, 1.65vh, 14.5px)/1.45 var(--d-font-ui); color: rgba(235, 235, 245, .74); }
-.hero-copy.swap > * { animation: heroIn .55s var(--d-ease) both; }
-.hero-copy.swap > :nth-child(2) { animation-delay: 50ms; }
-.hero-copy.swap > :nth-child(3) { animation-delay: 110ms; }
-/* No animated blur: it rasterised three text layers on the GPU at every tab click. Fade + slide looks the same at this size. */
-@keyframes heroIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-
-.hm { position: absolute; left: 0; bottom: 12px; width: 72px; cursor: pointer; pointer-events: auto; transform-origin: 50% 100%; will-change: transform; -webkit-tap-highlight-color: transparent; }
-.hm .lyra-char::before { content: ""; position: absolute; left: 10%; right: 10%; bottom: -2px; height: 12px; border-radius: 50%; background: radial-gradient(closest-side, rgba(0,0,0,.45), transparent); pointer-events: none; }
-.hm::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: -5px; height: 7px; border-radius: 50%; background: radial-gradient(closest-side, rgba(0, 0, 0, .5), transparent); z-index: -1; }
 
 /* ── Cards: solid, quiet, rounded ──────────────────────────────────────── */
 html body.settings-window section.card { margin-bottom: 22px; gap: 0; padding: 0; background: none; border: 0; box-shadow: none; }
@@ -160,11 +126,8 @@ html body.settings-window .item > .hint { color: var(--cb-mute); }
 html body.settings-window .seg { background: var(--cb-card-2); box-shadow: inset 0 0 0 1px var(--cb-line); }
 html body.settings-window .dd-btn, html body.settings-window input[type="text"], html body.settings-window input[type="password"],
 html body.settings-window input[type="number"], html body.settings-window textarea { background: var(--cb-card-2); }
-html body.settings-window button:not(.switch):not(.tab):not(.brand):not(.nav-arrow):not(.primary):not(.seg-btn):not(.ptile):not(.swatch):not(.dd-btn):not(.danger):not(.p4-rec) {
+html body.settings-window button:not(.switch):not(.tab):not(.brand):not(.nav-arrow):not(.primary):not(.seg-btn):not(.ptile):not(.swatch):not(.dd-btn):not(.danger):not(.p4-rec):not(.wz button) {
   background-color: var(--cb-card-2);
 }
 html body.settings-window .nomatch { color: var(--cb-mute); }
 
-@media (max-width: 860px) { .hero-copy { max-width: 56%; } }
-@media (prefers-reduced-motion: reduce) { .hero-copy.swap > * { animation: none; } .hero { transition: none; } }
-:root[data-d-motion="reduce"] .hero-copy.swap > * { animation: none; }

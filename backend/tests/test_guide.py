@@ -1,5 +1,8 @@
 """Offline tests for guide.py (no Windows, no network): python -m unittest test_guide -v
 Vision, TTS, the screen and the mascot bus are replaced by stubs; the code under test is guide.py."""
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # backend/ on the path
+
 import logging, sys, time, types, unittest
 
 from PIL import Image

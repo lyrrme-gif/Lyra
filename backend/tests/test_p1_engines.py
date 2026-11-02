@@ -115,11 +115,12 @@ class C1(Base):
         self.assertIn("error", stt_engines.transcribe(object(), language="en"))
 
     def test_set_engine(self):
-        self.assertEqual(stt_engines.set_engine("Whisper"), "whisper")
-        self.assertEqual(stt_engines.transcribe(AUDIO, language="en")["engine"], "whisper")
+        # Lyra works with Parakeet only: any valid request is accepted but the engine stays Parakeet.
+        self.assertEqual(stt_engines.set_engine("Whisper"), "parakeet")
+        self.assertEqual(stt_engines.mode(), "parakeet")
         with self.assertRaises(ValueError):
             stt_engines.set_engine("deepspeech")
-        self.assertEqual(self.store["p1_stt_engine"], "whisper")
+        self.assertEqual(self.store["p1_stt_engine"], "parakeet")
 
 
 class Status(Base):
@@ -159,10 +160,11 @@ class Status(Base):
         self.assertTrue(s["downloading"])
         self.assertIn("42%", s["pill"])
 
-    def test_whisper_mode_status(self):
+    def test_whisper_mode_is_gone(self):
         self.fake_dl(False)
-        stt_engines.set_engine("whisper")
-        self.assertTrue(stt_engines.status()["ready"])
+        stt_engines.set_engine("whisper")                # ignored: still Parakeet, so without the model it is not ready
+        self.assertEqual(stt_engines.status()["mode"], "parakeet")
+        self.assertFalse(stt_engines.status()["ready"])
 
 
 class Api(Base):
@@ -274,10 +276,10 @@ class SttWiring(Base):
         self.assertEqual(self.rec.transcribe(bytes(32000))[0], "unrecognized")
         self.assertEqual(self.pk.calls, 0)
 
-    def test_whisper_mode_ignores_parakeet(self):
+    def test_whisper_request_still_uses_parakeet(self):
         stt_engines.set_engine("whisper")
         self.rec.transcribe(self.pcm)
-        self.assertEqual(self.pk.calls, 0)
+        self.assertEqual(self.pk.calls, 1)
 
 
 class FakeRec:

@@ -1,4 +1,5 @@
-// Notification-area icon: Open, Settings, Pause, Quit.
+// Notification-area icon: Open Lyra, Settings, Quit. (Mochi show / hide and Pause were removed: the Mochi is
+// controlled from Settings -> Features and by dragging it.)
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -7,21 +8,14 @@ use tauri::{AppHandle, Emitter};
 use crate::island::WINDOW_LABEL;
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
+    let title = MenuItem::with_id(app, "title", format!("Lyra  ·  v{}", app.package_info().version), false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "Open Lyra", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
-    let pause = MenuItem::with_id(app, "pause", "Pause", true, None::<&str>)?;
-    let mochi_show = MenuItem::with_id(app, "mochi_show", "Show Mochi on screen", true, None::<&str>)?;
-    let mochi_home = MenuItem::with_id(app, "mochi_home", "Mochi: back to island", true, None::<&str>)?;
-    let mochi_hide = MenuItem::with_id(app, "mochi_hide", "Hide Mochi", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Lyra", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
-    let sep3 = PredefinedMenuItem::separator(app)?;
 
-    let menu = Menu::with_items(
-        app,
-        &[&open, &sep1, &mochi_show, &mochi_home, &mochi_hide, &sep3, &settings, &pause, &sep2, &quit],
-    )?;
+    let menu = Menu::with_items(app, &[&title, &sep1, &open, &settings, &sep2, &quit])?;
 
     let mut builder = TrayIconBuilder::with_id("lyra")
         .tooltip("Lyra")
@@ -36,11 +30,6 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                     handle.exit(0);
                 });
             }
-            // Mochi: these only flip backend prefs; the mascot window and the notch Mochi
-            // follow them within ~2 s (same path as the Settings toggles / right-click menu).
-            "mochi_show" => crate::mascot::save_pref(r#"{"feature_mascot":true,"feature_mascot_stay":true}"#),
-            "mochi_home" => crate::mascot::save_pref(r#"{"feature_mascot":true,"feature_mascot_stay":false}"#),
-            "mochi_hide" => crate::mascot::save_pref(r#"{"feature_mascot":false}"#),
             id => {
                 let _ = app.emit_to(WINDOW_LABEL, "tray", id.to_string());
             }

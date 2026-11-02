@@ -162,6 +162,47 @@ def set_mic_active(active: bool) -> None:
 
 
 _sbc_ok = True
+_IS_WIN = os.name == "nt"
+
+# ── Brightness without starting PowerShell ───────────────────────────────────────────────────
+# Every read used to start a PowerShell process (hundreds of ms of CPU each, every 1-3 s, all day). A laptop panel
+# answers the same question straight from the display driver in microseconds, with no process at all.
+_IOCTL_QUERY_BRIGHTNESS = 0x230414     # IOCTL_VIDEO_QUERY_DISPLAY_BRIGHTNESS
+_ioctl_state: bool | None = None       # None = not checked yet, True = agrees with WMI (use it), False = unusable here
+
+
+def _ioctl_brightness() -> int | None:
+    """Brightness 0-100 of the laptop panel from the display driver, or None."""
+    try:
+        k32 = ctypes.windll.kernel32                                   # type: ignore[attr-defined]
+        k32.CreateFileW.restype = ctypes.c_void_p
+        k32.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p,
+                                    ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p]
+        k32.DeviceIoControl.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_ulong,
+                                        ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_void_p]
+        k32.CloseHandle.argtypes = [ctypes.c_void_p]
+        bad = ctypes.c_void_p(-1).value
+        h = None
+        for access in (0xC0000000, 0x80000000):                        # read+write, then read only
+            h = k32.CreateFileW("\\\\.\\LCD", access, 3, None, 3, 0, None)
+            if h not in (None, 0, bad):
+                break
+            h = None
+        if h is None:
+            return None
+        try:
+            buf = (ctypes.c_ubyte * 3)()                               # DISPLAY_BRIGHTNESS: policy, on-AC level, on-battery level
+            got = ctypes.c_ulong(0)
+            if not k32.DeviceIoControl(h, _IOCTL_QUERY_BRIGHTNESS, None, 0, ctypes.byref(buf), 3, ctypes.byref(got), None):
+                return None
+            st = _PowerStatus()
+            on_ac = bool(k32.GetSystemPowerStatus(ctypes.byref(st))) and st.ACLineStatus == 1
+            v = int(buf[1] if on_ac else buf[2])
+            return v if 0 <= v <= 100 else None
+        finally:
+            k32.CloseHandle(h)
+    except Exception:
+        return None
 
 
 def _wmi_brightness() -> int | None:
@@ -185,7 +226,20 @@ def read_brightness() -> int | None:
     # The Windows provider probes DDC/VCP displays as well as laptop panels.
     # On this machine that probe retries a malformed EDID dozens of times and
     # logs before it raises. WMI reads the laptop panel directly and avoids it.
-    if os.name == "nt":
+    if _IS_WIN:
+        global _ioctl_state
+        if _ioctl_state is not False:
+            v = _ioctl_brightness()
+            if v is not None:
+                if _ioctl_state is True:
+                    return v
+                w = _wmi_brightness()                  # first read: trust the driver only if WMI says the same
+                _ioctl_state = w is not None and abs(w - v) <= 3
+                log.info("Brightness: %s", "read from the display driver (no PowerShell)" if _ioctl_state
+                         else "driver value differs from WMI, keeping WMI")
+                return v if _ioctl_state else w
+            if _ioctl_state is None:
+                _ioctl_state = False
         return _wmi_brightness()
     if _sbc_ok:
         try:
@@ -235,6 +289,9 @@ def _brightness_loop(push: Callable[[dict], None]) -> None:
                 push({"type": "status", "kind": "brightness", "percent": v, "ts": int(time.time() * 1000)})
             last = v
         fast = 0.8 if _sbc_ok else 1.2
+        if _ioctl_state is True:
+            time.sleep(1.0)                    # a driver read costs nothing: always look once a second
+            continue
         if light and time.monotonic() - changed_at > _BRIGHTNESS_ACTIVE_S:
             time.sleep(_BRIGHTNESS_IDLE_S)
         else:

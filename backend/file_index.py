@@ -380,7 +380,10 @@ def _lower_priority() -> None:
         k = ctypes.windll.kernel32
         k.GetCurrentThread.restype = ctypes.c_void_p
         k.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int]
-        k.SetThreadPriority(k.GetCurrentThread(), -2)  # THREAD_PRIORITY_LOWEST
+        # THREAD_MODE_BACKGROUND_BEGIN: lowest CPU, DISK and memory priority for this thread (so scanning never
+        # makes the PC stutter); older Windows without it gets plain THREAD_PRIORITY_LOWEST.
+        if not k.SetThreadPriority(k.GetCurrentThread(), 0x00010000):
+            k.SetThreadPriority(k.GetCurrentThread(), -2)
     except Exception:  # noqa: BLE001
         pass
 
@@ -475,6 +478,14 @@ def _loop() -> None:
     while not _stop.is_set():
         if _feature_on():
             show, _force_show = _force_show, False
+            if not show:                                  # an explicit "re-index now" never waits; the routine scan does
+                try:
+                    import lowcpu
+                    lowcpu.wait_until_calm(_stop)         # no game running, CPU not busy, battery not low
+                except Exception:                         # noqa: BLE001
+                    pass
+                if _stop.is_set():
+                    break
             scan(show=show)
         _wake.wait(RESCAN_S)
         _wake.clear()

@@ -23,6 +23,14 @@ import ui
 
 log = ui.log
 
+
+def _eco() -> bool:
+    try:
+        import settings_store
+        return settings_store.eco_on()
+    except Exception:
+        return False
+
 try:
     from config import SCREEN_WATCH_INTERVAL, SCREEN_WATCH_MAX_AGE
     _DEFAULT_INTERVAL = float(SCREEN_WATCH_INTERVAL)
@@ -291,7 +299,7 @@ class ScreenWatch:
             except Exception as e:
                 self._last_error = str(e)
                 log.warning("ScreenWatch capture error: %s", e)
-            self._stop_event.wait(self.interval)
+            self._stop_event.wait(self.interval * (3 if _eco() else 1))   # Eco mode: a third of the captures
 
     def _capture_once(self, full_screen: bool = False) -> Optional[ScreenFrame]:
         import screen_capture as _sc

@@ -1,0 +1,14 @@
+/* Eco mode (Settings -> Features -> Eco mode): no shadows, no blurs, no filters. Animations are NOT touched: they keep
+   running at full 60 fps (they only use opacity/transform, which the GPU compositor handles cheaply). will-change is left
+   alone on purpose: the equalizer bars rely on it to stay on the compositor.
+   Delete the "import eco.css" line in boot.ts to remove this file's effect. */
+html[data-eco] *, html[data-eco] *::before, html[data-eco] *::after {
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  text-shadow: none !important;
+}
+/* Shadows: gone everywhere except the Settings window, where box-shadow also draws the thin borders and focus rings. */
+html[data-eco] body:not(.settings-window) *, html[data-eco] body:not(.settings-window) *::before, html[data-eco] body:not(.settings-window) *::after {
+  box-shadow: none !important;
+}

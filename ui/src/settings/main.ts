@@ -6,7 +6,6 @@ import "./settings-lyra.css";
 import "./settings-coucou.css";
 import "./settings-frameless.css";
 import "./controls-v2.css";
-import { createHero } from "./coucou/hero";
 import { lineIcon } from "./coucou/icons";
 import { Bridge, onEvent } from "../core/bridge";
 import { DEFAULT_SETTINGS, readExtras, writeExtras, type LiveActivity, type Settings } from "../core/state";
@@ -14,10 +13,12 @@ import { h, clear } from "../views/dom";
 import { FEATURES, FEATURE_GROUPS, featureEnabled, type FeatureDef } from "../core/features";
 import { filesHost } from "./files";
 import { visiblePoll, type VisiblePoll } from "../core/visiblePoll";
-import { islandScene, navScene as navScreen, themeScene } from "./screenPreview";
+import { islandScene, navScene as navScreen } from "./screenPreview";
+import { themePreview } from "./themePreview";
+import { getFeatures } from "../core/featuresCache";
 import { featurePreview } from "./featureScenes";
-import { activityScene } from "./activityPreviews";
-import { onTourSignal } from "../core/tour";
+import { activityScene, playActivityPreview } from "./activityPreviews";
+import { showSetupWizard } from "./setupWizard";
 // >>> phase-8 begin
 import { updateCards } from "./panels/p8_updates";
 // <<< phase-8 end
@@ -26,12 +27,11 @@ import { ollamaCard } from "./ollama";
 import { whenVisible } from "./lazy";
 import { enhanceSelects } from "./uiKit";
 import { installControlKit } from "./choiceKit";
-import { mochiCards, mochiTourPickers, onMochiShape } from "./mochiPanel";
+import { mochiCards } from "./mochiPanel";
 import { appsCards } from "./appsPanel";
 import { WHATSAPP_BG, WHATSAPP_GLYPH } from "./whatsappIcon";
 import { SETTINGS_GOTO_KEY } from "../core/appsApi";
 import { AUTOHIDE_HINT, AUTOHIDE_MODES, normalizeAutoHide } from "../core/autohide";
-import { createCharacter, gazeToward } from "../mascot/character";
 // >>> phase-0 begin
 import { p0KeyStatus } from "./panels/p0_keystatus";
 // <<< phase-0 end
@@ -60,6 +60,7 @@ import { register as registerP4 } from "./panels/p4_design";
 import { installTracer } from "../core/trace";
 import { registerPanel, withOwner } from "../core/loadOwner";
 import { slog } from "./settingsLog";
+import { setEco } from "../core/eco";
 installTracer();
 slog.start("general");   // Settings log (settingsLog.ts): from here on every request and tab change is recorded
 
@@ -519,6 +520,22 @@ function soundCard(): HTMLElement {
   );
 }
 
+/** Eco mode lives on General (not on the Features page). The look changes at once in every window (core/eco.ts);
+ *  the slower hotkey / screen polling in the backend applies after the backend restarts. */
+function ecoCard(featPrefs: Prefs): HTMLElement {
+  return card(
+    "Performance",
+    item(
+      "Eco mode",
+      "As little CPU and GPU as possible while animations stay at 60 fps: no shadows, blurs or filters, the eyes stop following the cursor, and background checks slow down (restart Lyra's backend for those).",
+      toggle(featPrefs.data.feature_eco_mode === true, (v) => {
+        setEco(v);                                    // instant in every open window
+        featPrefs.set("feature_eco_mode", v);         // saved in the backend
+      }),
+    ),
+  );
+}
+
 /** Theme + position live in localStorage (same keys the island reads). */
 function readIslandTheme(): string {
   try {
@@ -622,6 +639,11 @@ function islandCard(notify: Prefs, extra: HTMLElement[] = []): HTMLElement {
   ];
 
   let currentTheme = readIslandTheme();
+  const themeMochis: Array<{ setShape?: (s: string) => void }> = [];
+  void getFeatures().then((p) => {                                  // the Mochi in the pictures is the one you picked
+    const sh = (p as { mascot_shape?: string } | null)?.mascot_shape;
+    if (sh) for (const c of themeMochis) c.setShape?.(sh);
+  }).catch(() => undefined);
   const themeGrid = h("div", { class: "theme-gallery" });
   const themePreviewLabel = h("div", { class: "theme-preview-label" });
 
@@ -643,7 +665,9 @@ function islandCard(notify: Prefs, extra: HTMLElement[] = []): HTMLElement {
   };
 
   for (const meta of themes) {
-    const preview = themeScene({ material: meta.material, accent: meta.accent, glow: meta.glow });
+    const pv = themePreview({ bg: meta.material, accent: meta.accent }, "cloud");   // the same picture as in the setup
+    themeMochis.push(pv.mochi);
+    const preview = pv.el;
 
     const option = h("button", {
       class: `theme-option${meta.id === currentTheme ? " on" : ""}`,
@@ -896,6 +920,7 @@ const PREF_DEFAULTS: Record<string, Record<string, PrefVal>> = {
     feature_status: true,
     feature_light_mode: true,
     feature_circle_ask: true,
+    feature_eco_mode: false,
     proactive_enabled: true,
   },
 };
@@ -905,6 +930,7 @@ async function loadPrefs(group: string): Promise<Prefs> {
   try {
     const r = await fetch(`${LYRA}/settings/${group}`);
     if (r.ok) Object.assign(data, await r.json());
+    if (group === "features") setEco(data.feature_eco_mode === true);
   } catch {
     /* backend offline: defaults until it is back */
   }
@@ -925,6 +951,7 @@ async function loadPrefs(group: string): Promise<Prefs> {
         });
         if (!r.ok) throw new Error(r.statusText);
         Object.assign(data, await r.json()); // the backend clamps; keep its value
+        if (group === "features") setEco(data.feature_eco_mode === true);   // every window follows through localStorage
         flashSaved();
         return true;
       } catch {
@@ -1084,7 +1111,7 @@ function voiceCards(v: Prefs, dev: VoiceDevices): HTMLElement[] {
     (n) => `${n} (not connected)`,
   );
   const names: Record<string, string> = {};
-  const voices: [string, string][] = [["", "Default (Aria)"]];
+  const voices: [string, string][] = [["", "Default (Jenny)"]];
   for (const id of dev.voices) {
     const short = id.replace(/Neural$/, "").split("-").slice(1).join(" ");
     names[id] = short;
@@ -1196,180 +1223,6 @@ function dictationBasicsCard(v: Prefs): HTMLElement {
       "Basics",
       item("Dictation", "Hold Left Alt in any window and Lyra pastes what you say when you let go. Say “note one … next point …” for a numbered list. English only for now.", prefToggle(v, "dictation_enabled")),
     );
-}
-
-// ── Shortcuts tab (shortcuts.json) ────────────────────────────────────────────
-
-type Action = Record<string, unknown> & { type: string };
-type Shortcut = { id: string; name: string; triggers: string[]; actions: Action[] };
-
-const ACTION_KINDS: [string, string, string][] = [
-  ["open_app", "Open app", "e.g. chrome"],
-  ["open_site", "Open website", "e.g. youtube"],
-  ["open_url", "Open URL", "https://…"],
-  ["open_spotify", "Spotify search", "optional: what to play"],
-  ["open_folder", "Open folder", "C:\\Users\\you\\Documents"],
-  ["set_volume", "Set volume", "0 – 100"],
-  ["volume_up", "Volume up", "steps (default 5)"],
-  ["volume_down", "Volume down", "steps (default 5)"],
-  ["mute", "Mute", ""],
-  ["lock_screen", "Lock screen", ""],
-  ["take_screenshot", "Take screenshot", ""],
-  ["wait", "Wait", "seconds"],
-];
-
-function shortcutsHost(): HTMLElement {
-  const host = h("div", {});
-  let fields: Record<string, string | null> = {};
-
-  const load = async () => {
-    const r = await lyra("/shortcuts");
-    clear(host);
-    if (!r.ok) {
-      host.append(card(null, h("p", { class: "empty", text: r.error || "Could not load shortcuts." })));
-      return;
-    }
-    fields = r.data.types || {};
-    showList((r.data.shortcuts || []) as Shortcut[]);
-  };
-
-  const showList = (list: Shortcut[]) => {
-    clear(host);
-    const c = card("Your shortcuts");
-    if (!list.length) c.append(h("p", { class: "empty", text: "No shortcuts yet." }));
-    for (const sc of list) {
-      const edit = h("button", { text: "Edit" });
-      edit.addEventListener("click", () => showEditor(sc));
-      const del = confirmButton("Delete", "Click again to delete", async () => {
-        const d = await lyra("/shortcuts/delete", { id: sc.id });
-        flashSaved(d.ok);
-        void load();
-      });
-      const row = item(
-        sc.name,
-        `Say: ${sc.triggers.map((t) => `“${t}”`).join(", ")} · ${sc.actions.length} action${sc.actions.length === 1 ? "" : "s"}`,
-        h("span", { class: "spacer" }),
-        edit,
-        del,
-      );
-      row.dataset.s += ` ${sc.triggers.join(" ")} shortcut`.toLowerCase();
-      c.append(row);
-    }
-    const add = h("button", { class: "primary", text: "New shortcut" });
-    add.addEventListener("click", () => showEditor(null));
-    c.append(
-      h("div", { class: "row pad" }, add),
-      h("div", { class: "hint", text: "Say a trigger phrase and Lyra runs the actions in order. Changes work straight away." }),
-    );
-    host.append(c);
-  };
-
-  const showEditor = (sc: Shortcut | null) => {
-    clear(host);
-    const draft: Shortcut = sc
-      ? { ...sc, triggers: [...sc.triggers], actions: sc.actions.map((a) => ({ ...a })) }
-      : { id: "", name: "", triggers: [], actions: [{ type: "open_app", target: "" }] };
-    const feedback = h("div", {});
-    const name = h("input", { type: "text", value: draft.name, maxlength: "60", placeholder: "e.g. Work mode", style: "flex:1 1 200px" }) as HTMLInputElement;
-    const triggers = h("textarea", { rows: "3", class: "area", placeholder: "One phrase per line, e.g.\nget me ready for work", spellcheck: "false" }) as HTMLTextAreaElement;
-    triggers.value = draft.triggers.join("\n");
-    const actionsBox = h("div", { class: "stack" });
-
-    const renderActions = () => {
-      clear(actionsBox);
-      draft.actions.forEach((act, i) => {
-        const kind = h("select", {}) as HTMLSelectElement;
-        for (const [id, label] of ACTION_KINDS) kind.append(h("option", { value: id, text: label }));
-        kind.value = act.type;
-        const field = () => fields[act.type] ?? null;
-        const value = h("input", { type: "text", style: "flex:1 1 140px;min-width:0", spellcheck: "false" }) as HTMLInputElement;
-        const sync = () => {
-          const f = field();
-          value.disabled = !f;
-          value.value = f ? String(act[f] ?? "") : "";
-          value.placeholder = ACTION_KINDS.find((k) => k[0] === act.type)?.[2] ?? "";
-        };
-        sync();
-        kind.addEventListener("change", () => {
-          for (const k of Object.keys(act)) delete act[k];
-          act.type = kind.value;
-          sync();
-        });
-        value.addEventListener("input", () => {
-          const f = field();
-          if (f) act[f] = value.value;
-        });
-        const mk = (text: string, title: string, fn: () => void, disabled = false) => {
-          const b = h("button", { class: "icon", title, "aria-label": title, text });
-          if (disabled) b.setAttribute("disabled", "");
-          b.addEventListener("click", fn);
-          return b;
-        };
-        const move = (d: number) => {
-          const [a] = draft.actions.splice(i, 1);
-          draft.actions.splice(i + d, 0, a);
-          renderActions();
-        };
-        actionsBox.append(
-          h(
-            "div",
-            { class: "row tight" },
-            kind,
-            value,
-            mk("▲", "Move up", () => move(-1), i === 0),
-            mk("▼", "Move down", () => move(1), i === draft.actions.length - 1),
-            mk("✕", "Remove", () => {
-              draft.actions.splice(i, 1);
-              renderActions();
-            }),
-          ),
-        );
-      });
-      if (draft.actions.length < 20) {
-        const add = h("button", { text: "+ Add action" });
-        add.addEventListener("click", () => {
-          draft.actions.push({ type: "open_app", target: "" });
-          renderActions();
-        });
-        actionsBox.append(add);
-      }
-    };
-    renderActions();
-
-    const save = h("button", { class: "primary", text: "Save shortcut" });
-    save.addEventListener("click", async () => {
-      clear(feedback);
-      const payload = {
-        id: draft.id,
-        name: name.value,
-        triggers: triggers.value.split("\n"),
-        actions: draft.actions,
-      };
-      const r = await lyra("/shortcuts/save", payload);
-      flashSaved(r.ok);
-      if (!r.ok) {
-        feedback.append(h("div", { class: "notice err", text: r.error }));
-        return;
-      }
-      void load();
-    });
-    const cancel = h("button", { text: "Cancel" });
-    cancel.addEventListener("click", () => void load());
-
-    host.append(
-      card(
-        sc ? `Edit “${sc.name}”` : "New shortcut",
-        item("Name", null, name),
-        item("Trigger phrases", "What you say to run it. Each phrase can only belong to one shortcut.", triggers),
-        item("Actions", "Run top to bottom. Actions that need your confirmation (like locking the screen) still ask first.", actionsBox),
-        feedback,
-        h("div", { class: "row pad" }, save, cancel),
-      ),
-    );
-  };
-
-  whenVisible(host, () => void load());
-  return host;
 }
 
 // ── Privacy & Memory tab ──────────────────────────────────────────────────────
@@ -1568,9 +1421,26 @@ async function applyUiImport(ui: unknown) {
 // ── Display shape / outline / Live Activities (System Settings style previews) ──
 
 /** A tiny "desktop" scene with the island drawn on it; the tile is the radio button. */
-function previewTile(label: string, on: boolean, scene: HTMLElement, onPick: () => void, sub = ""): HTMLButtonElement {
+const SPEAKER_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5v5h3.6L12 18.5v-13L7.6 9.5H4z" fill="currentColor" stroke="none"/><path d="M15.4 9.2a4 4 0 0 1 0 5.6"/><path d="M18 6.6a7.6 7.6 0 0 1 0 10.8"/></svg>`;
+
+/** `onPlay`: adds a small speaker button to the tile (Live Activities: hear the real sound and see the light again). */
+function previewTile(label: string, on: boolean, scene: HTMLElement, onPick: () => void, sub = "", onPlay?: () => void): HTMLButtonElement {
+  let snd: HTMLElement | null = null;
+  if (onPlay) {
+    snd = h("span", { class: "ptile-snd", role: "button", tabindex: "0", title: "Play its sound", "aria-label": `Play the sound of ${label}` });
+    snd.innerHTML = SPEAKER_ICON;
+    const go = (e: Event) => {
+      e.stopPropagation();
+      e.preventDefault();
+      onPlay();
+      snd!.classList.add("playing");
+      window.setTimeout(() => snd!.classList.remove("playing"), 1800);
+    };
+    snd.addEventListener("click", go);
+    snd.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter" || (e as KeyboardEvent).key === " ") go(e); });
+  }
   const b = h("button", { class: on ? "ptile on" : "ptile", type: "button", "aria-pressed": on },
-    h("span", { class: "ptile-scene" }, scene),
+    h("span", { class: "ptile-scene" }, scene, snd),
     h("span", { class: "ptile-label", text: label }),
     sub ? h("span", { class: "ptile-sub", text: sub }) : null,
   ) as HTMLButtonElement;
@@ -1667,7 +1537,8 @@ function liveCards(): HTMLElement[] {
       writeExtras({ activities: { ...cur.activities, [a.id]: next } });
       tile.classList.toggle("on", next);
       tile.setAttribute("aria-pressed", String(next));
-    }, a.sub);
+      if (next) playActivityPreview(a.id, scene);        // switching an activity on lets you hear and see it
+    }, a.sub, () => playActivityPreview(a.id, scene));
     (groups[a.group] ??= []).push(tile);
   }
   const out: HTMLElement[] = [];
@@ -1779,9 +1650,6 @@ function buildShell(panels: Record<string, HTMLElement>) {
   noMatch.hidden = true;
 
   const titleEl = h("h1", { class: "win-title", text: "General" });
-  const hero = createHero();
-  const groupOf = (id: string) => NAV_GROUPS.find(([, ids]) => ids.includes(id))?.[0] ?? "";
-  const subOf = (id: string) => panels[id]?.querySelector(":scope > .sub")?.textContent?.trim() ?? "";
   const backBtn = h("button", { class: "nav-arrow", type: "button", "aria-label": "Back", title: "Back", html: '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M15 5.5 8.5 12 15 18.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>' }) as HTMLButtonElement;
   const fwdBtn = h("button", { class: "nav-arrow", type: "button", "aria-label": "Forward", title: "Forward", html: '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M9 5.5 15.5 12 9 18.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>' }) as HTMLButtonElement;
 
@@ -1827,8 +1695,6 @@ function buildShell(panels: Record<string, HTMLElement>) {
     }
     noMatch.hidden = !q || any;
     titleEl.textContent = q ? "Search results" : labelOf(active);
-    if (q) hero.set("search", "Search", "Search results", any ? "Everything that matches, from every page." : "");
-    else hero.set(active, groupOf(active), labelOf(active), subOf(active));
     backBtn.disabled = hpos <= 0;
     fwdBtn.disabled = hpos >= history.length - 1;
     mainEl.scrollTop = 0;
@@ -1857,42 +1723,14 @@ function buildShell(panels: Record<string, HTMLElement>) {
     savedEl,
     closeBtn,
   );
-  const mainEl = h("main", { class: "main" }, top, h("div", { class: "content" }, hero.el, ...TABS.map(([id]) => panels[id]), noMatch));
+  const mainEl = h("main", { class: "main" }, top, h("div", { class: "content" }, ...TABS.map(([id]) => panels[id]), noMatch));
 
-  // Brand at the top of the sidebar: your Mochi (same character as the notch, changes as soon as another one is
-  // picked in Settings → General) and a bold "Lyra". Poke it and it hops.
-  const avatar = h("span", { class: "brand-mochi acct-avatar" });
-  const avatarMochi = createCharacter(avatar, { tight: true, sharp: 2 });
-  onMochiShape((shape) => avatarMochi.setShape?.(shape));
-  avatarMochi.setEmote("idle");
-  // The eyes follow the pointer while it is over this window (and keep looking where it left).
-  const aimAvatar = (x: number, y: number) => {
-    const [gx, gy] = gazeToward(avatar, x, y);
-    avatarMochi.look(gx, gy);
-  };
-  window.addEventListener("mousemove", (e) => aimAvatar(e.clientX, e.clientY), { passive: true });
+  // Brand at the top of the sidebar: just the wordmark.
   // The version moved to General and About; p4_design still reads it from this (hidden) line.
-  const acct = h("button", { class: "brand", type: "button", "aria-label": "Lyra" }, avatar,
+  const acct = h("div", { class: "brand" },
     h("span", { class: "brand-name", text: "LYRA" }),
     h("span", { class: "acct-text", hidden: "" }, h("small", { text: `Version ${version || "1.0.0"}` })),
   );
-  let brandTimer = 0, brandBusy = false;
-  acct.addEventListener("click", () => {
-    avatarMochi.setEmote("celebrate");
-    window.clearTimeout(brandTimer);
-    brandTimer = window.setTimeout(() => avatarMochi.setEmote("idle"), 1800);
-    if (brandBusy || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    brandBusy = true;
-    // three hops, each lower than the last
-    const bounce = (i: number) => {
-      const k = 16 * Math.pow(0.62, i);
-      avatar.animate(
-        [{ transform: "translateY(0) scale(1.1,.88)" }, { transform: `translateY(${-k}px) scale(.94,1.08)`, offset: 0.5 }, { transform: "translateY(0) scale(1.12,.86)" }],
-        { duration: 360 - i * 40, easing: "cubic-bezier(.3,.7,.4,1)" },
-      ).onfinish = () => { if (i < 2) bounce(i + 1); else brandBusy = false; };
-    };
-    bounce(0);
-  });
 
   const side = h("aside", { class: "sidebar" }, acct, searchWrap, nav);
   applyView();
@@ -1924,17 +1762,6 @@ function featureIsOn(f: FeatureDef, featPrefs: Prefs): boolean {
 function applyFeature(f: FeatureDef, on: boolean, featPrefs: Prefs) {
   writeExtras({ features: { ...readExtras().features, [f.id]: on } });
   if (f.backend) featPrefs.set(f.backend, on);
-}
-
-function featureRow(f: FeatureDef, on: boolean, onChange: (v: boolean) => void, compact = false): HTMLElement {
-  const ico = h("span", { class: "tour-ico", style: `background:linear-gradient(${f.from},${f.to})`, text: f.name.slice(0, 1) });
-  const copy = h("div", { class: "tour-copy" },
-    h("strong", { text: f.name }),
-    h("span", { text: f.blurb }),
-    h("em", { text: `Try: ${f.tip}` }),
-  );
-  const row = h("div", { class: compact ? "tour-row compact" : "tour-row" }, ico, copy, toggle(on, onChange));
-  return row;
 }
 
 /** One row on Settings → Features: a looping preview, what it does, a "Try" hint and the switch. */
@@ -2035,58 +1862,13 @@ function featuresCards(featPrefs: Prefs): HTMLElement[] {
   const gameMode = card("Game mode",
     item("Switch Lyra's key shortcuts off while you play", "Right Ctrl, Ctrl+Win, tap-and-hold Ctrl and Ctrl+CapsLock are fully removed during a game, so nothing of Lyra sits in the keyboard path. Press Ctrl+Alt+L to talk to her meanwhile, or say “Hey Lyra”.",
       toggle(featPrefs.data.feature_game_mode !== false, (v) => featPrefs.set("feature_game_mode", v))),
-    item("Treat full-screen programs as games", "Browsers, video players and slide shows are ignored.",
-      toggle(featPrefs.data.game_mode_fullscreen !== false, (v) => featPrefs.set("game_mode_fullscreen", v))),
     item("Game list", "Programs that switch game mode on while they run. Comma-separated, e.g. cs2.exe.", gameApps));
   return [restart, intro, ...groups, ...access, proactive, studyPrefs, gameMode];
 }
 
 // ── First-launch setup / tour ────────────────────────────────────────────────
+// The wizard itself lives in setupWizard.ts; this only hands it what it needs to read and write.
 const ONBOARDING_KEY = "lyra-onboarding-complete";
-const SETUP_THEMES: Array<{ id: string; name: string; note: string; bg: string; accent: string }> = [
-  { id:"pure-black", name:"Black", note:"Absolute black", bg:"#000", accent:"#fff" },
-  { id:"midnight", name:"Midnight", note:"Deep Apple glass", bg:"linear-gradient(135deg,#17191e,#08090c)", accent:"#9aaeff" },
-  { id:"aurora", name:"Aurora", note:"Cool luminous colour", bg:"linear-gradient(135deg,#101827,#151125)", accent:"#9ff2da" },
-  { id:"dynamic", name:"Dynamic", note:"Adaptive Lyra look", bg:"linear-gradient(135deg,#151722,#252a40)", accent:"#c1ccff" },
-  { id:"frost", name:"Frost", note:"Black fading into glass", bg:"linear-gradient(180deg,#000 0%,#000 46%,rgba(70,58,48,.78) 100%)", accent:"#3b82f6" },
-];
-
-const SETUP_PROVIDERS = [
-  {
-    id: "openrouter",
-    name: "OpenRouter",
-    key: "openrouter_api_key",
-    placeholder: "sk-or-…",
-    url: "https://openrouter.ai/docs/api/api-reference/api-keys/create-a-new-api-key",
-    steps: ["Create or sign in to your account", "Open API Keys and choose Create Key", "Copy the key and paste it here"],
-  },
-  {
-    id: "gemini",
-    name: "Google Gemini",
-    key: "gemini_api_key",
-    placeholder: "AIza…",
-    url: "https://aistudio.google.com/api-keys",
-    steps: ["Sign in with your Google account", "Open API Keys and create a key", "Copy the key and paste it here"],
-  },
-  {
-    id: "groq",
-    name: "Groq",
-    key: "groq_api_key",
-    placeholder: "gsk_…",
-    url: "https://console.groq.com/keys",
-    steps: ["Create or sign in to your Groq account", "Open API Keys and create a key", "Copy the key and paste it here"],
-  },
-  {
-    id: "ollama",
-    name: "Ollama (local)",
-    key: "ollama_api_key",
-    placeholder: "No key needed",
-    url: "https://ollama.com/download",
-    steps: ["Install and start Ollama", "Run: ollama pull llama3.2:3b", "Continue; no key or internet is needed"],
-  },
-] as const;
-
-type SetupProvider = typeof SETUP_PROVIDERS[number]["id"];
 
 function onboardingDone(): boolean {
   try { return window.localStorage.getItem(ONBOARDING_KEY) === "1"; } catch { return false; }
@@ -2096,349 +1878,25 @@ function markOnboardingDone() {
   try { window.localStorage.setItem(ONBOARDING_KEY, "1"); } catch { /* ignore */ }
 }
 
-type StepId = "island" | "visible" | "look" | "connect" | "voice" | "tour-island" | "tabs-wheel" | "tabs-ways" | "mochi-look" | "mochi-show"
-  | "tour-daily" | "tour-pc" | "tour-helpers" | "mods" | "ready";
-const STEPS: StepId[] = ["island", "visible", "look", "connect", "voice", "tour-island", "tabs-wheel", "tabs-ways", "mochi-look", "mochi-show",
-  "tour-daily", "tour-pc", "tour-helpers", "mods", "ready"];
-
-/** Tour steps that wait for the user to really do something. Next unlocks when the task(s) are done (or the step is skipped). */
-interface TourTask { id: string; label: string; hint: string }
-const TOUR_TASKS: Partial<Record<StepId, { need: "all" | "any"; tasks: TourTask[] }>> = {
-  "tabs-wheel": { need: "all", tasks: [
-    { id: "wheel-open", label: "Hold Ctrl + CapsLock", hint: "The wheel appears right where your cursor is." },
-    { id: "wheel-pick", label: "Point at a tab and let go", hint: "The island opens that tab." },
-  ] },
-  "tabs-ways": { need: "any", tasks: [
-    { id: "way-right", label: "Right-click the island", hint: "Move your mouse to the top of the screen to open it first." },
-    { id: "way-dock", label: "Click a tab in the dock", hint: "The little row of icons under the island." },
-    { id: "way-voice", label: "Ask for a tab by voice", hint: "Say “Hey Lyra, show the tab wheel” or “open my stats”." },
-  ] },
-  "mochi-look": { need: "any", tasks: [
-    { id: "shape", label: "Pick a character", hint: "Cloud, fox or cat." },
-  ] },
-  "mochi-show": { need: "any", tasks: [
-    { id: "mascot", label: "Flip the Mochi switch", hint: "Show it on your screen, or tuck it away." },
-  ] },
-  "mods": { need: "any", tasks: [
-    { id: "mode", label: "Say or type a mode", hint: "For example “Hey Lyra, gaming mode”, or type it in Chat." },
-  ] },
-};
-
 async function showOnboarding(opts: { replay?: boolean } = {}): Promise<void> {
-  const replay = !!opts.replay;
-  let step = 0;
-  const choices = {
-    position: (readIslandPosition() === "attached" ? "attached" : "floating") as "floating" | "attached",
-    theme: readIslandTheme(),
-    voice: "ptt" as "ptt" | "wake" | "both",
-    hidden: false,
-    provider: "openrouter" as SetupProvider,
-    keys: { openrouter_api_key: "", gemini_api_key: "", groq_api_key: "", ollama_api_key: "" },
-    features: {} as Record<string, boolean>,
-  };
-  let hasSavedKey = false;
-  let finishError = "";
-  const [featPrefs, privacyPrefs] = await Promise.all([loadPrefs("features"), loadPrefs("privacy")]);
-  for (const f of FEATURES) choices.features[f.id] = featureIsOn(f, featPrefs);
-  choices.hidden = !settings.alwaysShowNotch;
-  try {
-    const [llmR] = await Promise.all([
-      fetch(`${LYRA}/settings/llm`).catch(() => null),
-    ]);
-    if (llmR?.ok) {
-      const l = await llmR.json();
-      if (["openrouter","gemini","groq","ollama"].includes(l.provider)) choices.provider = l.provider;
-      hasSavedKey = !!(l.has_openrouter || l.has_gemini || l.has_groq || l.has_ollama);
-    }
-  } catch { /* defaults are fine */ }
-
-  const rootWizard = h("div", { class: "onboarding" });
-  const progress = h("div", { class: "onboarding-progress" });
-  progress.style.gridTemplateColumns = `repeat(${STEPS.length},1fr)`;
-  const eyebrow = h("div", { class: "onboarding-eyebrow", text: replay ? "LYRA TOUR" : "WELCOME TO LYRA" });
-  const title = h("h1", {});
-  const sub = h("p", { class: "onboarding-sub" });
-  const body = h("div", { class: "onboarding-body" });
-  const back = h("button", { class: "onboarding-back", text: "Back" });
-  const next = h("button", { class: "onboarding-next", text: "Continue" });
-  const skip = h("button", { class: "onboarding-skip", type: "button", text: "Skip the tour" });
-  const actions = h("div", { class: "onboarding-actions" }, back, skip, next);
-
-  const renderProgress = () => {
-    clear(progress);
-    for (let i = 0; i < STEPS.length; i++) progress.append(h("span", { class: i === step ? "on" : i < step ? "done" : "" }));
-  };
-
-  const option = (kind: string, id: string, label: string, desc: string, selected: boolean, preview?: HTMLElement) => {
-    const b = h("button", { class: `setup-option${selected ? " on" : ""}`, type:"button" }, preview || null, h("span", { class:"setup-option-copy" }, h("strong", { text:label }), h("small", { text:desc })), h("span", { class:"setup-check", text:"✓" }));
-    b.addEventListener("click", () => {
-      if (kind === "position") choices.position = id as "floating" | "attached";
-      if (kind === "theme") choices.theme = id;
-      if (kind === "hidden") choices.hidden = id === "hidden";
-      if (kind === "provider") choices.provider = id as SetupProvider;
-      finishError = "";
-      render();
-    });
-    return b;
-  };
-
-  // ── Interactive steps: Next waits for the real action, reported by the island / dock / settings ──
-  const done = new Set<string>();          // task ids the user has really done
-  const skipped = new Set<StepId>();       // steps the user skipped
-  let refreshTasks: () => void = () => undefined;
-  const stepDone = (name: StepId): boolean => {
-    const def = TOUR_TASKS[name];
-    if (!def || skipped.has(name)) return true;
-    const hit = def.tasks.filter((t) => done.has(t.id)).length;
-    return def.need === "all" ? hit === def.tasks.length : hit > 0;
-  };
-  const mark = (id: string) => {
-    if (done.has(id)) return;
-    done.add(id);
-    refreshTasks();
-    (next as HTMLButtonElement).disabled = !canContinue();
-  };
-  // What the island reports (see core/tour.ts) counts for the step that is on screen.
-  void onTourSignal((sig) => {
-    const name = STEPS[step];
-    if (name === "tabs-wheel") {
-      if (sig.kind === "wheel-open") mark("wheel-open");
-      if (sig.kind === "wheel-pick") { mark("wheel-open"); mark("wheel-pick"); }
-    } else if (name === "tabs-ways") {
-      if (sig.kind === "wheel-open" && sig.detail === "rightclick") mark("way-right");
-      if (sig.kind === "dock-pick") mark("way-dock");
-      if ((sig.kind === "wheel-open" && sig.detail === "voice") || sig.kind === "open-view") mark("way-voice");
-    } else if (name === "mods") {
-      if (sig.kind === "said" && /\bmode\b/i.test(sig.detail || "")) mark("mode");
-    }
+  await showSetupWizard({
+    root,
+    replay: !!opts.replay,
+    lyra: LYRA,
+    loadPrefs,
+    featureIsOn,
+    applyFeature,
+    theme: { read: readIslandTheme, write: writeIslandTheme },
+    position: { read: readIslandPosition, write: writeIslandPosition },
+    settings: {
+      get islandAutoHide() { return normalizeAutoHide(settings.islandAutoHide); }, set islandAutoHide(v) { settings.islandAutoHide = v; },
+      get wakeMode() { return settings.wakeMode; }, set wakeMode(v) { settings.wakeMode = v; },
+      get screen() { return settings.screen; }, set screen(v: string) { settings.screen = v as Settings["screen"]; },
+      get autostart() { return settings.autostart; }, set autostart(v: boolean) { settings.autostart = v; },
+    },
+    saveSettings: save,
+    markDone: markOnboardingDone,
   });
-
-  const taskCard = (name: StepId): HTMLElement => {
-    const def = TOUR_TASKS[name]!;
-    const status = h("span", { class: "tour-task-status" });
-    const skipStep = h("button", { class: "tour-task-skip", type: "button", text: "Skip" });
-    skipStep.addEventListener("click", () => { skipped.add(name); if (step < STEPS.length - 1) { step++; render(); } });
-    const rows = def.tasks.map((t) => {
-      const dot = h("span", { class: "tour-task-dot" });
-      const row = h("div", { class: "tour-task" }, dot, h("span", { class: "tour-task-copy" }, h("strong", { text: t.label }), h("small", { text: t.hint })));
-      return { t, dot, row };
-    });
-    const how = def.tasks.length === 1 ? "Your turn" : def.need === "all" ? "Your turn — do both" : "Your turn — do any one";
-    const card = h("div", { class: "tour-tasks" },
-      h("div", { class: "tour-tasks-head" }, h("span", { class: "tour-tasks-eyebrow", text: how }), status),
-      ...rows.map((r) => r.row),
-      h("div", { class: "tour-tasks-foot" }, h("span", { text: "Can't try this right now?" }), skipStep));
-    refreshTasks = () => {
-      for (const { t, dot, row } of rows) { const d = done.has(t.id); row.classList.toggle("done", d); dot.textContent = d ? "✓" : ""; }
-      const ok = stepDone(name);
-      card.classList.toggle("ok", ok);
-      status.textContent = ok ? "Nice, that worked." : "Waiting for you…";
-    };
-    refreshTasks();
-    return card;
-  };
-
-  const demo = (id: string) => h("div", { class: "tour-demo" }, featurePreview(FEATURES.find((f) => f.id === id)!));
-  const way = (k: string, t: string) => h("div", { class: "ready-row" }, h("span", { class: "setup-key", text: k }), h("span", { text: t }));
-  const label = (t: string) => h("div", { class: "tour-label", text: t });
-
-  const interactiveStep = (name: StepId) => {
-    if (name === "tabs-wheel") {
-      title.textContent = "Open tabs with the wheel.";
-      sub.textContent = "Hold Ctrl + CapsLock anywhere. A wheel with all your tabs appears at your cursor. Point at one and let go to open it.";
-      body.append(demo("tab_wheel"));
-    } else if (name === "tabs-ways") {
-      title.textContent = "More ways to open a tab.";
-      sub.textContent = "The wheel is one way. Try any one of these.";
-      body.append(h("div", { class: "ready-list" },
-        way("Right-click", "Right-click the island and the wheel opens in the middle of the screen."),
-        way("Dock", "Click an icon in the tab dock under the island."),
-        way("Voice", "Say “Hey Lyra, show the tab wheel”, or just ask for a tab: “open stats”.")));
-    } else if (name === "mochi-look") {
-      title.textContent = "Make your Mochi yours.";
-      sub.textContent = "Pick a character: each has its own moods and its own sounds. Your real Mochi changes right away. More under Settings → General.";
-      const featureData: Prefs = featPrefs;
-      const startShape = String(featureData.data.mascot_shape || "cloud");
-      const { shapes } = mochiTourPickers({
-        data: featureData.data,
-        set: (k, v) => {
-          featureData.set(k, v as Parameters<Prefs["set"]>[1]);
-          if (k === "mascot_shape" && v !== startShape) mark("shape");
-        },
-      });
-      body.append(label("Character"), shapes);
-    } else if (name === "mochi-show") {
-      title.textContent = "Show your Mochi.";
-      sub.textContent = "Your Mochi can hang out on your screen next to the subtitles, or stay tucked in the notch. It switches on the moment you flip it.";
-      const live = (id: string) => {
-        const f = FEATURES.find((x) => x.id === id)!;
-        return featureRow(f, choices.features[id], (v) => { choices.features[id] = v; applyFeature(f, v, featPrefs); mark("mascot"); });
-      };
-      body.append(h("div", { class: "tour-list" }, live("mascot"), live("mascot_stay")));
-    } else if (name === "mods") {
-      title.textContent = "Modes.";
-      sub.textContent = "A mode changes how Lyra talks and what she does. Gaming, Chill, Study and Angry come built in.";
-      body.append(h("div", { class: "tour-modes" }, ...["Gaming", "Chill", "Study", "Angry"].map((m) => h("span", { class: "tour-mode", text: m }))),
-        h("p", { class: "setup-api-note", text: "Say “Hey Lyra, gaming mode”, or type it in Chat. Lyra confirms when it switches." }));
-    }
-    body.append(taskCard(name));
-  };
-
-  const tourPage = (group: FeatureDef["group"]) => {
-    const g = FEATURE_GROUPS.find((x) => x.id === group)!;
-    title.textContent = g.title + ".";
-    sub.textContent = `${g.sub} Switch off anything you don't want. You can change it later in Settings → Features.`;
-    const list = h("div", { class: "tour-list" });
-    for (const f of FEATURES.filter((x) => x.group === group && !x.soon)) {
-      list.append(featureRow(f, choices.features[f.id], (v) => { choices.features[f.id] = v; }));
-    }
-    body.append(list);
-    if (group === "helpers") body.append(h("p", { class: "setup-api-note", text: "Background helpers start when Lyra restarts, which happens when you finish this tour." }));
-  };
-
-  const render = () => {
-    const name = STEPS[step];
-    clear(body);
-    renderProgress();
-    refreshTasks = () => undefined;
-    const isTour = name.startsWith("tour-") || !!TOUR_TASKS[name];
-    skip.style.display = isTour ? "" : "none";
-    if (name === "island") {
-      title.textContent = replay ? "Your island." : "Make Lyra yours.";
-      sub.textContent = "A few quick choices, then a short tour of everything Lyra can do. You can change all of it later in Settings.";
-      const mkIsland = (kind: "floating" | "attached") => h("div", { class:`setup-screen ${kind}` },
-        h("span", { class:"setup-screen-win" }),
-        h("span", { class:"setup-notch" }, h("span", { class:"setup-preview-dot" }), h("span", { class:"setup-preview-pill", text:"Lyra" })));
-      const floating = mkIsland("floating");
-      const attached = mkIsland("attached");
-      body.append(h("div", { class:"setup-question", text:"Choose your island" }), h("div", { class:"setup-grid two" },
-        option("position","floating","Floating","A small breathing gap above the island.",choices.position === "floating", floating),
-        option("position","attached","Top attached","Flush with the top edge, like a classic notch.",choices.position === "attached", attached),
-      ));
-    } else if (name === "visible") {
-      title.textContent = "Keep it visible?";
-      sub.textContent = "When hidden, Lyra retracts the small island when idle. You can still wake it from the top edge.";
-      body.append(h("div", { class:"setup-grid two" },
-        option("hidden","visible","Keep visible","The compact island stays available when idle.",!choices.hidden, h("span", { class:"setup-symbol", text:"●" })),
-        option("hidden","hidden","Hide when idle","The island retracts when nothing is happening.",choices.hidden, h("span", { class:"setup-symbol", text:"—" })),
-      ));
-    } else if (name === "look") {
-      title.textContent = "Pick your look.";
-      sub.textContent = "Every theme styles the compact island, expanded island and tab dock — not just the settings screen.";
-      const grid = h("div", { class:"setup-theme-grid" });
-      for (const t of SETUP_THEMES) {
-        const preview = h("div", { class:"setup-theme-preview", style:`background:${t.bg};--setup-accent:${t.accent}` }, h("i", {}), h("b", {}));
-        grid.append(option("theme", t.id, t.name, t.note, choices.theme === t.id, preview));
-      }
-      body.append(grid);
-    } else if (name === "connect") {
-      title.textContent = "Connect Lyra.";
-      sub.textContent = hasSavedKey
-        ? "You already have a key saved. Add another provider here, or just continue."
-        : "Add at least one AI provider key. Lyra keeps these keys locally and never shows the full key back to you.";
-      const providerRow = h("div", { class:"setup-provider-row" });
-      for (const provider of SETUP_PROVIDERS) {
-        providerRow.append(option("provider", provider.id, provider.name, choices.keys[provider.key] ? "Key added" : "Use this provider", choices.provider === provider.id, h("span", { class:"setup-provider-mark", text:provider.name === "Google Gemini" ? "G" : provider.name.slice(0,1) })));
-      }
-      const current = SETUP_PROVIDERS.find((p) => p.id === choices.provider) || SETUP_PROVIDERS[0];
-      const local = current.id === "ollama";
-      const input = h("input", { class:"setup-api-input", type:"password", placeholder:current.placeholder, autocomplete:"off", spellcheck:"false", value:choices.keys[current.key], "aria-label":`${current.name} API key` }) as HTMLInputElement;
-      input.addEventListener("input", () => { choices.keys[current.key] = input.value; finishError = ""; (next as HTMLButtonElement).disabled = !canContinue(); });
-      const link = h("a", { class:"setup-api-link", href:current.url, target:"_blank", rel:"noopener noreferrer", text:local ? "Download Ollama ↗" : `Get a ${current.name} API key ↗` });
-      const tutorial = h("div", { class:"setup-tutorial" },
-        h("strong", { text:"Quick setup" }),
-        h("ol", {}, ...current.steps.map((s) => h("li", { text:s }))),
-      );
-      const field = h("div", { class:"setup-api-field" }, local ? null : input, link);
-      const other = h("p", { class:"setup-api-note", text:"Only one key is required. You can add the others later in Settings → AI." });
-      const err = h("div", { class:"setup-error", text:finishError });
-      body.append(providerRow, field, tutorial, other, err);
-    } else if (name === "voice") {
-      title.textContent = "How do you talk to Lyra?";
-      sub.textContent = "Hold one key, speak, let go. The microphone is only used while you hold it.";
-      body.append(h("div", { class:"setup-grid three" },
-        option("voice","ptt","Right Ctrl","Hold it when you want to talk.",true, h("span", { class:"setup-key", text:"Right Ctrl" })),
-        option("voice","dictate","Left Alt","Hold it to dictate into any app.",false, h("span", { class:"setup-key", text:"Left Alt" })),
-      ), h("p", { class:"setup-api-note", text:"You can change the dictation key later in Settings → Dictation." }));
-    } else if (name === "tour-island") tourPage("island");
-    else if (name === "tour-daily") tourPage("daily");
-    else if (name === "tour-pc") tourPage("pc");
-    else if (name === "tour-helpers") tourPage("helpers");
-    else if (TOUR_TASKS[name]) interactiveStep(name);
-    else {
-      const live = FEATURES.filter((f) => !f.soon);
-      const on = live.filter((f) => choices.features[f.id]).length;
-      title.textContent = "You're all set.";
-      sub.textContent = `${on} of ${live.length} features are on. Here's how to reach Lyra.`;
-      const way = (k: string, t: string) => h("div", { class:"ready-row" }, h("span", { class:"setup-key", text:k }), h("span", { text:t }));
-      const rows: HTMLElement[] = [];
-      rows.push(way("Right Ctrl", "Hold it while you talk, release when you're done."));
-      rows.push(way("Left Alt", "Hold it and dictate: your words are pasted into the app in front."));
-      rows.push(way("Ctrl + Win", "Open the chat tab and type. It is also in the island tabs."));
-      if (choices.features.circle_ask) rows.push(way("Tap Ctrl, then hold Ctrl", "Tap Ctrl, press it again and hold it while you circle something on screen to ask about it."));
-      rows.push(way("Tray icon", "Open Settings, pause Lyra, or quit. Replay this tour from Settings → Features."));
-      body.append(h("div", { class:"ready-list" }, ...rows));
-    }
-    back.disabled = step === 0;
-    next.textContent = name === "ready" ? (replay ? "Save changes" : "Finish setup") : "Continue";
-    (next as HTMLButtonElement).disabled = !canContinue();
-  };
-
-  const canContinue = () => {
-    if (!stepDone(STEPS[step])) return false;
-    if (STEPS[step] !== "connect") return true;
-    return replay || hasSavedKey || choices.provider === "ollama" || SETUP_PROVIDERS.some((p) => p.id !== "ollama" && choices.keys[p.key].trim());
-  };
-
-  next.addEventListener("click", async () => {
-    if (step < STEPS.length - 1) { step++; render(); return; }
-    const typedKey = SETUP_PROVIDERS.some((p) => p.id !== "ollama" && choices.keys[p.key].trim());
-    const useLocal = choices.provider === "ollama";
-    if (!replay && !hasSavedKey && !typedKey && !useLocal) { step = STEPS.indexOf("connect"); finishError = "Choose Ollama or add an API key to continue."; render(); return; }
-
-    (next as HTMLButtonElement).disabled = true;
-    writeIslandPosition(choices.position);
-    writeIslandTheme(choices.theme);
-    try { window.localStorage.setItem("lyra-theme-preview", `${choices.theme}|${Date.now()}`); } catch {}
-    settings.alwaysShowNotch = !choices.hidden;
-    await save();
-
-    if (typedKey || useLocal) {
-      let apiSaved = false;
-      try {
-        const api = await fetch(`${LYRA}/settings/llm`, {
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({ provider:choices.provider, ...choices.keys }),
-        });
-        apiSaved = api.ok;
-      } catch { apiSaved = false; }
-      if (!apiSaved) {
-        step = STEPS.indexOf("connect");
-        finishError = "Lyra could not save the API key. Make sure Lyra is running and try again.";
-        render();
-        return;
-      }
-    }
-
-    // Feature switches: island tabs apply now, helpers when the backend restarts below.
-    for (const f of FEATURES) if (!f.soon) applyFeature(f, choices.features[f.id], featPrefs);
-    await Promise.all([featPrefs.flush(), privacyPrefs.flush()]);
-
-    try {
-      const voiceSave = await fetch(`${LYRA}/settings/voice`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ voice_activation_mode: choices.voice }) });
-      if (voiceSave.ok) { try { await fetch(`${LYRA}/backend/restart`, { method:"POST", headers:{"Content-Type":"application/json"}, body:"{}" }); } catch {} }
-    } catch {}
-    markOnboardingDone();
-    window.setTimeout(() => location.reload(), 120);
-  });
-  back.addEventListener("click", () => { if (step > 0) { step--; render(); } });
-  skip.addEventListener("click", () => { step = STEPS.length - 1; render(); });
-
-  clear(root);
-  rootWizard.append(h("div", { class:"onboarding-brand" }, h("span", { class:"onboarding-orb" }), h("strong", { text:"Lyra" }), h("span", { class:"onboarding-version", text:"v1.0" })), progress, eyebrow, title, sub, body, actions);
-  root.append(rootWizard);
-  render();
 }
 
 
@@ -2513,7 +1971,7 @@ async function main() {
   const mascotDef = FEATURES.find((f) => f.id === "mascot")!;
   const stayDef = FEATURES.find((f) => f.id === "mascot_stay")!;
   // Only General is built before the window is first drawn. Every other tab starts as an empty shell (title and
-  // subtitle, so the sidebar, the hero and search keep working) and is filled in one task at a time afterwards,
+  // subtitle, so the sidebar, the page title and search keep working) and is filled in one task at a time afterwards,
   // or at once when its tab is opened or a search starts. Building all of them in one go froze the page for
   // ~330 ms every time Settings opened (the slow script in the trace was this very block).
   const pendingBuild = new Map<string, () => Kid[]>();
@@ -2528,6 +1986,7 @@ async function main() {
     const display = displayCards();
     return [
       display.look,
+      ecoCard(featurePrefs),
       islandCard(notifyPrefs, display.behaviour),
       ...mochiCards({
         card, item, toggle, prefs: featurePrefs,
@@ -2560,7 +2019,7 @@ async function main() {
     apps: later("apps", "Apps", "Connect WhatsApp here. Once connected, your chats show up in the island's Apps tab.",
       () => [...appsCards({ card, item, toggle, confirmButton, flashSaved })]),
     live: later("live", "Live Activities", "Choose which activities can take over the notch. Click a preview to turn it on or off.", () => [...liveCards()]),
-    shortcuts: later("shortcuts", "Shortcuts", "Phrases that open apps and sites.", () => [shortcutsHost()]),
+    shortcuts: later("shortcuts", "Shortcuts", "Keys that run Lyra.", () => []),
     files: later("files", "Files", "Choose folders Lyra can index and search.", () => [filesHost({ card, item, lyra, flashSaved })]),
     privacy: later("privacy", "Privacy & Memory", "What Lyra keeps and what she sends.", () => [...privacyCards(privacyPrefs), memoryHost(), backupCard()]),
     advanced: later("advanced", "Advanced", "Logs, restarts and resets.", () => [...advancedCards(advancedPrefs)]),

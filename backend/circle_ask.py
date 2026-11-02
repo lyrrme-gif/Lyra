@@ -7,13 +7,11 @@ circle closes, Lyra grabs that part of the screen and answers ("What is this?").
   Let go of Ctrl early ............ cancels (so does Esc)
   A single tap, Ctrl+C, Ctrl+Click  untouched
 
-New: when the circle closes, Lyra asks "Are you confused about something? What do you want to know?",
-listens by herself, and (with the Lyra mascot on) the Mochi walks over, points, draws on the screen and
-explains it (circle_explain.py). config.CIRCLE_ASK_MODE = "auto" brings back the old instant "What is this?".
-
-After the answer you can still ask your own question about the same picture by
-turning auto-answer off (config.CIRCLE_AUTO_ANSWER = False): then Lyra just says
-"Circled — ask about it" and the next thing you say (hold Right Ctrl) or type is the question.
+When the circle closes, Lyra says what is there ("That's a lighthouse on a rocky coast. It warns ships away
+from the rocks at night.") and ends with "If you want to know anything else, just tell me." She does NOT start
+listening by herself: to ask more, hold Right Ctrl and talk (or type) within FOLLOWUP_SECONDS, and the question is
+about the same picture. If you say nothing, the picture is simply forgotten. While it all happens the island shows
+the circle look (Mochi, dashed purple circle, blue bars): see _pill() / ui/src/island/lyraStatus.ts.
 
 No extra installs: the overlay is a click-through, per-pixel-alpha Win32 window drawn
 with Pillow, and the tap-then-hold is found by watching the real key state.
@@ -38,7 +36,9 @@ log = ui.log
 TAP_MAX_SECONDS = 0.30    # the first tap: Ctrl down and up again within this long, with nothing else pressed
 TAP_GAP_SECONDS = 0.40    # the second press must start within this long after the first tap ended
 HOLD_SECONDS = 0.15       # ...and be held this long (nothing else pressed) before the flame starts
-PENDING_TTL = 90.0        # seconds the circled picture waits for a question
+PENDING_TTL = 90.0        # seconds the circled picture waits for a question (circle without auto-explanation)
+FOLLOWUP_SECONDS = 20.0   # after her explanation: how long you have to hold Right Ctrl and ask more
+FOLLOW_UP_LINE = "If you want to know anything else, just tell me."
 MIN_STROKE_PX = 28        # smaller scribbles are ignored so a stray click doesn't fire
 SESSION_MAX_SECONDS = 25.0   # give up if nobody circles anything
 TRAIL_SECONDS = 2.6          # how long the glowing trail lasts
@@ -56,9 +56,13 @@ _lock = threading.Lock()
 _pending: dict | None = None
 
 
+def _alive(p: dict | None) -> bool:
+    return bool(p) and time.time() - p["ts"] <= p.get("ttl", PENDING_TTL)
+
+
 def has_pending() -> bool:
     with _lock:
-        return bool(_pending) and time.time() - _pending["ts"] <= PENDING_TTL
+        return _alive(_pending)
 
 
 def clear() -> None:
@@ -113,34 +117,51 @@ _CANCEL = re.compile(r"^(?:never\s*mind|cancel|forget\s+it|dismiss|clear)\b", re
 
 def answer(question: str) -> str | None:
     """Answer `question` about the circled picture. Returns the reply, or None when nothing
-    is waiting (or the user said "never mind") so normal command handling continues."""
+    is waiting (or the user said "never mind") so normal command handling continues.
+
+    The automatic first question (DEFAULT_QUESTION, asked when the circle closes) is answered by SAYING WHAT IS
+    THERE, plus the "just tell me" line; the picture then stays for FOLLOWUP_SECONDS so that Right Ctrl + talk can
+    ask about it. Any other question uses the picture once."""
+    global _pending
     q = (question or "").strip()
     with _lock:
         p = dict(_pending) if _pending else None
-    if not p or time.time() - p["ts"] > PENDING_TTL:
+    if not p or not _alive(p):
         return None
-    clear()                                       # one question per circle
-    if _CANCEL.match(q):
-        return None
+    first = q == DEFAULT_QUESTION
+    if not first:
+        clear()                                   # one follow-up question per circle
+        if _CANCEL.match(q):
+            return None
     try:
         from actions import apps
     except Exception as e:
+        clear()
         return f"I can't reach the vision helper — {e}"
     if not apps._vision_candidates():
+        clear()
         return "Vision isn't configured — add an API key in Lyra settings."
-    import circle_explain
-    if _mascot_on() and p.get("rect") and circle_explain.wants_explanation(q):
-        try:
-            line = circle_explain.explain(p, q)
-            if line:
-                return line
-        except Exception as e:  # noqa: BLE001 - fall back to the plain spoken answer
-            log.warning("Circle to ask: guided explanation failed: %s", e)
-    task = (f'The user circled this part of their screen and asks: "{q}".' if q else
-            "The user circled this part of their screen. Say what it is and explain it briefly.")
-    prompt = (task + " Answer exactly what was asked, nothing more: if it is a name, title, number or "
-              "a yes/no, give just that in one short sentence; add an explanation only if they asked for one. "
-              "Reply in the language of the question. Use only what is visible; if you can't tell, say so.")
+    if not first:
+        import circle_explain
+        if _mascot_on() and p.get("rect") and circle_explain.wants_explanation(q):
+            try:
+                line = circle_explain.explain(p, q)
+                if line:
+                    return line
+            except Exception as e:  # noqa: BLE001 - fall back to the plain spoken answer
+                log.warning("Circle to ask: guided explanation failed: %s", e)
+        task = (f'The user circled this part of their screen and asks: "{q}".' if q else
+                "The user circled this part of their screen. Say what it is and explain it briefly.")
+        prompt = (task + " Answer exactly what was asked, nothing more: if it is a name, title, number or "
+                  "a yes/no, give just that in one short sentence; add an explanation only if they asked for one. "
+                  "Reply in the language of the question. Use only what is visible; if you can't tell, say so.")
+    else:
+        prompt = ("The user circled this part of their screen. Tell them what is there, the way a friend sitting next "
+                  "to them would: ONE or TWO short plain sentences. The first names the thing (\"That's a lighthouse on "
+                  "a rocky coast.\" / \"This is a settings page for notifications.\"); the second, only if it helps, says "
+                  "what it is for or what it does. No lists, no markdown, no questions, no offers of more help. "
+                  "Use only what is visible; if you can't tell, say so in one sentence. Reply in English unless the "
+                  "text in the picture is clearly in another language, then reply in that language.")
     raw, err = apps._vision_complete([{
         "role": "user",
         "content": [
@@ -149,9 +170,18 @@ def answer(question: str) -> str | None:
         ],
     }], max_tokens=160)
     text = re.sub(r"<think>.*?</think>", "", raw or "", flags=re.DOTALL).strip()
-    if text:
-        return text
-    return f"I couldn't read that — {err}" if err else "I looked at it but couldn't put it into words."
+    if not text:
+        clear()
+        return f"I couldn't read that — {err}" if err else "I looked at it but couldn't put it into words."
+    if first:
+        # Keep the picture for a short follow-up window that starts when she has FINISHED talking
+        # (about 12 characters a second), then forget it.
+        with _lock:
+            if _pending is not None:
+                _pending["ts"] = time.time()
+                _pending["ttl"] = FOLLOWUP_SECONDS + len(text) / 12.0
+        return f"{text} {FOLLOW_UP_LINE}"
+    return text
 
 
 # ── geometry (pure, tested) ──────────────────────────────────────────────────────
@@ -557,142 +587,19 @@ def _circle_session():
     return _last_shot[0].crop(boxes[1]), (cx0 + vx, cy0 + vy, cx1 + vx, cy1 + vy)
 
 
-QUESTION = "Are you confused about something here? What do you want to know about it?"
-
-
-def _listen_once(max_wait: float = 7.0, max_len: float = 14.0) -> str | None:
-    """Open the microphone, wait for the user to speak, stop after a pause, return the transcript.
-    None when nobody spoke or the microphone / speech-to-text is unavailable."""
+def _pill(state: str) -> None:
+    """What Circle to ask is doing, for the island ("circle_pill"): drawing (you are circling), looking
+    (she is looking at it and explaining), idle (over)."""
     try:
-        import numpy as np
-        import pyaudio
-        import voice
-    except Exception as e:  # noqa: BLE001
-        log.warning("Circle to ask: cannot listen (%s)", e)
-        return None
-    ptt = None
-    try:
-        import ptt as _ptt
-        ptt = _ptt
+        import ui_bridge
+        ui_bridge._push_event({"type": "circle_pill", "state": state, "ts": int(time.time() * 1000)})
     except Exception:
         pass
-    busy = getattr(ptt, "_busy", None)
-    got_busy = False
-    if busy is not None:
-        try:
-            got_busy = busy.acquire(timeout=2.0)
-        except Exception:
-            got_busy = False
-    paused = False
-    pcm = b""
-    rate, chunk = 16000, 1024
-    try:
-        before = getattr(ptt, "_before_record", None)
-        if before:
-            try:
-                before()
-                paused = True
-            except Exception as e:  # noqa: BLE001
-                log.warning("Circle to ask: could not pause the wake-word microphone: %s", e)
-        time.sleep(0.25)                                   # let the end of Lyra's own voice die away
-        ui.set_state("listening")
-        index = None
-        try:
-            import mic_devices
-            index = mic_devices.preferred_input_index()
-        except Exception:
-            pass
-        pa = pyaudio.PyAudio()
-        kw = dict(format=pyaudio.paInt16, channels=1, rate=rate, input=True, frames_per_buffer=chunk)
-        if index is not None:
-            kw["input_device_index"] = index
-        stream = pa.open(**kw)
-        frames, noise = [], []
-        speech, quiet, t0 = False, 0.0, time.monotonic()
-        try:
-            while True:
-                data = stream.read(chunk, exception_on_overflow=False)
-                frames.append(data)
-                a = np.frombuffer(data, dtype=np.int16).astype(np.float32)
-                rms = float(np.sqrt(np.mean(a * a)) + 1e-6)
-                el = time.monotonic() - t0
-                if el < 0.35:                              # measure the room first
-                    noise.append(rms)
-                    continue
-                thr = max(450.0, (sum(noise) / max(1, len(noise))) * 2.8)
-                if rms > thr:
-                    speech, quiet = True, 0.0
-                elif speech:
-                    quiet += chunk / rate
-                if speech and quiet >= 1.1:
-                    break
-                if not speech and el > max_wait:
-                    break
-                if el > max_len:
-                    break
-        finally:
-            stream.stop_stream()
-            stream.close()
-            pa.terminate()
-        if speech:
-            pcm = b"".join(frames)
-    except Exception as e:  # noqa: BLE001
-        log.warning("Circle to ask: listening failed: %s", e)
-    finally:
-        if paused:
-            after = getattr(ptt, "_after_record", None)
-            if after:
-                try:
-                    after()
-                except Exception:
-                    pass
-        if got_busy:
-            try:
-                busy.release()
-            except Exception:
-                pass
-    if len(pcm) < rate * 2 * 0.3:
-        try:
-            if getattr(ui, "_last_state", "idle") == "listening":
-                ui.set_state("idle")
-        except Exception:
-            pass
-        return None
-    ui.set_state("thinking")
-    try:
-        import voice
-        status, text = voice._stt_engine.transcribe(pcm, sample_rate=rate)
-    except Exception as e:  # noqa: BLE001
-        log.warning("Circle to ask: transcription failed: %s", e)
-        ui.set_state("idle")
-        return None
-    text = (text or "").strip()
-    if status != "ok" or not text:
-        ui.set_state("idle")
-        return None
-    return text
-
-
-def _ask_what_to_know() -> None:
-    """Lyra asks what the user wants to know about the circle, listens, and runs the answer."""
-    text = None
-    try:
-        import voice
-        voice.speak(QUESTION)
-        text = _listen_once()
-    except Exception as e:  # noqa: BLE001
-        log.warning("Circle to ask: could not ask: %s", e)
-    if text and _on_ask is not None:
-        try:
-            _on_ask(text)
-        except Exception as e:  # noqa: BLE001
-            log.warning("Circle to ask: answer failed: %s", e)
-    else:
-        _notify("Circled — ask about it", "Hold Right Ctrl and speak, or type", ms=7000)
 
 
 def _session() -> None:
     res = None
+    _pill("drawing")
     try:
         res = _circle_session()
     except Exception as e:
@@ -701,26 +608,29 @@ def _session() -> None:
     finally:
         _session_lock.release()
     if res is None:
+        _pill("idle")
         return
     crop, rect = res
     _set_pending(crop, rect)
     log.info("Circle to ask: captured %sx%s", *crop.size)
-    auto, mode = True, "ask"
+    auto = True
     try:
         import config
         auto = bool(getattr(config, "CIRCLE_AUTO_ANSWER", True))
-        mode = str(getattr(config, "CIRCLE_ASK_MODE", "ask")).strip().lower()
     except Exception:
         pass
-    if auto and _on_ask is not None and mode == "auto":
-        _notify("Looking at it…", phase="start", ms=4000)
+    if auto and _on_ask is not None:
+        # Say what is there, then offer more ("just tell me"). Nothing listens by itself: Right Ctrl + talk
+        # asks about the same picture for FOLLOWUP_SECONDS, otherwise it is forgotten.
+        _pill("looking")
         try:
             _on_ask(DEFAULT_QUESTION)
         except Exception as e:
             log.warning("Circle to ask: answer failed: %s", e)
-    elif auto and _on_ask is not None:
-        _ask_what_to_know()
+        finally:
+            _pill("idle")
     else:
+        _pill("idle")
         _notify("Circled — ask about it", "Hold Right Ctrl and speak, or type", ms=7000)
 
 
@@ -737,6 +647,14 @@ def launch() -> bool:
 # stuck or silently stop firing, and it never touches the keys it watches.
 
 POLL_SECONDS = 0.015
+
+
+def _eco() -> bool:
+    try:
+        import settings_store
+        return settings_store.eco_on()
+    except Exception:
+        return False
 _OTHER_KEYS = [v for v in range(0x08, 0xFF) if v not in (0x10, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C, 0xE8)]   # every key that is not a modifier
 
 
@@ -804,7 +722,7 @@ def _poll_loop() -> None:
             if not warned:
                 log.warning("Circle to ask hotkey error: %s", e)
                 warned = True
-        time.sleep(POLL_SECONDS)
+        time.sleep(0.05 if _eco() else POLL_SECONDS)   # Eco mode: 20 checks a second are plenty for a double tap
 
 
 def start(on_ask=None) -> bool:

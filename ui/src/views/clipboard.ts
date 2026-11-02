@@ -4,6 +4,7 @@ import { ICONS } from "./icons";
 import { State } from "../core/state";
 import type { ViewHost } from "./views";
 import { FileDropFx } from "../core/fileDropFx";
+import { Sound } from "../core/sound";
 import { mountDropMochi } from "./clipboardMochi";
 
 const API = "http://127.0.0.1:8765";
@@ -174,11 +175,18 @@ export function buildClipboard(): ViewHost {
   }
 
   // ── Backend calls ────────────────────────────────────────────────────────
+  let loadedOnce = false;
   async function refresh() {
     try {
       const r = await fetch(`${API}/clipboard/session`);
       const d = await r.json();
-      if (d.ok) setItems(d.items);
+      if (d.ok) {
+        // something new was copied (not the first load, not a removal): a crisp little paper snap
+        const grew = loadedOnce && Array.isArray(d.items) && d.items.length > items.length;
+        loadedOnce = true;
+        setItems(d.items);
+        if (grew) Sound.activity("copy");
+      }
     } catch { /* backend not up yet; the next poll tries again */ }
   }
 

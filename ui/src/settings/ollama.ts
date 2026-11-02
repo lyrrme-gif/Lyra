@@ -24,6 +24,7 @@ type OllamaStatus = {
   model: string;
   vision_model: string;
   timeout: number;
+  keep_alive?: string;
   message?: string;
   pull_command: string;
   vision_pull_command: string;
@@ -57,6 +58,12 @@ export function ollamaCard(d: OllamaDeps): HTMLElement {
   }) as HTMLInputElement;
   const visionSelect = h("select", {}) as HTMLSelectElement;
   const timeoutInput = h("input", { type: "number", min: "5", max: "300", style: "width:90px" }) as HTMLInputElement;
+  const keepSelect = h("select", {},
+    h("option", { value: "30s", text: "30 seconds" }),
+    h("option", { value: "1m", text: "1 minute (recommended)" }),
+    h("option", { value: "5m", text: "5 minutes (Ollama's own default)" }),
+    h("option", { value: "-1", text: "Always keep it loaded" }),
+  ) as HTMLSelectElement;
 
   const pullCode = h("code", { text: "ollama pull llama3.2:3b" });
   const visionPullCode = h("code", { text: "ollama pull llava" });
@@ -77,6 +84,7 @@ export function ollamaCard(d: OllamaDeps): HTMLElement {
     msg.textContent = s.message || "";
     baseInput.value = s.base_url;
     timeoutInput.value = String(s.timeout);
+    keepSelect.value = s.keep_alive || "1m";
     pullCode.textContent = s.pull_command;
     visionPullCode.textContent = s.vision_pull_command;
 
@@ -120,6 +128,7 @@ export function ollamaCard(d: OllamaDeps): HTMLElement {
   baseInput.addEventListener("change", () => void persist({ ollama_base_url: baseInput.value.trim() }));
   visionSelect.addEventListener("change", () => void persist({ ollama_vision_model: visionSelect.value }));
   timeoutInput.addEventListener("change", () => void persist({ ollama_timeout: timeoutInput.value.trim() }));
+  keepSelect.addEventListener("change", () => void persist({ ollama_keep_alive: keepSelect.value }));
 
   const copy = async (text: string, btn: HTMLElement) => {
     try {
@@ -162,6 +171,11 @@ export function ollamaCard(d: OllamaDeps): HTMLElement {
       "Local timeout (seconds)",
       "Only used when a fallback provider is set under Fallback: if Ollama takes longer than this, the fallback answers instead.",
       timeoutInput,
+    ),
+    d.item(
+      "Keep the model in memory",
+      "How long the local model stays loaded after an answer. Shorter frees your graphics card and memory sooner (games, recording); the first answer after that waits a few seconds while it loads again.",
+      keepSelect,
     ),
     feedback,
   );

@@ -510,6 +510,9 @@ def _process_command_chain(command: str, conversation_history: list, recognizer=
             if circle_ask.has_pending():
                 circle_reply = circle_ask.answer(command)
                 if circle_reply:
+                    # A real ANSWER about the picture: it is spoken, shown as a subtitle and the island shows her talking.
+                    # Without this a short explanation counted as a "task result" and became a silent Mochi sound.
+                    _mark_info(circle_reply)
                     ui.print_chat("lyra", circle_reply)
                     command = voice.speak(circle_reply, recognizer, source) or ""
                     continue
@@ -1143,6 +1146,11 @@ def _shortcut_summary() -> str:
 
 def main():
     ui.log.info("Lyra starting up.")
+    try:
+        import lowcpu
+        lowcpu.apply_process_priority()               # below normal: games and apps always come first
+    except Exception:
+        pass
     try:
         from ui_bridge import start_bridge
         if start_bridge():

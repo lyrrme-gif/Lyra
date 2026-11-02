@@ -14,3 +14,16 @@
 @media (prefers-reduced-motion: reduce) {
   #island.hovering[data-mode="compact"] { animation: none !important; }
 }
+
+/* The timer in the notch grows with it. The island swells by 40 x 10 px when the pointer rests on it; the chip used to stay
+   pinned to the top at a fixed height with fixed sizes, so it looked small and sat high. It now fills the island's height
+   (always centred, whatever the size) and its clock, ring and side margins scale up with the swell. */
+#island #timer-chip { top: 0; bottom: 0; height: auto; transition: opacity .2s ease, transform .26s cubic-bezier(.2, .8, .2, 1), left .3s cubic-bezier(.2, .8, .2, 1), right .3s cubic-bezier(.2, .8, .2, 1); }
+#island #timer-chip #timer-chip-icon { transition: scale .3s cubic-bezier(.34, 1.4, .64, 1); transform-origin: 0 50%; }
+#island #timer-chip #timer-chip-time, #island[data-mode] #timer-chip #timer-chip-time { transition: font-size .3s cubic-bezier(.2, .8, .2, 1); }
+#island.hovering[data-mode="compact"] #timer-chip:not(.with-music) { left: 22px; right: 22px; }
+#island.hovering[data-mode="compact"] #timer-chip:not(.with-music) #timer-chip-icon { scale: 1.22; }
+#island.hovering[data-mode="compact"] #timer-chip #timer-chip-time { font-size: 18px; }
+@media (prefers-reduced-motion: reduce) {
+  #island #timer-chip, #island #timer-chip-icon, #island #timer-chip-time { transition: none !important; }
+}

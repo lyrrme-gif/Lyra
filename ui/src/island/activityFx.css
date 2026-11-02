@@ -1,0 +1,160 @@
+/* Activity FX: the light show around the notch (see activityFx.ts).
+   Shared by the real island and the Settings previews: same elements, same keyframes.
+   Everything is driven by [data-fx] on .afx and [data-afx] on the host (the island). */
+
+@property --afx-a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+
+.afx {
+  --fx: #9aaeff; --fx2: #d3dcff; --afx-int: 1; --ox: 24px;
+  position: absolute; inset: -1px; border-radius: inherit; pointer-events: none; z-index: 30;
+  opacity: 0; visibility: hidden;
+}
+.afx.on { opacity: 1; visibility: visible; }
+.afx > * { position: absolute; display: block; pointer-events: none; }
+
+/* ── per-kind palette ─────────────────────────────────────────────────────────────────────── */
+.afx[data-fx="call"]        { --fx: #30d158; --fx2: #b9ffcc; }
+.afx[data-fx="reminder"]    { --fx: #ff453a; --fx2: #ffb199; }
+.afx[data-fx="timer"]       { --fx: #ff9f0a; --fx2: #ffd89a; }
+.afx[data-fx="music"]       { --fx: #bf5af2; --fx2: #64d2ff; }
+.afx[data-fx="volume"]      { --fx: #64d2ff; --fx2: #e3f6ff; }
+.afx[data-fx="brightness"]  { --fx: #ffd60a; --fx2: #fff5c2; }
+.afx[data-fx="devices"]     { --fx: #0a84ff; --fx2: #9fd0ff; }
+.afx[data-fx="disconnect"]  { --fx: #8e8e93; --fx2: #d1d1d6; }
+.afx[data-fx="download"]    { --fx: #0a84ff; --fx2: #64d2ff; }
+.afx[data-fx="success"]     { --fx: #30d158; --fx2: #b9ffcc; }
+.afx[data-fx="fail"]        { --fx: #ff453a; --fx2: #ff9f95; }
+.afx[data-fx="listening"]   { --fx: #5e5ce6; --fx2: #64d2ff; }
+
+/* ── edge light + glow: a conic gradient clipped to the rim ───────────────────────────────── */
+.afx-edge, .afx-glow {
+  inset: 0; border-radius: inherit; padding: 1.6px; opacity: 0;
+  background: conic-gradient(from var(--afx-a), transparent 0deg, transparent 120deg, var(--fx) 245deg, var(--fx2) 318deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.afx-glow { inset: -5px; padding: 7px; filter: blur(9px); }
+.afx[data-fx="recognition"] .afx-edge, .afx[data-fx="recognition"] .afx-glow,
+.afx[data-fx="found"] .afx-edge, .afx[data-fx="found"] .afx-glow {
+  background: conic-gradient(from var(--afx-a), #ff375f, #ff9f0a, #ffd60a, #30d158, #64d2ff, #bf5af2, #ff375f);
+}
+.afx[data-fx="listening"] .afx-edge, .afx[data-fx="listening"] .afx-glow {
+  background: conic-gradient(from var(--afx-a), #5e5ce6, #bf5af2, #ff375f, #ff9f0a, #64d2ff, #5e5ce6);
+}
+/* ambient kinds (timer, music) never spin: a still, breathing glow is nearly free to paint */
+.afx[data-fx="timer"] .afx-edge, .afx[data-fx="timer"] .afx-glow,
+.afx[data-fx="music"] .afx-edge, .afx[data-fx="music"] .afx-glow {
+  background: conic-gradient(from 200deg, transparent 0deg, var(--fx) 80deg, var(--fx2) 150deg, var(--fx) 220deg, transparent 300deg, transparent 360deg);
+}
+
+/* travelling: once (arrivals) */
+.afx.on[data-fx="message"] .afx-edge, .afx.on[data-fx="devices"] .afx-edge, .afx.on[data-fx="disconnect"] .afx-edge,
+.afx.on[data-fx="success"] .afx-edge, .afx.on[data-fx="found"] .afx-edge {
+  animation: afx-spin 1.3s cubic-bezier(.4, .1, .3, 1) 1 both, afx-flash 1.8s ease-out 1 both;
+}
+.afx.on[data-fx="message"] .afx-glow, .afx.on[data-fx="devices"] .afx-glow, .afx.on[data-fx="disconnect"] .afx-glow,
+.afx.on[data-fx="success"] .afx-glow, .afx.on[data-fx="found"] .afx-glow {
+  animation: afx-spin 1.3s cubic-bezier(.4, .1, .3, 1) 1 both, afx-flash 1.8s ease-out 1 both;
+}
+.afx.on[data-fx="found"] .afx-edge, .afx.on[data-fx="found"] .afx-glow { animation-duration: 2s, 2.6s; }
+/* HUD sweeps: brightness of the glow follows the level */
+.afx.on[data-fx="volume"] .afx-edge, .afx.on[data-fx="brightness"] .afx-edge,
+.afx.on[data-fx="volume"] .afx-glow, .afx.on[data-fx="brightness"] .afx-glow {
+  animation: afx-spin 1.1s cubic-bezier(.4, .1, .3, 1) 1 both, afx-flash-level 1.4s ease-out 1 both;
+}
+.afx.on[data-fx="fail"] .afx-edge, .afx.on[data-fx="fail"] .afx-glow { animation: afx-spin .5s linear 2 both, afx-flash 1.2s ease-out 1 both; }
+/* travelling: until hidden */
+.afx.on[data-fx="call"] .afx-edge, .afx.on[data-fx="call"] .afx-glow { animation: afx-spin 1.6s linear infinite; opacity: 1; }
+.afx.on[data-fx="reminder"] .afx-edge, .afx.on[data-fx="reminder"] .afx-glow { animation: afx-spin 1.15s linear infinite; opacity: 1; }
+.afx.on[data-fx="download"] .afx-edge, .afx.on[data-fx="download"] .afx-glow { animation: afx-spin 1.9s linear infinite; opacity: .95; }
+.afx.on[data-fx="listening"] .afx-edge, .afx.on[data-fx="listening"] .afx-glow { animation: afx-spin 2.3s linear infinite; opacity: 1; }
+.afx.on[data-fx="recognition"] .afx-edge, .afx.on[data-fx="recognition"] .afx-glow { animation: afx-spin 2.8s linear infinite; opacity: 1; }
+/* breathing: until hidden (opacity only: composited, no repaint) */
+.afx.on[data-fx="timer"] .afx-edge { opacity: .75; }
+.afx.on[data-fx="music"] .afx-edge { opacity: .6; }
+.afx.on[data-fx="timer"] .afx-glow { animation: afx-breathe 3.6s ease-in-out infinite; }
+.afx.on[data-fx="music"] .afx-glow { animation: afx-breathe 4.6s ease-in-out infinite; }
+.afx[data-fx="call"] .afx-glow, .afx[data-fx="reminder"] .afx-glow, .afx[data-fx="listening"] .afx-glow { filter: blur(11px); }
+
+@keyframes afx-spin { from { --afx-a: 0deg; } to { --afx-a: 360deg; } }
+@keyframes afx-flash { 0% { opacity: 0; } 10% { opacity: 1; } 55% { opacity: .9; } 100% { opacity: 0; } }
+@keyframes afx-flash-level { 0% { opacity: 0; } 12% { opacity: calc(.35 + .65 * var(--afx-int)); } 60% { opacity: calc(.25 + .6 * var(--afx-int)); } 100% { opacity: 0; } }
+@keyframes afx-breathe { 0%, 100% { opacity: .25; } 50% { opacity: .85; } }
+
+/* ── shockwaves ───────────────────────────────────────────────────────────────────────────── */
+.afx-wave { inset: 0; border-radius: inherit; border: 1.5px solid var(--fx); opacity: 0; box-shadow: 0 0 10px -1px var(--fx); }
+.afx.on[data-fx="message"] .afx-wave, .afx.on[data-fx="devices"] .afx-wave, .afx.on[data-fx="success"] .afx-wave,
+.afx.on[data-fx="found"] .afx-wave, .afx.on[data-fx="volume"] .afx-wave.w1, .afx.on[data-fx="brightness"] .afx-wave.w1,
+.afx.on[data-fx="fail"] .afx-wave, .afx.on[data-fx="disconnect"] .afx-wave {
+  animation: afx-wave 1.15s cubic-bezier(.2, .7, .3, 1) 1 both;
+}
+.afx.on .afx-wave.w2 { animation-delay: .16s; }
+.afx.on .afx-wave.w3 { animation-delay: .32s; }
+.afx.on[data-fx="message"] .afx-wave.w3, .afx.on[data-fx="devices"] .afx-wave.w3,
+.afx.on[data-fx="disconnect"] .afx-wave:is(.w2, .w3), .afx.on[data-fx="fail"] .afx-wave:is(.w2, .w3),
+.afx.on[data-fx="volume"] .afx-wave:is(.w2, .w3), .afx.on[data-fx="brightness"] .afx-wave:is(.w2, .w3) { display: none; }
+.afx.on[data-fx="call"] .afx-wave { animation: afx-wave 1.6s cubic-bezier(.2, .7, .3, 1) infinite both; border-width: 2px; }
+.afx.on[data-fx="call"] .afx-wave.w2 { animation-delay: .53s; }
+.afx.on[data-fx="call"] .afx-wave.w3 { animation-delay: 1.06s; }
+.afx.on[data-fx="reminder"] .afx-wave { animation: afx-wave 1.9s cubic-bezier(.2, .7, .3, 1) infinite both; }
+.afx.on[data-fx="reminder"] .afx-wave.w2 { animation-delay: .6s; }
+.afx.on[data-fx="reminder"] .afx-wave.w3 { display: none; }
+.afx.on[data-fx="listening"] .afx-wave { animation: afx-wave 1.8s cubic-bezier(.2, .7, .3, 1) infinite both; }
+.afx.on[data-fx="listening"] .afx-wave.w2 { animation-delay: .6s; }
+.afx.on[data-fx="listening"] .afx-wave.w3 { animation-delay: 1.2s; }
+@keyframes afx-wave { 0% { opacity: .85; transform: scale(1, 1); } 100% { opacity: 0; transform: scale(1.16, 1.95); } }
+
+/* ── sheen: a glint across the glass ──────────────────────────────────────────────────────── */
+.afx-clip { inset: 0; border-radius: inherit; overflow: hidden; }
+.afx-sheen {
+  top: -20%; bottom: -20%; left: -50%; width: 38%; opacity: 0;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .34), transparent);
+  transform: skewX(-18deg);
+}
+.afx.on[data-fx="message"] .afx-sheen, .afx.on[data-fx="success"] .afx-sheen, .afx.on[data-fx="found"] .afx-sheen,
+.afx.on[data-fx="devices"] .afx-sheen { animation: afx-sheen .95s cubic-bezier(.3, .6, .3, 1) .12s 1 both; }
+.afx.on[data-fx="call"] .afx-sheen, .afx.on[data-fx="reminder"] .afx-sheen { animation: afx-sheen 1.1s ease-in-out infinite; }
+.afx.on[data-fx="recognition"] .afx-sheen { animation: afx-sheen 1.7s ease-in-out infinite; }
+.afx.on[data-fx="download"] .afx-sheen { animation: afx-sheen 1.5s ease-in-out infinite; }
+.afx.on[data-fx="music"] .afx-sheen { animation: afx-sheen 5.5s ease-in-out infinite; opacity: .6; }
+@keyframes afx-sheen { 0% { opacity: 0; transform: translateX(0) skewX(-18deg); } 15% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; transform: translateX(1000%) skewX(-18deg); } }
+
+/* ── particles ────────────────────────────────────────────────────────────────────────────── */
+.afx-p {
+  --dx: 0px; --dy: 0px; --d: 0ms; --ps: 1;
+  left: var(--ox); top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%;
+  background: var(--pc, var(--fx)); box-shadow: 0 0 7px 1px var(--pc, var(--fx)); opacity: 0;
+}
+.afx.on .afx-p { animation: afx-p 1.15s cubic-bezier(.12, .8, .28, 1) var(--d) 1 both; }
+.afx.on[data-fx="success"] .afx-p, .afx.on[data-fx="found"] .afx-p { animation-duration: 1.6s; border-radius: 1.5px; }
+@keyframes afx-p {
+  0% { opacity: 0; transform: translate(0, 0) scale(.3) rotate(0); }
+  12% { opacity: 1; transform: translate(calc(var(--dx) * .25), calc(var(--dy) * .25)) scale(var(--ps)) rotate(40deg); }
+  70% { opacity: .9; }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 18px)) scale(.2) rotate(260deg); }
+}
+
+/* ── the notch itself moves (individual transform properties: they never fight island.ts) ── */
+.afx-host[data-afx="call"] { animation: afx-buzz 1.6s ease-in-out infinite; }
+.afx-host[data-afx="reminder"] { animation: afx-throb 1.15s ease-out 4; }
+.afx-host[data-afx="fail"] { animation: afx-shake .5s ease-in-out 1; }
+.afx-host[data-afx="message"], .afx-host[data-afx="success"], .afx-host[data-afx="found"], .afx-host[data-afx="devices"] { animation: afx-pop .55s cubic-bezier(.34, 1.56, .64, 1) 1; }
+@keyframes afx-buzz {
+  0%, 52%, 100% { rotate: 0deg; translate: 0 0; }
+  6% { rotate: -1.7deg; translate: -1px 0; } 12% { rotate: 1.7deg; translate: 1px 0; }
+  18% { rotate: -1.3deg; translate: -1px 0; } 24% { rotate: 1.3deg; translate: 1px 0; }
+  30% { rotate: -.7deg; } 36% { rotate: .7deg; } 44% { rotate: 0deg; }
+}
+@keyframes afx-throb { 0% { scale: 1; } 14% { scale: 1.07; } 30% { scale: .99; } 46% { scale: 1.04; } 70%, 100% { scale: 1; } }
+@keyframes afx-shake { 0%, 100% { translate: 0 0; } 15% { translate: -5px 0; } 30% { translate: 5px 0; } 45% { translate: -4px 0; } 60% { translate: 4px 0; } 75% { translate: -2px 0; } }
+@keyframes afx-pop { 0% { scale: .94; } 100% { scale: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .afx *, .afx-host { animation: none !important; }
+  .afx.on .afx-edge, .afx.on .afx-glow { opacity: .7; }
+}
+
+/* Eco mode: no light show (activityFx.ts also refuses to start it). Sounds are unaffected. */
+html[data-eco] .afx { display: none !important; }
+html[data-eco] .afx-host { animation: none !important; }

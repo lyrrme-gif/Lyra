@@ -196,6 +196,11 @@ def pick_folder() -> dict:
 
 _EXTS = (".mp4", ".mkv")
 
+THUMB_W = 480                                                          # width of a recording's preview picture
+_DUR = re.compile(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)")        # ffmpeg's banner: length, picture size, frame rate
+_DIM = re.compile(r"Video:.*?,\s*(\d{2,5})x(\d{2,5})")
+_FPS = re.compile(r"(\d+(?:\.\d+)?)\s*fps")
+
 
 def _resolve(name: str) -> Path | None:
     """A recording by file name: only an .mp4 / .mkv directly inside the recordings folder (no paths, no '..')."""
@@ -395,6 +400,17 @@ def try_command(command: str) -> str | None:
         return "Recording your screen. Say stop recording when you're done."
     return None
 
+
+
+# ── Which recorder: OBS (default) or the built-in one (wgc_recorder.py, experimental) ──────────────────
+
+def _builtin() -> bool:
+    return str(_pref("record_backend", "obs") or "obs") == "lyra"
+
+
+def _wgc():
+    import wgc_recorder
+    return wgc_recorder
 
 
 # ── Talking to OBS ────────────────────────────────────────────────────────────────────────────────────
@@ -667,6 +683,8 @@ def _status() -> dict:
 def status() -> dict:
     """{recording, paused, stopping, seconds, path, saved, error, folder, capture, audio, saving, size, notice, health, obs_ok,
     obs_message}. Asks OBS (at most every few seconds when OBS is not there)."""
+    if _builtin():
+        return _wgc().status()
     _refresh()
     with _lock:
         return _status()
@@ -706,6 +724,8 @@ def _apply_quality() -> None:
 
 def start() -> dict:
     global _error, _live, _paused, _secs, _size
+    if _builtin():
+        return _wgc().start()
     with _lock:
         _error = ""
     try:
@@ -745,11 +765,11 @@ def start() -> dict:
 
 
 def pause() -> dict:
-    return _do("PauseRecord", paused=True)
+    return _wgc().pause() if _builtin() else _do("PauseRecord", paused=True)
 
 
 def resume() -> dict:
-    return _do("ResumeRecord", paused=False)
+    return _wgc().resume() if _builtin() else _do("ResumeRecord", paused=False)
 
 
 def _do(kind: str, paused: bool) -> dict:
@@ -772,13 +792,15 @@ def _do(kind: str, paused: bool) -> dict:
 
 def toggle() -> dict:
     """Start, or stop when recording (the keyboard shortcut)."""
-    _refresh()
+    if not _builtin():
+        _refresh()
     return stop() if _live else start()
 
 
 def toggle_pause() -> dict:
     """Pause, or resume when paused (the keyboard shortcut). Does nothing when not recording."""
-    _refresh()
+    if not _builtin():
+        _refresh()
     if _paused:
         return resume()
     return pause() if _live else status()
@@ -786,6 +808,8 @@ def toggle_pause() -> dict:
 
 def stop() -> dict:
     global _live, _paused, _stopping, _error, _saving, _mux_thread
+    if _builtin():
+        return _wgc().stop()
     _refresh()
     if not _live:
         with _lock:

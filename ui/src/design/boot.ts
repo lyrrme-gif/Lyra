@@ -7,6 +7,8 @@
 // "show animations" setting by itself.
 
 import { hueOf } from "./color";
+import "../core/eco";
+import "./eco.css";
 
 const ACCENT = "#3b8cff";   // blue
 const root = document.documentElement;

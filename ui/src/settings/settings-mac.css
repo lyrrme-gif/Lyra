@@ -58,7 +58,7 @@ button.tab.dim { opacity: .38; }
 .panel > h2 { display: none; }
 .panel > .sub { margin: 14px 4px 18px; font-size: 13px; color: var(--mac-mute); line-height: 1.4; }
 .panel:not([hidden]) { animation: macPanelIn .42s var(--mac-ease) both; }
-@keyframes macPanelIn { from { opacity: 0; transform: translateY(10px) scale(.992); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes macPanelIn { from { opacity: 0; transform: translateY(10px) scale(.992); } to { opacity: 1; transform: none; } }
 
 /* ── Grouped lists ── */
 section.card { background: none; border: 0; box-shadow: none; padding: 0; margin: 0 0 22px; backdrop-filter: none; }

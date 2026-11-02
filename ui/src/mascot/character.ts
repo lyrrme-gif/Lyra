@@ -66,14 +66,17 @@ const LOOKS: Record<EmoteName, Look> = {
 /* ── Layout: the character box is 120x120, the canvas bleeds past it so hearts, stars, ──
    hands and the badge are never clipped. ───────────────────────────────────────────── */
 const BOX = 120;
-const PAD_X = 20;          // extra room left / right
+const PAD_X = 60;          // extra room left / right: the angry tools (needle, nail, flame, bamboo) reach about 3 R sideways and swing to either side
 const OVERHANG = 60;       // extra room above (particles fly up)
+const UNDER = 40;          // extra room below the body: the angry tools (Grimm's flame, the nail, the bamboo) swing down there
 // Where the Mochi body sits inside the 120x120 box (logical units), used by `tight` mode.
 const TIGHT = { x: 18, y: 29, w: 84, h: 66 };
 
 /* ── Shared animation loop (one rAF for all characters) ───────────────────────────── */
 import { isReallyVisible, onVisibilityChange } from "../core/visibility";
 import { FRAME_MS } from "../core/fps";
+import { isEco } from "../core/eco";
+import { EyeWander } from "./eyeWander";
 
 interface Impl {
   step(dt: number): void;
@@ -85,9 +88,9 @@ interface Impl {
 const live = new Set<Impl>();
 /** Debug: how many characters are registered in the shared loop (a leak shows as a number that only grows). */
 export function liveCharacterCount(): number { return live.size; }
-let raf = 0, tmr = 0, lastTs = 0, tmrDue = 0;
+let raf = 0, tmr = 0, lastTs = 0, tmrDue = 0, inFrame = false;
 function frame(ts: number) {
-  raf = 0; tmr = 0;
+  raf = 0; tmr = 0; inFrame = true;
   const raw = Math.min(0.25, (ts - lastTs) / 1000 || 0.016);
   lastTs = ts;
   let any = false, wait = Infinity;
@@ -99,6 +102,7 @@ function frame(ts: number) {
     if (c.acc >= iv - 0.004) { c.step(Math.min(c.acc, 0.12)); c.acc = 0; }   // idle redraws get the whole elapsed time
     wait = Math.min(wait, Math.max(0, iv - c.acc) * 1000);
   }
+  inFrame = false;
   // Park the loop when nothing is drawing (docked / hidden); setActive(true) kicks it again.
   if (!any || !isReallyVisible()) return;
   // Everyone is capped: sleep on a timer until the next redraw is due instead of waking at 60 Hz.
@@ -112,7 +116,7 @@ function nextWait(): number {
   return w;
 }
 function kick() {
-  if (raf || !isReallyVisible()) return;
+  if (inFrame || raf || !isReallyVisible()) return;   // inFrame: frame() re-arms itself at its end; a second loop here doubles the animation speed
   if (tmr) {
     // A timer is already pending. Pulling it forward to a rAF on every call (look()/setMouth() fire on every
     // cursor event) turned the capped idle loop into a display-rate one: keep it unless it is too late.
@@ -125,8 +129,10 @@ function kick() {
 onVisibilityChange((v) => { if (v) kick(); });
 
 const mq = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
-let reduced = !!mq?.matches;
-mq?.addEventListener?.("change", (e) => { reduced = e.matches; });
+let reducedMq = !!mq?.matches;
+mq?.addEventListener?.("change", (e) => { reducedMq = e.matches; });
+/** Reduced motion (Windows setting) only. Eco mode does NOT slow the Mochis: it only stops the eye follow (see look()). */
+const isReduced = () => reducedMq;
 
 const CSS = `
 .lyra-char{position:relative;display:block;width:120px;height:120px;user-select:none;-webkit-user-select:none;contain:layout style}
@@ -163,7 +169,7 @@ export function createCharacter(host: HTMLElement, opts: CharacterOptions = {}):
   // Render at the device resolution so the canvas is not needlessly resampled by WebView2.
   // The backing store is sized to what is actually shown (layout px x devicePixelRatio), never larger:
   // a 58 px wide notch Mochi no longer carries a 200 px canvas. `sharp` only matters until the first measure.
-  const cw = BOX + 2 * PAD_X, ch = BOX + OVERHANG;
+  const cw = BOX + 2 * PAD_X, chDraw = BOX + OVERHANG, ch = chDraw + UNDER;   // chDraw: the height the Mochi is centred in (unchanged); ch: the canvas, with UNDER more room below
   let k = Math.max(1, window.devicePixelRatio || 1) * Math.max(1, opts.sharp ?? 1);
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(cw * k);
@@ -208,6 +214,7 @@ export function createCharacter(host: HTMLElement, opts: CharacterOptions = {}):
   let motionT = 0, motionE = 0;  // 0..1
   let t = 0, walkPh = 0;
   let nextBurst = 0;
+  const wander = new EyeWander();   // a resting Mochi whose eye target has not changed for a few seconds glances around by itself
   let active = true;
   let busyUntil = 0;     // full rate until this time (one-shot animations and particles need to finish)
   const poke = (sec = 2.5) => { busyUntil = Math.max(busyUntil, t + sec); kick(); };
@@ -241,7 +248,12 @@ export function createCharacter(host: HTMLElement, opts: CharacterOptions = {}):
   function step(dt: number) {
     if (!active) return;
     t += dt;
-    const mo = reduced ? 0 : 1;
+    const mo = isReduced() ? 0 : 1;
+
+    // Idle wandering: only a plain resting Mochi (not talking, waving, eating, sleeping ...) and never with reduced motion.
+    const glance = wander.tick(t, emote === "idle" && !!mo, bot.lookX, bot.lookY);
+    // No poke()/kick() here: step() already runs inside the frame loop, and kick() from in there started an extra loop on every glance.
+    if (glance) { bot.lookX = glance[0]; bot.lookY = glance[1]; busyUntil = Math.max(busyUntil, t + 1.2); }
 
     // repeat the one-shot animations while the emote lasts
     if (emote === "wave" && mo && t >= nextBurst) { bot.hello(); nextBurst = t + 2.2; }
@@ -261,7 +273,7 @@ export function createCharacter(host: HTMLElement, opts: CharacterOptions = {}):
     }
 
     // Music: the groove pauses while the body is busy talking / waving / being dragged.
-    bot.calm = reduced;
+    bot.calm = isReduced();
     bot.grooveHold = emote === "talk" || emote === "wave" || emote === "celebrate" || emote === "surprised";
 
     lvE += (lvT - lvE) * (1 - Math.exp(-30 * dt));
@@ -281,7 +293,7 @@ export function createCharacter(host: HTMLElement, opts: CharacterOptions = {}):
     // pivot = bottom centre of the body, so speech pulse / walk squash plant on the "ground"
     const px = BOX / 2, py = OVERHANG + BOX * 0.78;
     const w = Math.abs(Math.sin(walkPh));
-    const hop = w * 4 * motionE * (reduced ? 0.5 : 1);
+    const hop = w * 4 * motionE * (isReduced() ? 0.5 : 1);
     const speech = lvE * mo;
     const sy = (1 + 0.07 * speech) * (1 + 0.1 * motionE * (w - 0.5));
     const sx = (1 - 0.04 * speech) * Math.pow(1 + 0.1 * motionE * (w - 0.5), -0.6);
@@ -290,13 +302,13 @@ export function createCharacter(host: HTMLElement, opts: CharacterOptions = {}):
     ctx.scale(sx, sy);
     ctx.translate(-px, -py);
 
-    bot.draw(ctx, BOX, ch);
+    bot.draw(ctx, BOX, chDraw);
     ctx.restore();
   }
 
   /** Every visible Mochi redraws at ~60 fps (FRAME_MS); only reduced-motion slows it down. */
   function interval(): number {
-    if (reduced) return 100;
+    if (isReduced()) return 100;
     return FRAME_MS;
   }
   // A character in a tab that is not showing (Settings builds them all), docked, or scrolled away kept drawing at 60 Hz
@@ -324,7 +336,9 @@ export function createCharacter(host: HTMLElement, opts: CharacterOptions = {}):
       poke();
     },
     look(dx, dy) {
+      if (isEco()) { if (bot.lookX || bot.lookY) { bot.lookX = 0; bot.lookY = 0; poke(0.7); } return; }   // Eco mode: no eye follow
       const x = clamp(dx, -1, 1), y = clamp(dy, -1, 1);
+      if (!wander.see(x, y, t)) return;       // the same cursor spot again while wandering: keep glancing around
       if (Math.abs(x - bot.lookX) + Math.abs(y - bot.lookY) > 0.04) poke(0.7);   // eyes ease toward the target
       bot.lookX = x; bot.lookY = y;
     },

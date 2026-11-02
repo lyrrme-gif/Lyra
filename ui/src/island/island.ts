@@ -20,7 +20,7 @@ import { buildTabDock, buildViews, type ViewActions, type ViewHost } from "../vi
 import { clear, h } from "../views/dom";
 import { IslandStateMachine } from "./fsm";
 import { setTimerItems } from "../views/timer";
-import { buildTimerChip, clockText, colorFor, getTimers, pickPrimary, type TimerChip, type TimersPayload } from "./timerChip";
+import { buildTimerChip, clockText, colorFor, getTimers, pickPrimary, valueMs, type TimerChip, type TimersPayload } from "./timerChip";
 import { ActivityManager } from "../core/activities";
 import { setNowPlaying } from "../core/nowPlaying";
 import { emitMusic } from "../mascot/dock";
@@ -30,10 +30,12 @@ import { translatePillActive, translatePillSize } from "../views/translate";
 import { STUDY_HOME_H, studyStageActive } from "../views/study";
 import { APPS_CHAT_H, APPS_CHAT_W, appsChatActive, openAppsChat } from "../views/apps";
 import { appUrl, buildToast, type NotifyEvent, type Toast } from "./toast";
+import { APP_FX_COLOR, buildFx, type Fx, type FxKind } from "./activityFx";
 import { PULSE_H, PULSE_W, buildPulse, artColor, describeMode, describePulse, describeSong, type Pulse, type PulseInfo } from "./pulse";
 import { buildInvite, type Invite } from "./invite";
 import { currentPosition, isSpotifySource, type SpotifyState } from "../spotify/model";
 import { LyricsLine } from "./lyricsLine";
+import { LyraStatus, type LyraStatusKind } from "./lyraStatus";
 import { WheelHomeGesture } from "../core/wheelHome";
 import { DESTINATIONS, destinationFor, openableFor } from "../core/destinations";
 import { trace, traceLimited } from "../core/trace";
@@ -147,6 +149,13 @@ export class Island {
   private timerTicker: number | null = null;
   private downloadSpinnerRaf: number | null = null;
   private toast!: Toast;
+  /** The light show around the notch (activityFx.ts): edge light, shockwaves, sparks. Same layer the Settings previews use. */
+  private fx!: Fx;
+  private fxAt = 0;
+  private sfxAt = 0;
+  private lastAlarmAt = 0;
+  private timerSeen = new Map<string, { kind: string; state: string; end: number | null }>();
+  private timerTickSec = -1;
   /** "Added" pulse on the compact notch (to-do green, calendar / reminder red, timer orange); see pulse.ts. */
   private pulse!: Pulse;
   private invite!: Invite;
@@ -222,6 +231,7 @@ export class Island {
   private dlSec: { phase: string; pct: number | null } = { phase: "", pct: null };
   private dlSecTimer: number | null = null;
   private dlLast: Parameters<Island["onActivity"]>[0] | null = null;
+  private dlSecDoneSound = false;
   /** The user clicked the download island: it owns the notch and the other activity is the small one. */
   private dlMain = false;
   private srcIcons = new Map<string, string>();
@@ -260,6 +270,30 @@ export class Island {
   private lyraListening = false;
   /** Tracks the thinking phase so the island can stay available while Lyra responds. */
   private lyraThinking = false;
+  /**
+   * A command typed in the Chat tab: the island folds to the small notch (Mochi + "Thinking", then the voice wave) and
+   * comes back to the Chat tab once Lyra is done. `typedHold` bridges the moment before the backend says "thinking".
+   */
+  private typedTurn = false;
+  private typedHold = false;
+  private typedSpoke = false;
+  private typedGraceMs = 2600;
+  private typedReturnTimer = 0;
+  private typedHoldTimer = 0;
+  /** Chat tab left alone (nothing typed, nothing moved) for CHAT_IDLE_MS: the island goes back to its small state. */
+  private static readonly CHAT_IDLE_MS = 8_000;
+  private chatIdleTimer: number | null = null;
+  /** Lyra's turn drawn in the notch: Mochi on the left + "Listening" / "Thinking" / the white voice wave (lyraStatus.ts). */
+  private readonly lyraStatus = new LyraStatus();
+  private lyraStatusKind: LyraStatusKind | null = null;
+  /** Dictation (hold Left Alt): listening -> processing (the accurate text is being made) -> done (it was pasted). */
+  private dictActive = false;
+  private dictProcessing = false;
+  private dictLinger = false;
+  private dictApp = "";
+  private dictLingerTimer = 0;
+  /** Circle to ask (hold Ctrl and circle something): "drawing" while you circle, "looking" while she looks and explains. */
+  private circleState: "" | "drawing" | "looking" = "";
 
   /** Volume HUD: shown in the compact notch for a moment after the speaker volume changes. */
   private volumeHudOn = false;
@@ -295,12 +329,21 @@ export class Island {
       this.ensureRunning();
       const key = `${State.chatVisible().length}:${State.searchResult?.title ?? ""}`;
       if (key !== this.lastChatKey) { this.lastChatKey = key; this.armChatAutoClose(); }
+      if (this.chatIdleTimer == null) this.armChatIdle();   // the Chat tab just opened (a timer already running is never pushed back here)
     });
     // Any interaction inside the island restarts the countdown.
     for (const ev of ["pointermove", "pointerdown", "keydown", "wheel"]) {
       this.islandEl.addEventListener(ev, () => { if (this.chatCloseTimer != null) this.armChatAutoClose(); }, { passive: true });
     }
     this.islandEl.addEventListener("pointerleave", () => this.armChatAutoClose());
+    // Chat tab idle limit. Capture phase: the chat box stops its own keydown from bubbling.
+    for (const ev of ["pointermove", "pointerdown", "keydown", "wheel", "input", "focusin"]) {
+      this.islandEl.addEventListener(ev, () => this.armChatIdle(), { passive: true, capture: true });
+    }
+    this.islandEl.addEventListener("pointerleave", () => this.armChatIdle());
+    // A command typed in the Chat tab (chat.ts) / the backend could not be reached (client.ts).
+    window.addEventListener("lyra:chat-typed", () => this.onTypedCommand());
+    window.addEventListener("lyra:typed-failed", () => this.endTypedTurn(true));
     // Scrolling down on any tab other than Home takes you back to Home.
     this.islandEl.addEventListener("wheel", (e) => this.onWheelHome(e), { passive: true });
     // Settings window writes theme/position to the same localStorage keys.
@@ -509,10 +552,13 @@ export class Island {
       this.privacyDots,
       this.modeLight,
       this.toast.el,
+      this.lyraStatus.el,
       this.pulse.aura,
       this.pulse.el,
       ...this.invite.els,
     );
+    this.fx = buildFx(this.islandEl);
+    this.fx.onHide = () => { this.ambientKey = ""; this.syncAmbientFx(); };   // a one-shot ended: bring the quiet light back
 
 
     this.slots.right.el = h("div", { id: "island-secondary", class: "isl-sec", "data-side": "right" });
@@ -899,6 +945,7 @@ export class Island {
   setThinking(on: boolean) {
     if (on === this.lyraThinking) return; // state polling repeats itself: stay idempotent
     this.lyraThinking = on;
+    if (on && this.typedHold) { this.typedHold = false; window.clearTimeout(this.typedHoldTimer); }   // the backend took over from the bridge
     trace("lyra", `thinking ${on ? "STARTED" : "ended"} (island ${State.mode}/${State.view})`);
     this.fsm.keepCompact = on || this.lyraListening || this.lyraSpeaking || this.keepNotch();
     if (on) {
@@ -909,15 +956,175 @@ export class Island {
       this.syncTimerChip();
     }
     if (this.spotifyState) this.syncSpotifyCompact();
+    this.syncLyraStatus();
     this.dirty = true;
     this.ensureRunning();
+  }
+
+  // ── Typed command: small notch while Lyra works, then back to the Chat tab ────────────────────────────
+
+  /** A command was typed in the Chat tab: fold to the small notch and show Thinking right away. */
+  private onTypedCommand() {
+    if (State.mode !== "expanded" || State.view !== "prompt" || this.searchResultOpen) return;   // a deck on screen stays as it is
+    this.typedTurn = true;
+    this.typedSpoke = false;
+    this.typedGraceMs = 2600;
+    this.typedHold = true;
+    window.clearTimeout(this.typedReturnTimer);
+    window.clearTimeout(this.typedHoldTimer);
+    // If the backend never says "thinking" (offline, or a command that answers instantly) the bridge must not hang.
+    this.typedHoldTimer = window.setTimeout(() => {
+      this.typedHold = false;
+      this.syncLyraStatus();
+    }, 6_000);
+    this.fsm.keepCompact = true;
+    this.collapse("Typed command");
+    this.syncLyraStatus();
+  }
+
+  /** client.ts: Lyra's answer arrived. A Mochi sound is not spoken, so there is no voice to wait for. */
+  onTypedReply(mochi: boolean) {
+    if (!this.typedTurn) return;
+    const bridged = this.typedHold;
+    this.typedHold = false;
+    window.clearTimeout(this.typedHoldTimer);
+    if (mochi) this.typedGraceMs = 600;
+    if (bridged) this.syncLyraStatus();   // the reply beat the backend's "thinking": let go of the bridge now
+  }
+
+  /** Stop the typed turn. `redraw`: the notch should drop its Thinking right away (e.g. the backend is unreachable). */
+  private endTypedTurn(redraw: boolean) {
+    if (!this.typedTurn && !this.typedHold) return;
+    this.typedTurn = false;
+    this.typedHold = false;
+    this.typedSpoke = false;
+    window.clearTimeout(this.typedReturnTimer);
+    window.clearTimeout(this.typedHoldTimer);
+    if (redraw) {
+      this.syncKeepCompact();
+      this.syncLyraStatus();
+      this.returnToChat();
+    }
+  }
+
+  /** Called whenever the notch's status changes: once Lyra is completely done, the Chat tab comes back. */
+  private syncTypedReturn(kind: LyraStatusKind | null) {
+    if (!this.typedTurn) return;
+    window.clearTimeout(this.typedReturnTimer);
+    if (kind !== null) return;   // thinking / speaking: still her turn
+    // After the voice has finished there is nothing left to wait for; before it, give the voice time to start.
+    const wait = this.typedSpoke ? 450 : this.typedGraceMs;
+    this.typedReturnTimer = window.setTimeout(() => {
+      if (!this.typedTurn || this.lyraStatusKind !== null) return;
+      this.typedTurn = false;
+      this.typedSpoke = false;
+      this.syncKeepCompact();
+      this.returnToChat();
+    }, wait);
+  }
+
+  /** Back to the empty Chat tab, but only if the island is still the small notch (you may have opened something else). */
+  private returnToChat() {
+    if (State.mode !== "compact") return;
+    this.pendingCompactClickView = "prompt";
+    this.fsm.forceHome("typed command finished");
+  }
+
+  // ── Chat tab idle limit ─────────────────────────────────────────────────────────────────────────────
+
+  /** (Re)start the idle countdown of the Chat tab. Nothing happening on it for CHAT_IDLE_MS folds the island to the small notch. */
+  private armChatIdle() {
+    if (this.chatIdleTimer != null) {
+      window.clearTimeout(this.chatIdleTimer);
+      this.chatIdleTimer = null;
+    }
+    if (State.mode !== "expanded" || State.view !== "prompt") return;
+    this.chatIdleTimer = window.setTimeout(() => {
+      this.chatIdleTimer = null;
+      if (State.mode !== "expanded" || State.view !== "prompt") return;
+      // Someone is (or is about to be) using it: look again later instead of closing.
+      if (State.isPinned || this.searchResultOpen || State.searchResult || State.droppedFile || this.chatBusy()) { this.armChatIdle(); return; }
+      this.collapse("Chat idle");
+    }, Island.CHAT_IDLE_MS);
+  }
+
+  private lyraStatusQueued = false;
+
+  /**
+   * One owner for the compact notch while Lyra has a turn: listening, then thinking, then speaking.
+   * The notch shows her face (the Mochi, on the left) with "Listening" / "Thinking" / the white wave.
+   */
+  private syncLyraStatus() {
+    // applyState() calls setListening / setSpeaking / setThinking one after the other: decide once they have all run,
+    // so listening -> thinking never passes through an empty notch (and the Mochi is not rebuilt in between).
+    if (this.lyraStatusQueued) return;
+    this.lyraStatusQueued = true;
+    queueMicrotask(() => { this.lyraStatusQueued = false; this.applyLyraStatus(); });
+  }
+
+  private applyLyraStatus() {
+    const kind: LyraStatusKind | null = this.lyraListening ? "listening" : this.lyraSpeaking ? "speaking"
+      : (this.lyraThinking || this.typedHold || this.dictProcessing || this.circleState === "looking") ? "thinking"
+      : this.dictLinger ? "done" : this.circleState === "drawing" ? "circle" : null;
+    const was = this.lyraStatusKind;
+    this.lyraStatusKind = kind;
+    this.islandEl.classList.toggle("lyra-status", kind !== null);
+    this.islandEl.classList.toggle("lyra-thinking", this.lyraThinking);
+    this.lyraStatus.setDictation(kind !== null && (this.dictActive || this.dictProcessing || this.dictLinger), this.dictApp);
+    this.lyraStatus.setCircle(this.circleState !== "");
+    this.lyraStatus.set(kind);
+    // The notch swells a little when her turn starts and settles when it ends (not between her own phases).
+    if ((was === null) !== (kind === null)) this.animateGeometry(kind === null);
+    this.syncTypedReturn(kind);
+  }
+
+  /** The words you are saying, as you say them (backend "live_text"); `final` is the accurate text that replaces the guess. */
+  onLiveText(text: string, final: boolean, source: string) {
+    this.lyraStatus.setLive(text, final);
+    // Dictation: the accurate text is pasted right after this, so the notch keeps it on screen for a moment.
+    if (final && source === "dictation" && text.trim()) this.startDictLinger();
+  }
+
+  /** Dictation phases from the backend ("dictation_pill"): listening, processing, done, cancelled, idle. */
+  onDictationPill(state: string, app: string) {
+    if (state === "listening") { this.dictActive = true; this.dictProcessing = false; this.dictLinger = false; this.dictApp = app; }
+    else if (state === "processing") { this.dictActive = false; this.dictProcessing = true; }
+    else if (state === "done") { this.dictActive = false; this.dictProcessing = false; this.startDictLinger(); return; }
+    else { this.dictActive = false; this.dictProcessing = false; this.dictLinger = false; window.clearTimeout(this.dictLingerTimer); }   // cancelled / idle
+    this.syncLyraStatus();
+  }
+
+  /** Circle to ask phases from the backend ("circle_pill"): drawing, looking, idle. */
+  onCirclePill(state: string) {
+    this.circleState = state === "drawing" || state === "looking" ? state : "";
+    // A hidden (auto-hidden) island comes up for it, like it does when Lyra listens or thinks.
+    if (this.circleState !== "") { try { if (State.mode === "hidden") this.fsm.forcePetit("Circle to ask"); } catch { /* */ } }
+    this.syncLyraStatus();
+  }
+
+  private startDictLinger() {
+    this.dictLinger = true;
+    this.dictProcessing = false;
+    window.clearTimeout(this.dictLingerTimer);
+    this.dictLingerTimer = window.setTimeout(() => { this.dictLinger = false; this.syncLyraStatus(); }, 1700);
+    this.syncLyraStatus();
+  }
+
+  /** The loudness envelope of the sentence Lyra is saying (backend "wave" event): drives the white wave. */
+  feedWave(levels: number[], hz: number, startMs: number) {
+    this.lyraStatus.feedWave(levels, hz, startMs);
   }
 
   /** Lyra started / stopped listening: the listening HUD owns the compact notch exclusively. */
   setListening(on: boolean) {
     const wasListening = this.lyraListening;
     this.lyraListening = on;
+    if (on) this.endTypedTurn(false);   // the voice took over: nothing to come back to
     if (on !== wasListening) trace("lyra", `listening ${on ? "STARTED" : "ended"} (island ${State.mode}/${State.view})`);
+    if (on !== wasListening && State.activityOn("listening")) {
+      if (on) { this.fx.show("listening"); Sound.activity("listenOn"); }
+      else { if (this.fx.kind() === "listening") this.fx.hide(); Sound.activity("listenOff"); }
+    }
     this.fsm.keepCompact = on || this.lyraThinking || this.keepNotch();
     this.islandEl.classList.toggle("lyra-listening", on);
     if (on) {
@@ -943,6 +1150,7 @@ export class Island {
     }
     this.syncSpotifyCompact();
     if (!on) this.syncKeepCompact();
+    this.syncLyraStatus();
     this.dirty = true;
     this.ensureRunning();
   }
@@ -951,6 +1159,7 @@ export class Island {
   setSpeaking(on: boolean) {
     if (on !== this.lyraSpeaking) trace("lyra", `speaking ${on ? "STARTED" : "ended"} (island ${State.mode}/${State.view})`);
     this.lyraSpeaking = on;
+    if (on && this.typedTurn) { this.typedSpoke = true; this.typedHold = false; window.clearTimeout(this.typedHoldTimer); }
     this.fsm.keepCompact = on || this.lyraListening || this.lyraThinking || this.keepNotch();
     // The caption window shows the speaking indicator. Keep other island tabs intact.
     this.islandEl.classList.toggle("lyra-speaking", on && (State.mode !== "expanded" || State.view === "prompt"));
@@ -967,9 +1176,10 @@ export class Island {
       // after the speaking state has ended.
       this.syncTimerChip();
     }
-    // The music stays on the island while she talks (her voice shows in the subtitle window).
+    // While she talks the notch shows her (Mochi + white wave, see syncLyraStatus); the music pill comes back when she is done.
     if (this.spotifyState) this.syncSpotifyCompact();
     if (!on) { this.syncKeepCompact(); this.armChatAutoClose(); }
+    this.syncLyraStatus();
     this.dirty = true;
     this.ensureRunning();
   }
@@ -1000,7 +1210,10 @@ export class Island {
   onVolume(level: number, muted: boolean) {
     if (!State.activityOn("volume")) return;
     const shown = muted ? 0 : Math.max(0, Math.min(1, level));
-    this.showHud(this.volumeIconSvg(level, muted), muted ? "Muted" : "Speakers", shown);
+    this.showHud(this.volumeIconSvg(level, muted), muted ? "Muted" : "Speakers", shown, () => {
+      this.hudFx("volume", { level: muted ? 0.3 : 0.35 + shown * 0.65 });
+      this.sfx("volume", { level: shown, muted });
+    });
   }
 
   /** Display brightness changed (keys / slider): same Apple-style HUD with a sun. */
@@ -1009,7 +1222,10 @@ export class Island {
     if (ts && Date.now() - ts > 8000) return;
     const p = Math.max(0, Math.min(100, Math.round(percent)));
     const sun = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3L7 7M17 17l1.7 1.7M5.3 18.7L7 17M17 7l1.7-1.7"/></g></svg>';
-    this.showHud(sun, "Brightness", p / 100);
+    this.showHud(sun, "Brightness", p / 100, () => {
+      this.hudFx("brightness", { level: 0.25 + (p / 100) * 0.75 });
+      this.sfx("brightness", { level: p / 100 });
+    });
   }
 
   /** One app's own volume changed (Volume Mixer, Settings slider): same HUD, with the app's name. */
@@ -1019,7 +1235,10 @@ export class Island {
     const level = Math.max(0, Math.min(1, s.level));
     const name = s.app.slice(0, 16);
     const label = s.muted ? `${name} muted` : `${name} ${Math.round(level * 100)}%`;
-    this.showHud(this.volumeIconSvg(level, s.muted), label, s.muted ? 0 : level);
+    this.showHud(this.volumeIconSvg(level, s.muted), label, s.muted ? 0 : level, () => {
+      this.hudFx("volume", { level: s.muted ? 0.3 : 0.35 + level * 0.65 });
+      this.sfx("volume", { level, muted: s.muted });
+    });
   }
 
   /** Battery / charging pop-up: same HUD as the volume, with the charge as the bar. */
@@ -1035,7 +1254,11 @@ export class Island {
     if (s.ts && Date.now() - s.ts > 8000) return;
     const icon =
       '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 12a7 7 0 0 1 14 0v3.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><rect x="3" y="12.5" width="4" height="7" rx="1.6" fill="currentColor"/><rect x="17" y="12.5" width="4" height="7" rx="1.6" fill="currentColor"/></svg>';
-    this.showHud(icon, s.text, null);
+    const gone = /disconnect|removed|lost|unplug/i.test(s.text);
+    this.showHud(icon, s.text, null, () => {
+      this.fx.show(gone ? "disconnect" : "devices", { originX: 24 });
+      Sound.activity(gone ? "disconnect" : "connect");
+    });
   }
 
   /** Reusable activity feedback (app launch, recognition, …). */
@@ -1066,6 +1289,7 @@ export class Island {
         this.setMode("compact");
       }
       this.playPulse(describeSong({ title, artist: s.subtitle || "", artworkUrl: s.iconUrl || "", spotifyUrl: s.url || "spotify:" }), "", Island.PLAY_MS, "ok");
+      Sound.activity("music");
       return;
     }
     const appKey = (s.app || "").toLowerCase().trim();
@@ -1095,6 +1319,7 @@ export class Island {
         this.lastDlSuccessAt = performance.now();
       }
       if (this.dlWatchdog != null) { window.clearTimeout(this.dlWatchdog); this.dlWatchdog = null; }
+      const wasDl = this.volumeHudOn && this.volumeHud.dataset.activityKind === "download";
       this.volumeHud.dataset.downloadPhase = s.phase;
       const pctNum = Number.isFinite(s.progress) ? Math.max(0, Math.min(100, Number(s.progress))) : null;
       // Chromium's temporary "Unconfirmed 123456" name means nothing to a person.
@@ -1123,8 +1348,16 @@ export class Island {
         // leave the old spinner parked on the island for the normal HUD timeout.
         delete this.volumeHud.dataset.downloadPhase;
         this.endVolumeHud();
+        this.fx.show("fail");
+        Sound.activity("downloadFail");
       } else if (s.phase === "success") {
         delete this.volumeHud.dataset.downloadPhase;
+        this.fx.show("success", { originX: 26 });
+        Sound.activity("downloadDone");
+      } else if (!wasDl) {
+        // the first progress report of a transfer: the island draws it in
+        this.fx.show("download");
+        Sound.activity("downloadStart");
       }
       return;
     }
@@ -1142,6 +1375,8 @@ export class Island {
       }
       this.appLaunchHudOn = true;
       this.showHudForced(icon, title, s.durationMs, "", s.subtitle, s.kind);
+      this.fx.show("devices", { originX: 24 });
+      Sound.activity("connect");
       return;
     }
 
@@ -1150,16 +1385,25 @@ export class Island {
         State.view = State.defaultView();
         this.setMode("compact");
         this.showHudForced(icon, title, s.durationMs, "", s.subtitle, s.kind);
+        this.recognitionCue();
       } else if (State.view === "recognition" && State.mode === "expanded") {
         // The dedicated Recognition page owns its own listening state. Do not
         // put a second activity HUD over the page (and do not hide Mochi).
         window.dispatchEvent(new CustomEvent("lyra:music-recognition-activity", { detail: s }));
       } else {
         this.showHudForced(icon, title, s.durationMs, "", s.subtitle);
+        this.recognitionCue();
       }
       return;
     }
     this.showHudForced(icon, title, s.durationMs, "", s.subtitle);
+  }
+
+  /** Song recognition is listening: a prism of light round the notch until it has an answer. */
+  private recognitionCue() {
+    if (!State.activityOn("recognition") || this.fx.kind() === "recognition") return;
+    this.fx.show("recognition");
+    Sound.activity("listenOn");
   }
 
   onWebSearch(s: { query: string; provider: string; results: any[]; card?: any; related?: string[]; more?: any[]; moreTitle?: string; ts?: number }) {
@@ -1192,6 +1436,7 @@ export class Island {
 
   /** Open the result deck on the island (a new search, or a tap on its card in the conversation). */
   showSearchResult(result: SearchResult) {
+    this.endTypedTurn(false);   // the results open the Chat tab on their own
     State.searchResult = result;
     State.notify();
 
@@ -1441,6 +1686,18 @@ export class Island {
       },
     }));
 
+    // The answer: a harp run and a prism of light when it is found, a small shrug when it is not.
+    if (State.activityOn("recognition")) {
+      if (s.ok) {
+        if (State.mode !== "expanded") this.fx.show("found", { originX: 26 });
+        else if (this.fx.kind() === "recognition") this.fx.hide();
+        Sound.activity("found");
+      } else {
+        if (this.fx.kind() === "recognition") this.fx.hide();
+        Sound.activity("notFound");
+      }
+    }
+
     // The Recognition tab is the only place allowed to remain expanded.
     // Voice/agent recognition stays as a compact Island notification.
     if (State.view !== "recognition" && State.mode === "expanded") {
@@ -1521,7 +1778,7 @@ export class Island {
   }
 
   /** Shared by the volume and battery pop-ups: icon + label + bar in the compact notch. */
-  private showHud(iconHtml: string, label: string, fill: number | null) {
+  private showHud(iconHtml: string, label: string, fill: number | null, cue?: () => void) {
     // An open panel is being used; the HUD only replaces the compact notch.
     if (State.mode === "expanded") {
       traceLimited(`hud-skip-${label}`, 3000, "hud", `HUD '${label.slice(0, 30)}' NOT shown because the panel is open`);
@@ -1530,6 +1787,7 @@ export class Island {
     traceLimited(`hud-${label}`, 1000, "hud", `HUD shown on the compact notch: '${label.slice(0, 30)}'${fill != null ? ` (${Math.round(fill * 100)}%)` : ""}`);
 
     this.suspendToast(); // the HUD wins; the notification comes back after it
+    cue?.();             // its sound and its light (only now that it is really being shown)
     this.volumeIcon.innerHTML = iconHtml;
     this.volumeLabel.textContent = label;
     this.volumeHud.classList.toggle("nobar", fill == null);
@@ -1559,6 +1817,8 @@ export class Island {
     this.volumeTimer = null;
     if (this.dlWatchdog != null) { window.clearTimeout(this.dlWatchdog); this.dlWatchdog = null; }
     const endedKind = this.volumeHud.dataset.activityKind || "";
+    const fxk = this.fx.kind();
+    if (fxk && ["volume", "brightness", "devices", "disconnect", "download", "success", "fail", "recognition", "found"].includes(fxk)) this.fx.hide();
     this.stopDownloadSpinner();
     this.volumeHudOn = false;
     this.appLaunchHudOn = false;
@@ -1600,6 +1860,7 @@ export class Island {
     this.animateGeometry(true);
     this.dirty = true;
     this.ensureRunning();
+    this.syncAmbientFx();
     // The HUD was the only reason the notch was up: let it go again.
     if (this.volumeRevealed) {
       this.volumeRevealed = false;
@@ -1643,6 +1904,7 @@ export class Island {
       this.toastCurrent = ev;
       this.toast.set(ev);
       this.armToastTimer(this.toastMs(ev));
+      if (ev.kind === "message") this.toastCue(ev);       // another message in the same chat: the light and the sound again
       return;
     }
     this.toastQueue.push(ev);
@@ -1676,10 +1938,50 @@ export class Island {
     this.toast.el.classList.add("on");
     this.animateGeometry(false);                           // a little bigger while it shows
     void Bridge.log(`toast: showing ${next.app}/${next.kind} (mode=${State.mode})`);
-    Sound.play("blip");
+    this.toastCue(next);
     this.armToastTimer(this.toastMs(next));
     this.dirty = true;
     this.ensureRunning();
+  }
+
+  /** The sound and the light of a notification: each app, call and reminder has its own. */
+  private toastCue(ev: NotifyEvent) {
+    if (ev.kind === "call") {
+      this.fx.show("call");
+      Sound.ringStart();
+    } else if (ev.kind === "reminder") {
+      this.fx.show("reminder", { color: APP_FX_COLOR.reminder });
+      // checkReminders() already rang the alarm for calendar reminders; any other reminder rings here
+      if (Date.now() - this.lastAlarmAt > 4000) Sound.activity("reminder");
+    } else if (ev.kind === "message") {
+      this.fx.show("message", { color: APP_FX_COLOR[ev.app] });
+      Sound.activity("message", { app: ev.app });
+    } else {
+      Sound.play("blip");
+    }
+  }
+
+  /** Stops the light and the ringing of whatever toast was up. */
+  private toastCueEnd() {
+    Sound.ringStop();
+    const k = this.fx.kind();
+    if (k === "call" || k === "reminder" || k === "message") this.fx.hide();
+  }
+
+  /** A sound for a HUD that can fire many times a second (volume keys): at most one every ~85 ms. */
+  private sfx(name: Parameters<typeof Sound.activity>[0], o: Parameters<typeof Sound.activity>[1] = {}) {
+    const now = performance.now();
+    if ((name === "volume" || name === "brightness") && now - this.sfxAt < 85) return;
+    this.sfxAt = now;
+    Sound.activity(name, o);
+  }
+
+  /** The light of a HUD. A held key must not strobe it: the same kind restarts at most every ~450 ms. */
+  private hudFx(kind: FxKind, o: Parameters<Fx["show"]>[1] = {}) {
+    const now = performance.now();
+    if (this.fx.kind() === kind && now - this.fxAt < 450) return;
+    this.fxAt = now;
+    this.fx.show(kind, o);
   }
 
   private armToastTimer(ms: number) {
@@ -1701,6 +2003,7 @@ export class Island {
     this.toastOn = false;
     this.toastCurrent = null;
     this.toast.el.classList.remove("on");
+    this.toastCueEnd();
   }
 
   private endToast() {
@@ -1710,6 +2013,8 @@ export class Island {
     this.toastOn = false;
     this.toastCurrent = null;
     this.toast.el.classList.remove("on");
+    this.toastCueEnd();
+    this.syncAmbientFx();
     if (State.mode === "compact") this.animateGeometry(!this.wasInIsland);
     this.dirty = true;
     this.ensureRunning();
@@ -1725,6 +2030,7 @@ export class Island {
 
   /** The X on a toast. For a dictation offer it also tells the backend to forget it and drops any others waiting. */
   private declineToast() {
+    if (this.toastCurrent?.kind === "call") Sound.activity("decline");
     if (this.toastCurrent?.kind === "dictation") {
       this.toastQueue = this.toastQueue.filter((e) => e.kind !== "dictation");
       void fetch("http://127.0.0.1:8765/dictation/dismiss", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => undefined);
@@ -1734,6 +2040,7 @@ export class Island {
 
   /** Click on the toast: open the app it came from, then dismiss it. */
   private clickToast() {
+    if (this.toastCurrent?.kind === "call") Sound.activity("answer");
     // "Apply polished version" (dictation): the backend puts the text in its window and reports on the island.
     if (this.toastCurrent?.kind === "dictation") {
       this.toastQueue = this.toastQueue.filter((e) => e.kind !== "dictation");
@@ -1978,24 +2285,29 @@ export class Island {
   }
 
   private targetSizeBase(): { w: number; h: number; r: number } {
+    // Lyra listening / thinking / speaking owns the compact notch: a slightly wider pill (Mochi + text or wave).
+    if (this.lyraStatusKind !== null && State.mode === "compact") {
+      // The same look as the setup previews: a roomy pill with the Mochi, the words / bars and the round button.
+      return { w: 392, h: 58, r: 29 };
+    }
     // The volume HUD only ever lives in the compact notch (see onVolume).
     if (this.volumeHudOn && State.mode === "compact" && !this.downloadIsSecondary()) {
       if (this.volumeHud.dataset.activityKind === "download" && this.volumeHud.dataset.downloadCompact !== "1") {
-        return { w: 380, h: 58, r: 24 }; // roomy download card: tile, name, stats, progress bar
+        return { w: 380, h: 58, r: 29 }; // roomy download card: tile, name, stats, progress bar
       }
-      return { w: VOLUME_HUD_W, h: VOLUME_HUD_H, r: 18 };
+      return { w: VOLUME_HUD_W, h: VOLUME_HUD_H, r: VOLUME_HUD_H / 2 };
     }
     // An "added" pulse swells the compact notch into a wide pill (the spring gives it the bounce).
     const base = islandSize(State.mode, State.view, State.chatVisible().length);
     if (this.pulseOn && State.mode === "compact") {
       // A mode switch only swells the notch a little (like a notification); "added" opens the wide pill.
-      return this.pulseCompact ? { w: base.w + 52, h: base.h + 10, r: ROUNDED_CORNER + 5 } : { w: PULSE_W, h: PULSE_H, r: PULSE_H / 2 };
+      return this.pulseCompact ? { w: base.w + 64, h: base.h + 12, r: (base.h + 12) / 2 } : { w: PULSE_W, h: PULSE_H, r: PULSE_H / 2 };
     }
     // A notification (reminder, WhatsApp, Discord...) swells the notch a bit while it is showing.
-    if (this.toastOn && State.mode === "compact") return { w: base.w + 44, h: base.h + 8, r: ROUNDED_CORNER + 4 };
+    if (this.toastOn && State.mode === "compact") return { w: base.w + 56, h: base.h + 12, r: (base.h + 12) / 2 };
     // Pointer resting on the compact notch: it swells a little, as if asking "open me?" (see invite.ts).
     const asking = State.mode === "compact" && this.wasInIsland && !this.toastOn;
-    if (asking) return { w: base.w + 26, h: base.h + 6, r: ROUNDED_CORNER + 3 };
+    if (asking) return { w: base.w + 40, h: base.h + 10, r: (base.h + 10) / 2 };
     // Chat has three deliberate sizes: a comfortable empty composer, a larger
     // everyday conversation surface, and the full-height research/search surface.
     // Normal conversations should feel substantial without becoming as tall as
@@ -2046,7 +2358,8 @@ export class Island {
       return { w: base.w, h: Math.min(base.h, STUDY_HOME_H), r: EXPANDED_CORNER };
     }
     const h = base.h;
-    const r = State.mode === "expanded" ? EXPANDED_CORNER : ROUNDED_CORNER;
+    // Compact: a full pill (radius = half the height), the same shape as the Settings preview. Hidden keeps the small corner.
+    const r = State.mode === "expanded" ? EXPANDED_CORNER : State.mode === "compact" ? h / 2 : ROUNDED_CORNER;
     return { w: base.w, h, r };
   }
 
@@ -2485,8 +2798,8 @@ export class Island {
 
   private isSpotifyCompactActive(): boolean {
     return State.mode === "compact" && this.isSpotifyMediaActive() && this.activities.main() !== "timer" && (!this.volumeHudOn || this.downloadIsSecondary()) && !this.appLaunchHudOn;
-    // Thinking / listening / speaking no longer hide the music: nothing else is drawn then (the PTT
-    // listening HUD already hides it via volumeHudOn), so hiding it left a blank black notch.
+    // Not decided here: while Lyra listens / thinks / speaks, lyraStatus.ts draws over the notch and its CSS hides this
+    // pill (#island.lyra-status), so the notch is never blank and never shows two things at once.
   }
 
   /** "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App" -> "WhatsApp"; plain names pass through. */
@@ -2556,6 +2869,7 @@ export class Island {
     const active = this.isSpotifyCompactActive();
     const downloadActive = this.volumeHudOn && this.volumeHud.dataset.activityKind === "download";
     this.spotifyCompact.classList.toggle("on", active);
+    this.syncAmbientFx();
     this.spotifyCompact.classList.toggle("paused", active && s?.status === "paused");
     this.islandEl.classList.toggle("download-active", downloadActive);
     const spotifyOwnsRight = State.mode === "compact" && this.isSpotifyMediaActive();
@@ -2899,7 +3213,7 @@ export class Island {
       this.pulseCount++;
       this.pulse.bump(info, ms, this.pulseCount);
       this.armPulseTimer(ms);
-      Sound.play(status === "fail" ? "error" : "pop");
+      if (info.kind !== "song") Sound.play(status === "fail" ? "error" : "pop");
       return;
     }
 
@@ -2929,7 +3243,7 @@ export class Island {
       // The whole notch takes the colour of the album cover as soon as it can be read.
       void artColor(info.art).then((rgb) => { if (rgb && this.pulseOn && this.pulseKey === key) this.setPulseColor(rgb); });
     }
-    Sound.play(status === "fail" ? "error" : "pop");
+    if (info.kind !== "song") Sound.play(status === "fail" ? "error" : "pop");   // a song brings its own sound (recognition "found" / music)
     this.armPulseTimer(ms);
     if (!banner) this.animateGeometry(false);              // springs wide: the overshoot is the "bounce"
     this.dirty = true;
@@ -3025,13 +3339,27 @@ export class Island {
   onTimers(p: TimersPayload) {
     if (!State.activityOn("timer")) p = { ...p, items: [] };
     setTimerItems(p);
+    // A countdown that just ran out (not one the user cancelled): a small fanfare and a burst of light.
+    const nowMs = Date.now();
+    const seen = new Map<string, { kind: string; state: string; end: number | null }>();
+    for (const it of p.items) seen.set(String(it.id), { kind: it.kind, state: it.state, end: it.end_ms ?? null });
+    let finished = false;
+    for (const [id, prev] of this.timerSeen) {
+      const cur = seen.get(id);
+      if (prev.kind !== "stopwatch" && prev.state === "running" && prev.end != null && Math.abs(nowMs - prev.end) < 4000 && (!cur || cur.state !== "running")) finished = true;
+    }
+    this.timerSeen = seen;
+    if (finished && State.activityOn("timer") && !State.paused) {
+      Sound.activity("timerDone");
+      if (State.mode !== "expanded") this.fx.show("success", { color: "#ff9f0a", originX: 26 });
+    }
     const had = this.timerChip.active();
     this.timerChip.setItems(p);
     const has = this.timerChip.active();
     this.tabDock.sync();
 
     if (has && this.timerTicker == null) {
-      this.timerTicker = window.setInterval(() => { this.timerChip.tick(); this.paintSecondary(); }, 250);
+      this.timerTicker = window.setInterval(() => { this.timerChip.tick(); this.paintSecondary(); this.timerCountdownTick(); this.syncAmbientFx(); }, 250);
     } else if (!has && this.timerTicker != null) {
       window.clearInterval(this.timerTicker);
       this.timerTicker = null;
@@ -3063,6 +3391,7 @@ export class Island {
   /** Calendar reminders that just came due surface as a notification. */
   private checkReminders() {
     for (const it of dueNow()) {
+      this.lastAlarmAt = Date.now();
       Sound.alarm();
       this.onNotify({
         app: "reminder", kind: "reminder", sender: it.title,
@@ -3145,7 +3474,8 @@ export class Island {
 
   /** Tracks a download for its floating island. Returns true when it is handled there. */
   private takeDownloadAsIsland(s: Parameters<Island["onActivity"]>[0]): boolean {
-    if (s.phase === "fail") { this.endDownloadIsland(); return true; }
+    if (s.phase === "fail") { this.endDownloadIsland(); Sound.activity("downloadFail"); return true; }
+    if (s.phase === "success" && !this.dlSecDoneSound) { this.dlSecDoneSound = true; Sound.activity("downloadDone"); window.setTimeout(() => { this.dlSecDoneSound = false; }, 3500); }
     const pct = Number.isFinite(s.progress) ? Math.max(0, Math.min(100, Number(s.progress))) : null;
     this.dlSec = { phase: s.phase, pct: s.phase === "success" ? 100 : pct };
     this.dlLast = s;
@@ -3177,7 +3507,7 @@ export class Island {
     }
     // While the download owns the notch (after a click) the other activity may still sit beside it.
     const dlIsMain = this.dlMain && this.volumeHudOn && this.volumeHud.dataset.activityKind === "download";
-    const busy = this.appLaunchHudOn || this.lyraSpeaking || this.lyraListening || (this.volumeHudOn && !dlIsMain);
+    const busy = this.appLaunchHudOn || this.lyraSpeaking || this.lyraListening || this.lyraStatusKind !== null || (this.volumeHudOn && !dlIsMain);
     const canShow = State.mode === "compact" && !busy && !this.promoting;
     // One island per side (the layout hands out at most two). A recording that has no island of its own
     // rides along inside the first one (timer | red dot + clock).
@@ -3337,6 +3667,34 @@ export class Island {
     }, 200);
   }
 
+  /** The last three seconds of a countdown tick, one soft tick per second. */
+  private timerCountdownTick() {
+    if (State.mode !== "compact" || !this.timerChip.el.classList.contains("show")) { this.timerTickSec = -1; return; }
+    const it = pickPrimary(getTimers().items, Date.now());
+    if (!it || it.kind === "stopwatch" || it.state !== "running") { this.timerTickSec = -1; return; }
+    const left = valueMs(it, Date.now());
+    if (left <= 0 || left > 3000) { this.timerTickSec = -1; return; }
+    const sec = Math.ceil(left / 1000);
+    if (sec !== this.timerTickSec) { this.timerTickSec = sec; Sound.activity("timerTick"); }
+  }
+
+  /** The two kinds of light that stay on all the time (a running timer, music): quiet, never in the way of a notification. */
+  private syncAmbientFx() {
+    const k = this.fx.kind();
+    if (k !== null && k !== "timer" && k !== "music") return;
+    const timerOn = this.timerChip.el.classList.contains("show");
+    const musicOn = !timerOn && this.isSpotifyCompactActive() && !this.toastOn && !this.pulseOn && !this.lyraListening && !this.lyraSpeaking;
+    const want: FxKind | null = timerOn ? "timer" : musicOn ? "music" : null;
+    const urgent = timerOn && this.timerChip.el.classList.contains("urgent");
+    const key = want ? `${want}${urgent ? "!" : ""}` : "";
+    if (key === this.ambientKey) return;
+    this.ambientKey = key;
+    if (!want) { if (k) this.fx.hide(); return; }
+    const color = urgent ? "#ff453a" : want === "timer" ? (this.timerChip.el.style.getPropertyValue("--timer-accent") || undefined) : undefined;
+    this.fx.show(want, { color });
+  }
+  private ambientKey = "";
+
   /** Shows the live timer only in the compact notch, alongside/replacing music EQ. */
   private syncTimerChip() {
     // A timer can keep running while Lyra speaks, but its compact countdown must
@@ -3352,6 +3710,7 @@ export class Island {
       this.activities.main() === "timer";
     this.timerChip.el.classList.toggle("show", show);
     this.islandEl.classList.toggle("timer-on", show);
+    this.syncAmbientFx();
     // The timer owns the main island here, so it always has room for its label.
     this.timerChip.el.classList.toggle("with-music", false);
     if (show) this.timerChip.tick();

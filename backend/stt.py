@@ -8,6 +8,8 @@ voice model is downloaded AND the language is one it supports; otherwise, or on 
 the original faster-whisper path below runs exactly as before.
 """
 
+import gc
+import os
 import re
 import threading
 import time
@@ -34,6 +36,72 @@ _COMMAND_HINTS = ("Lyra", "Spotify", "Discord", "WhatsApp", "Telegram", "YouTube
 _SHARED = {"model": None}
 _SHARED_LOCK = threading.Lock()
 _preload_started = False
+_LAST_USE = [time.monotonic()]       # when the shared model was last handed out
+_unloader_started = False
+_MIN_IDLE_S = 60.0
+
+
+def _setting(key: str, default):
+    try:
+        import settings_store
+        v = settings_store.get(key)
+        return default if v is None else v
+    except Exception:
+        return default
+
+
+def _whisper_name() -> str:
+    """The Whisper size to load: Settings (default "base"), else the one in config.py."""
+    v = str(_setting("whisper_model", "") or "").strip().lower()
+    return v if v in ("tiny", "base", "small", "medium") else WHISPER_MODEL
+
+
+def _whisper_threads() -> int:
+    """CPU threads for the speech model. Default: half the cores, so a sentence never takes the whole PC."""
+    try:
+        n = int(_setting("whisper_threads", 0) or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return n if n > 0 else max(2, (os.cpu_count() or 4) // 2)
+
+
+def _idle_limit_s() -> float:
+    try:
+        m = float(_setting("whisper_idle_unload_min", 10) or 0)
+    except (TypeError, ValueError):
+        m = 10.0
+    return 0.0 if m <= 0 else max(_MIN_IDLE_S, m * 60.0)
+
+
+def _unload_if_idle(now: float | None = None) -> bool:
+    """Free the shared Whisper model when nobody used it for the idle limit. True when it was unloaded."""
+    limit = _idle_limit_s()
+    if limit <= 0:
+        return False
+    now = time.monotonic() if now is None else now
+    with _SHARED_LOCK:
+        if _SHARED["model"] is None or now - _LAST_USE[0] < limit:
+            return False
+        _SHARED["model"] = None
+    gc.collect()
+    log.info("Whisper model unloaded after %d idle minutes (it loads again on the next sentence).", int(limit // 60))
+    return True
+
+
+def _unloader() -> None:
+    while True:
+        time.sleep(30)
+        try:
+            _unload_if_idle()
+        except Exception:                                  # noqa: BLE001
+            pass
+
+
+def _start_unloader() -> None:
+    global _unloader_started
+    if not _unloader_started:
+        _unloader_started = True
+        threading.Thread(target=_unloader, name="lyra-whisper-idle", daemon=True).start()
 
 
 def _effective_language():
@@ -47,15 +115,27 @@ def _effective_language():
 def _load_shared_whisper():
     """ONE Whisper model per process, shared by every SpeechRecognizer and by stt_engines (C1)."""
     with _SHARED_LOCK:
+        _LAST_USE[0] = time.monotonic()
         if _SHARED["model"] is None:
             import model_setup
-            path = model_setup.ensure_whisper(WHISPER_MODEL)
+            name = _whisper_name()
+            try:
+                path = model_setup.ensure_whisper(name)
+            except Exception:
+                if name == WHISPER_MODEL:
+                    raise
+                log.warning("Whisper '%s' is not available; using '%s'.", name, WHISPER_MODEL)
+                name = WHISPER_MODEL
+                path = model_setup.ensure_whisper(name)
+            threads = _whisper_threads()
             _SHARED["model"] = WhisperModel(
                 path,
                 device=WHISPER_DEVICE,
                 compute_type=WHISPER_COMPUTE_TYPE,
+                cpu_threads=threads,
             )
-            log.info(f"Whisper model loaded: {WHISPER_MODEL} on {WHISPER_DEVICE}")
+            log.info(f"Whisper model loaded: {name} on {WHISPER_DEVICE} ({threads} threads)")
+            _start_unloader()
         return _SHARED["model"]
 
 
@@ -177,8 +257,16 @@ class SpeechRecognizer:
     def __init__(self):
         # The model is loaded by load() - main() calls it after the UI bridge is up,
         # so a first-run download never keeps the UI waiting for the bridge.
-        self.model = None
         self._load_lock = threading.Lock()
+
+    @property
+    def model(self):
+        """The one shared model (None while it is unloaded after idling): load() brings it back."""
+        return _SHARED["model"]
+
+    @model.setter
+    def model(self, _value) -> None:
+        pass                                               # there is only the shared copy
 
     def load(self) -> None:
         """Download (first run) and load the Whisper model. Safe to call repeatedly."""
@@ -204,6 +292,9 @@ class SpeechRecognizer:
             self.load()
             audio_array = np.frombuffer(audio_data, dtype=np.int16)
             audio_float = audio_array.astype(np.float32) / 32768.0
+            if audio_float.size < int(0.25 * sample_rate):     # a click or a door, not speech: skip the model entirely
+                log.info("STT: audio too short (%.2f s)", audio_float.size / float(sample_rate))
+                return "unrecognized", ""
 
             # Skip genuinely silent buffers, but do not reject a quiet microphone.
             # PTT often starts with a low-level voice and the old 0.01 peak gate

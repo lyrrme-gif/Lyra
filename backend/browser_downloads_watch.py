@@ -18,6 +18,32 @@ from typing import Callable
 from urllib.parse import unquote, urlparse
 
 Publisher = Callable[[dict], None]
+_SIGS: dict = {}        # history file -> (signature, when it was last read)
+_FORCE_READ_S = 30.0    # read anyway this often, in case a change never shows in the file times
+
+
+def _history_changed(src) -> bool:
+    """True when the browser's History (or its WAL) changed since the last read. Copying that whole database every
+    second or two just to learn that nothing happened was the cost; a file-time check costs nothing."""
+    try:
+        sig = []
+        for p in (src, src.with_name(src.name + "-wal")):
+            try:
+                st = p.stat()
+                sig.append((st.st_mtime_ns, st.st_size))
+            except OSError:
+                sig.append(None)
+        sig = tuple(sig)
+        now = time.monotonic()
+        old = _SIGS.get(str(src))
+        if old is not None and old[0] == sig and now - old[1] < _FORCE_READ_S:
+            return False
+        _SIGS[str(src)] = (sig, now)
+        return True
+    except Exception:                                    # noqa: BLE001 - when unsure, read it
+        return True
+
+
 _INTERVAL = 0.8
 _IDLE_INTERVAL = 2.5   # light mode: nothing downloading -> copy and read the browser history less often
 
@@ -333,6 +359,8 @@ def start(publisher: Publisher) -> None:
         nonlocal seen
         while not _stop.wait(_wait_s()):
             for browser, src in _profiles():
+                if light and not seen and not _ACTIVE and not _history_changed(src):
+                    continue                              # the browser wrote nothing since the last look: no copy, no read
                 db = _copy_db(src)
                 if not db:
                     continue

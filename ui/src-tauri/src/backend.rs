@@ -11,13 +11,15 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Manager, RunEvent};
 
 const HEALTH_HOST: &str = "127.0.0.1";
 const HEALTH_PORT: u16 = 8765;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+/// How long the UI waits for a freshly started backend before it opens anyway (first run can unpack/download models).
+const READY_TIMEOUT: Duration = Duration::from_secs(45);
 
 /// Holds the child we spawned (if any). Managed as Tauri state.
 pub struct BackendProcess(pub Mutex<Option<Child>>);
@@ -49,15 +51,23 @@ fn health_ok() -> bool {
     if stream.write_all(req.as_bytes()).is_err() {
         return false;
     }
-    let mut buf = [0u8; 512];
-    match stream.read(&mut buf) {
-        Ok(n) if n > 0 => {
-            let text = String::from_utf8_lossy(&buf[..n]);
-            text.contains("200")
-                && (text.contains("lyra") || text.contains("\"ok\"") || text.contains("service"))
+    // Read the WHOLE answer. The bridge sends the headers and the JSON body as two separate packets, so a single read()
+    // usually returns only the headers (no "lyra" in them) and the check below would never pass.
+    let mut data: Vec<u8> = Vec::with_capacity(1024);
+    let mut buf = [0u8; 1024];
+    loop {
+        match stream.read(&mut buf) {
+            Ok(0) => break,                                   // server closed: the answer is complete
+            Ok(n) => {
+                data.extend_from_slice(&buf[..n]);
+                if data.len() >= 4096 { break; }
+            }
+            Err(_) => break,                                  // timeout / reset: judge what arrived
         }
-        _ => false,
     }
+    let text = String::from_utf8_lossy(&data);
+    let status_ok = text.lines().next().map_or(false, |l| l.contains(" 200"));
+    status_ok && (text.contains("lyra-ui-bridge") || text.contains("\"ok\""))
 }
 
 /// Resolve lyra-backend.exe next to the installed app / resource dir.
@@ -101,7 +111,24 @@ fn spawn_backend(exe: &Path) -> std::io::Result<Child> {
     cmd.spawn()
 }
 
-/// Called once from setup. No-op in debug (`tauri dev`) and when the bridge
+/// Block until the backend answers /health (or it exits, or READY_TIMEOUT passes), so the UI never opens before it.
+fn wait_until_ready(child: &mut Child) {
+    let started = Instant::now();
+    while started.elapsed() < READY_TIMEOUT {
+        if health_ok() {
+            crate::log::line(format!("backend: ready after {} ms", started.elapsed().as_millis()));
+            return;
+        }
+        if let Ok(Some(status)) = child.try_wait() {
+            crate::log::line(format!("backend: exited before it was ready ({status})"));
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    crate::log::line("backend: not ready after 45 s: opening the UI anyway (it keeps retrying)");
+}
+
+/// Called once from setup, BEFORE any window exists: in the installed build it returns only when the backend answers. No-op in debug (`tauri dev`) and when the bridge
 /// is already up or the backend binary is missing.
 pub fn start_if_needed(app: &AppHandle, state: &BackendProcess) {
     if cfg!(debug_assertions) {
@@ -122,13 +149,14 @@ pub fn start_if_needed(app: &AppHandle, state: &BackendProcess) {
     };
 
     match spawn_backend(&exe) {
-        Ok(child) => {
+        Ok(mut child) => {
             crate::log::line(format!(
                 "backend: started {} (pid {})",
                 exe.display(),
                 child.id()
             ));
             SPAWNED.store(true, Ordering::Relaxed);
+            wait_until_ready(&mut child);
             if let Ok(mut guard) = state.0.lock() {
                 *guard = Some(child);
             }

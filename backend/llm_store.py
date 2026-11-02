@@ -30,6 +30,7 @@ _DEFAULTS: dict[str, Any] = {
     "ollama_vision_model": "",                # optional, e.g. llava or moondream
     "ollama_base_url": "http://localhost:11434",
     "ollama_timeout": 25,                     # seconds; only used when a cloud fallback provider is set
+    "ollama_keep_alive": "1m",                # how long the local model stays in memory after an answer: 30s / 1m / 5m / -1 (always)
 }
 
 _cache: dict[str, Any] | None = None

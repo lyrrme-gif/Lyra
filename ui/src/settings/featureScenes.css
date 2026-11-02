@@ -55,9 +55,12 @@
 
 /* tab wheel */
 .fo .wheel { position: absolute; left: 50%; top: 40%; width: 0; height: 0; }
-.fo .wd { position: absolute; left: 0; top: 0; width: 11px; height: 11px; margin: -5.5px; border-radius: 50%; background: rgba(255, 255, 255, .16); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1);
-  transform: rotate(var(--r)) translateY(-20px); animation: fp-wd 3s ease-in-out infinite; animation-delay: var(--d); }
-.fo .wc { position: absolute; left: 0; top: 0; width: 7px; height: 7px; margin: -3.5px; border-radius: 50%; background: var(--a); box-shadow: 0 0 12px var(--a); }
+.fo .wd { position: absolute; left: 0; top: 0; width: 15px; height: 15px; margin: -7.5px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: #0b0b0d;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .25); transform: translate(var(--x), var(--y)); animation: fp-wl 3s ease-in-out infinite; animation-delay: var(--d); }
+.fo .wd svg, .fo .wc svg { display: block; width: 8.5px; height: 8.5px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+/* the small grey x in the middle, as on the real wheel */
+.fo .wc { position: absolute; left: 0; top: 0; width: 9px; height: 9px; margin: -4.5px; border-radius: 50%; display: grid; place-items: center; background: rgba(190, 194, 200, .92); color: #1a1b1e; }
+.fo .wc svg { width: 5px; height: 5px; stroke-width: 3; }
 
 /* weather */
 .fo .sun { flex: none; width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ffe27a, #ffb020); box-shadow: 0 0 0 3px rgba(255, 190, 60, .18), 0 0 12px rgba(255, 190, 60, .6); animation: fp-pulse 3s ease-in-out infinite; }
@@ -229,6 +232,8 @@
 @keyframes fp-drain { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 47.1; } }
 @keyframes fp-wd { 0%, 22%, 100% { background: rgba(255, 255, 255, .16); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); transform: rotate(var(--r)) translateY(-20px) scale(1); }
   6%, 16% { background: var(--a); box-shadow: 0 0 10px var(--a); transform: rotate(var(--r)) translateY(-20px) scale(1.35); } }
+@keyframes fp-wl { 0%, 22%, 100% { background: #fff; color: #0b0b0d; transform: translate(var(--x), var(--y)) scale(1); }
+  6%, 16% { background: #000; color: #fff; transform: translate(var(--x), var(--y)) scale(1.18); } }
 @keyframes fp-drift { from { transform: translateX(-4px); } to { transform: translateX(4px); } }
 @keyframes fp-day { 0% { transform: translateX(0); } 20% { transform: translateX(calc(100% + 2px)); } 40% { transform: translateX(calc(200% + 4px)); } 60% { transform: translateX(calc(300% + 6px)); } 80% { transform: translateX(calc(400% + 8px)); } }
 @keyframes fp-cb { 0%, 10% { background: transparent; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .4); } 14%, 86% { background: var(--a); box-shadow: none; } 96%, 100% { background: transparent; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .4); } }

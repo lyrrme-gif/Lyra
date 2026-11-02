@@ -69,6 +69,26 @@ hiddenimports += ["circle_ask"]
 for p in ("actions", "tools", "shortcuts", "computer"):
     subs(p)
 
+# Optional features that import lazily or ship data files (templates, backends, models).
+for p in ("onnx_asr", "winsdk", "keyring", "qrcode", "docx", "pptx", "pypdf",
+          "google_auth_oauthlib", "google.auth", "simple_websocket_server", "pynput"):
+    grab_all(p)
+subs("screen_brightness_control")
+hiddenimports += ["keyring.backends.Windows", "win32timezone"]
+
+# Plugins are loaded from files at run time (plugins/loader.py globs app_path("plugins")/*.py),
+# so PyInstaller can't see them: ship the folder as data. node_modules / lockfiles stay out.
+def _plugin_files():
+    base = os.path.join(HERE, "plugins")
+    for root, dirs, files in os.walk(base):
+        dirs[:] = [d for d in dirs if d not in ("node_modules", "__pycache__")]
+        for f in files:
+            if f in ("package-lock.json",) or f.endswith(".pyc"):
+                continue
+            src = os.path.join(root, f)
+            yield (src, os.path.join("plugins", os.path.relpath(root, base)).rstrip(os.sep + "."))
+datas += list(_plugin_files())
+
 # Read-only defaults shipped with the app (found via paths.app_path(...))
 for name in ("contacts.example.json", "llm_keys.example.json"):
     if os.path.exists(os.path.join(HERE, name)):

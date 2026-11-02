@@ -54,7 +54,11 @@ GAME_MODE_APPS = (
 # ---------------------------------------------------------------------------
 _DEFAULTS: dict[str, Any] = {
     # >>> phase-1 begin
-    "p1_stt_engine": "auto",        # auto | parakeet | whisper (stt_engines)
+    "whisper_model": "base",          # tiny | base | small | medium: smaller = far less CPU per sentence, a little less exact ("small" was the old default)
+    "whisper_threads": 0,             # CPU threads for the speech model; 0 = half of your cores
+    "whisper_idle_unload_min": 10,    # free the speech model's memory after this many idle minutes (0 = never)
+    "low_priority_backend": True,     # run Lyra's engine below normal priority so games and apps always win
+    "p1_stt_engine": "parakeet",    # fixed to parakeet: Lyra works with the Parakeet voice model only (stt_engines)
     # <<< phase-1 end
     # >>> phase-7 begin
     "p7_retention_days": 30,        # notetaker: delete transcripts older than this (0 = keep)
@@ -65,7 +69,7 @@ _DEFAULTS: dict[str, Any] = {
     # <<< phase-7 end
     "wake_name": "Lyra",
     "silent_startup": True,
-    "tts_voice": "en-US-AriaNeural",
+    "tts_voice": "en-US-JennyNeural",
     "tts_engine": "edge",                   # edge (Microsoft, default) | offline (Kokoro, optional download)
     "tts_auto_language": True,              # speak replies with a voice matching their language
     "always_on_top": True,
@@ -117,6 +121,7 @@ _DEFAULTS: dict[str, Any] = {
     "feature_downloads": True,              # file + browser download progress in the island
     "feature_volume": True,                 # per-app volume / ducking watcher (Sounds tab)
     "feature_status": True,                 # battery, Wi-Fi, device and brightness watcher
+    "feature_eco_mode": False,              # Eco mode: lowest CPU/GPU (no animations/shadows/eye follow in the UI, slower hotkey and screen polling)
     "feature_light_mode": True,             # Light mode: heavy models (offline voice, Parakeet) load only when needed; idle watchers poll slower
     "shortcut_wheel_combo": "ctrl+capslock",   # Settings -> Shortcuts: hold to open the tab wheel ("" = off)
     "shortcut_record_combo": "ctrl+alt+r",     # start / stop a screen recording ("" = off)
@@ -167,6 +172,9 @@ _DEFAULTS: dict[str, Any] = {
     "obs_autostart": True,            # OBS not open when a recording starts: open it in the background (tray only) and leave it there
     "obs_path": "",                   # only if Lyra can't find OBS Studio by itself: the obs64.exe file or the obs-studio folder
     "obs_quality": "obs",          # obs = leave OBS's own video settings alone | high 1080p60 | medium 720p30 | low 480p30
+    "record_backend": "obs",          # obs = record through OBS Studio (default) | lyra = the built-in recorder (experimental, see wgc_recorder.py)
+    "record_fps": 30,                 # built-in recorder: frames per second (10-60)
+    "record_audio": "system",         # built-in recorder: sound off | system (what the PC plays) | mic | both
     "feature_guide": True,
     "guide_level": "look",            # screen guide: look (point only) | step (ask before each click) | auto
     "feature_planner": True,
@@ -206,6 +214,9 @@ PREF_GROUPS: dict[str, dict[str, tuple]] = {
         "obs_autostart": ("bool",),
         "obs_path": ("text", 400),
         "obs_quality": ("choice", ("obs", "high", "medium", "low")),
+        "record_backend": ("choice", ("obs", "lyra")),
+        "record_fps": ("int", 10, 60),
+        "record_audio": ("choice", ("off", "system", "mic", "both")),
     },
     "notifications": {
         "notify_toast_ms": ("int", 1500, 15000),
@@ -238,6 +249,7 @@ PREF_GROUPS: dict[str, dict[str, tuple]] = {
         "feature_volume": ("bool",),
         "feature_status": ("bool",),
         "feature_light_mode": ("bool",),
+        "feature_eco_mode": ("bool",),
         "shortcut_wheel_combo": ("text", 40),
         "shortcut_record_combo": ("text", 40), "shortcut_pause_combo": ("text", 40),
         "shortcut_typing_combo": ("text", 40), "shortcut_typing_enabled": ("bool",),
@@ -283,6 +295,10 @@ PREF_GROUPS: dict[str, dict[str, tuple]] = {
         "audio_input": ("text", 200),
         "audio_output": ("text", 200),
         "wake_sensitivity": ("int", 1, 5),
+        "whisper_model": ("choice", ("tiny", "base", "small", "medium")),
+        "whisper_threads": ("int", 0, 64),
+        "whisper_idle_unload_min": ("int", 0, 240),
+        "low_priority_backend": ("bool",),
         "voice_activation_mode": ("choice", ("ptt", "wake", "both")),
         "tts_voice": ("choice", ("",) + TTS_VOICES),
         "tts_engine": ("choice", ("edge", "offline")),
@@ -342,6 +358,24 @@ def feature_on(name: str) -> bool:
         return get(f"feature_{name}") is not False
     except Exception:
         return True
+
+
+_eco_cache: tuple[float, bool] = (0.0, False)
+
+
+def eco_on() -> bool:
+    """True while Eco mode (Settings -> Features) is on. Cached for 2 s so polling loops can call it freely."""
+    global _eco_cache
+    import time as _t
+    now = _t.monotonic()
+    if now - _eco_cache[0] < 2.0:
+        return _eco_cache[1]
+    try:
+        v = get("feature_eco_mode") is True
+    except Exception:
+        v = False
+    _eco_cache = (now, v)
+    return v
 
 
 def get_group(group: str) -> dict[str, Any]:

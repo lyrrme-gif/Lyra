@@ -12,10 +12,9 @@
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
-  ; Lyra v1.0 opens immediately after installation. The app itself detects
-  ; the missing onboarding flag and presents the first-launch setup wizard.
-  ; No separate installer prompt interrupts that flow.
-  Exec '"$INSTDIR\${MAINBINARYNAME}.exe"'
+  ; Nothing here on purpose. Lyra must NOT start by itself while the installer is still running:
+  ; the Finish page has its own "Run Lyra" and "Create desktop shortcut" check boxes, and only
+  ; those decide what happens. (The first-launch setup wizard shows when Lyra is started.)
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

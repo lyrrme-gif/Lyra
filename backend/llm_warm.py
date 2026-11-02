@@ -62,9 +62,8 @@ def _warm() -> None:
         except Exception:
             provider = ""
         if provider == "ollama":
-            client.chat.completions.create(
-                model=model, messages=[{"role": "user", "content": "hi"}], max_tokens=1, timeout=6.0,
-            )
+            import ollama_support
+            ollama_support.preload(model)         # loads the model, generates nothing, expires after the keep-alive
         else:
             client.models.list(timeout=6.0)
         log.debug("LLM pre-warm done in %.0f ms", (time.monotonic() - t0) * 1000)

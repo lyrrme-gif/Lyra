@@ -332,8 +332,8 @@ def test_settings_know_the_obs_keys_and_the_old_recorder_is_gone():
     import settings_store as ss
     assert ss._DEFAULTS["obs_port"] == 4455 and ss._DEFAULTS["obs_host"] == "127.0.0.1" and ss._DEFAULTS["obs_password"] == ""
     assert {"obs_host", "obs_port", "obs_password"} <= set(ss.PREF_GROUPS["recordings"])
-    assert not [k for k in ss._DEFAULTS if k in ("record_quality", "record_encoder", "record_fps", "record_cpu", "record_capture")]
-    for gone in ("record_audio.py", "record_diag.py"):
+    assert not [k for k in ss._DEFAULTS if k in ("record_quality", "record_encoder", "record_cpu", "record_capture")]
+    for gone in ("record_diag.py",):                                   # (record_audio.py is back: the built-in recorder records sound with it)
         assert not os.path.exists(os.path.join(os.path.dirname(__file__), "..", gone))
 
 
@@ -371,3 +371,36 @@ def test_obs_refusing_video_settings_still_records(tmp_path, monkeypatch):
     st = sr.start()
     assert st["recording"] and not st["error"]
     srv.close()
+
+
+# ── guards for a bug that shipped once: kept code used constants that had been cut out with the old recorder ──
+
+def test_no_module_uses_a_name_that_is_not_defined():
+    import ast
+    import builtins
+    here = os.path.join(os.path.dirname(__file__), "..")
+    for fn in ("screen_record.py", "wgc_recorder.py", "obs_control.py", "record_hotkey.py"):
+        t = ast.parse(open(os.path.join(here, fn), encoding="utf-8").read())
+        defined = set(dir(builtins))
+        for n in ast.walk(t):
+            if isinstance(n, (ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef)): defined.add(n.name)
+            elif isinstance(n, ast.Import): defined.update((a.asname or a.name).split(".")[0] for a in n.names)
+            elif isinstance(n, ast.ImportFrom): defined.update(a.asname or a.name for a in n.names)
+            elif isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)): defined.add(n.id)
+            elif isinstance(n, ast.arg): defined.add(n.arg)
+            elif isinstance(n, ast.ExceptHandler) and n.name: defined.add(n.name)
+        used = {n.id for n in ast.walk(t) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+        assert not (used - defined), (fn, sorted(used - defined))
+
+
+@pytest.mark.skipif(not __import__("shutil").which("ffmpeg"), reason="needs ffmpeg")
+def test_the_list_shows_length_size_frame_rate_and_a_thumbnail(tmp_path, monkeypatch):
+    import subprocess
+    ff = __import__("shutil").which("ffmpeg")
+    monkeypatch.setattr(sr, "_ffmpeg", lambda: ff)
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25", "-t", "2",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(tmp_path / "clip.mp4")], check=True)
+    it = sr.list_recordings()["items"][0]
+    assert it["name"] == "clip.mp4" and it["thumb"] is True
+    assert 1.8 < it["duration"] < 2.3 and (it["width"], it["height"]) == (320, 240) and round(it["fps"]) == 25
+    assert sr.thumbnail("clip.mp4")                                                    # the preview picture itself

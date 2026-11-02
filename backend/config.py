@@ -198,8 +198,8 @@ from persona import SYSTEM_INSTRUCTIONS  # noqa: E402,F401
 
 # Voice engine
 # ---------------------------------------------------------------------------
-TTS_VOICE = "en-US-AriaNeural"   # edge-tts neural voice. Alternatives worth trying:
-                                  # "en-US-JennyNeural" (warmer/casual), "en-US-AvaNeural" (newer, very natural)
+TTS_VOICE = "en-US-JennyNeural"  # edge-tts neural voice. Alternatives worth trying:
+                                  # "en-US-AriaNeural" (the old default), "en-US-AvaNeural" (newer, very natural)
                                   # Full list: `edge-tts --list-voices` after installing the package.
 TTS_RATE_PCT = "+0%"             # edge-tts speed adjustment, e.g. "+15%" faster, "-10%" slower
 

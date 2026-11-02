@@ -192,6 +192,7 @@ def _start_recording() -> None:
                 partials = streaming_stt.new_session()
             except Exception:
                 pass
+            live_last, live_at = "", 0.0
             while not _record_stop.is_set():
                 try:
                     audio_frames.append(stream.read(1024, exception_on_overflow=False))
@@ -199,7 +200,15 @@ def _start_recording() -> None:
                     break
                 if partials is not None:
                     try:
-                        llm_warm.note_partial(partials.feed(audio_frames[-1])[0], need_wake=False)
+                        ptext = partials.feed(audio_frames[-1])[0]
+                        llm_warm.note_partial(ptext, need_wake=False)
+                        # The words so far, on the island while you talk (display only: the command still runs
+                        # on the accurate transcript, and the island swaps the live guess for it).
+                        now = time.monotonic()
+                        if ptext != live_last and now - live_at >= 0.15:
+                            live_last, live_at = ptext, now
+                            import ui_bridge
+                            ui_bridge.push_live_text(ptext, "ptt")
                     except Exception:
                         partials = None
             # Released: show "Thinking" immediately, before closing the device / transcribing.

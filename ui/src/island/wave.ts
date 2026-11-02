@@ -78,6 +78,11 @@ export class VoiceWave {
     this.el.style.display = "none";
   }
 
+  /** Smoothed loudness (0..1) the bars show right now; used to move the Mochi's mouth in step with them. */
+  get currentLevel(): number {
+    return this.level;
+  }
+
   setSpeaking(on: boolean): void {
     // Keep this idempotent: state polling can deliver the same state more than
     // once. Repeated "speaking" events must never hide or restart the wave.

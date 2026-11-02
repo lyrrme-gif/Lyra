@@ -12,8 +12,8 @@ running come back. The only thing that keeps running is this module's watcher: e
 which window is in front (and, every 6 seconds, which programs are running). It never reads the keyboard.
 
 What counts as a game (Settings -> Features -> Game mode):
-    * a program from the game list is running (editable: game_mode_apps), or
-    * a full-screen program is in front (game_mode_fullscreen), except browsers, video players and slide shows.
+    * a program from the game list is running (editable: game_mode_apps).
+    A full-screen program on its own never switches game mode on.
 
 One safe way to wake Lyra meanwhile: Ctrl+Alt+L. It is registered with Windows itself (RegisterHotKey): no hook,
 nothing polled; Windows just hands us a message when the keys are pressed. Press it once to talk, press it again
@@ -344,7 +344,7 @@ def _watch() -> None:
             if tick % SCAN_EVERY == 0:
                 listed = _running_game(game_list())
             tick += 1
-            full = _fullscreen_game() if _setting("game_mode_fullscreen", True) else ""
+            full = ""   # full-screen programs are never treated as games (the setting was removed); only the game list counts
             reason = listed or full
             if reason:
                 hits, misses = hits + 1, 0

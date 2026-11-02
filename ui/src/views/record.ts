@@ -17,7 +17,7 @@ const POLL_MS = 3000;
 interface Status {
   ok?: boolean; recording?: boolean; paused?: boolean; stopping?: boolean; saving?: boolean;
   seconds?: number; size?: number; saved?: boolean; path?: string; error?: string; folder?: string;
-  audio?: string; notice?: string; obs_ok?: boolean; obs_message?: string;
+  audio?: string; notice?: string; obs_ok?: boolean; obs_message?: string; capture?: string;
 }
 
 /** The last two parts of the save folder, e.g. "Videos / Lyra Recordings" (the full path is in the tooltip). */
@@ -64,13 +64,13 @@ export function buildRecord(): ViewHost {
     if (rec) {
       t1.textContent = clock(baseSeconds);
       const size = s.size ? ` · ${bytes(s.size)}` : "";
-      t2.textContent = s.notice ? s.notice : paused ? "Paused · tap ▶ to carry on, ■ to save" : `Recording with OBS${size} · tap to stop`;
+      t2.textContent = s.notice ? s.notice : paused ? "Paused · tap ▶ to carry on, ■ to save" : `Recording with ${s.capture === "OBS" || !s.capture ? "OBS" : "Lyra"}${s.audio ? ` · ${s.audio}` : ""}${size} · tap to stop`;
     }
     else if (s.stopping || s.saving) { t1.textContent = "Saving…"; t2.textContent = "Putting the video together"; }
     else if (s.error && !s.saved) { t1.textContent = "Couldn't record"; t2.textContent = s.error; }
     else if (s.saved) { t1.textContent = "Saved"; t2.textContent = s.error ? s.error : s.folder ? `In ${shortFolder(s.folder)}` : "In your recordings folder"; }
     else if (s.obs_ok === false && s.obs_message) { t1.textContent = "Record screen"; t2.textContent = s.obs_message; }
-    else { t1.textContent = "Record screen"; t2.textContent = s.folder ? `Tap to start (OBS) · saves in ${shortFolder(s.folder)}` : "Tap the red button to start"; }
+    else { t1.textContent = "Record screen"; t2.textContent = s.folder ? `Tap to start · saves in ${shortFolder(s.folder)}` : "Tap the red button to start"; }
     t2.title = s.folder ? `Recordings are saved in ${s.folder}. Change it in Settings → Recordings.` : "";
     syncTicker();
   };

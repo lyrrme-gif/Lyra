@@ -1,5 +1,6 @@
 // The Lyra Mochi lives in the island's notch. It shows whenever the notch is compact and idle,
-// and steps aside when Spotify, the volume HUD, a timer, a toast or the voice wave own the notch.
+// and steps aside when Spotify, the volume HUD, a timer, a toast or Lyra's own turn (listening / thinking /
+// speaking, see lyraStatus.ts: there the Mochi moves to the left of the notch next to the text / the wave) own it.
 // When Lyra has to explain something on screen, the mascot overlay window (src/mascot) pops the
 // Mochi out of the notch and tells us through "mascot-away"; we hide ours until it is back.
 //
@@ -26,7 +27,7 @@ const CSS = `
   pointer-events:none;z-index:3;opacity:0;visibility:hidden;transition:opacity .18s ease,visibility 0s linear .18s}
 #island[data-mode="compact"] #notch-mochi{opacity:1;visibility:visible;transition:opacity .18s ease}
 #island[data-mode="compact"]:has(#spotify-compact.on,#volume-hud.on,#timer-chip.on,#notify-toast.on) #notch-mochi,
-#island.lyra-listening #notch-mochi,#island.lyra-speaking #notch-mochi,#island.quitting #notch-mochi,
+#island.lyra-listening #notch-mochi,#island.lyra-speaking #notch-mochi,#island.lyra-thinking #notch-mochi,#island.lyra-status #notch-mochi,#island.quitting #notch-mochi,
 #island #notch-mochi.away,#island #notch-mochi.off{opacity:0;visibility:hidden}
 `;
 

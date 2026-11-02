@@ -7,9 +7,11 @@ import { h, svg } from "./dom";
 import { ICONS } from "./icons";
 import type { ViewHost } from "./views";
 import { Bridge } from "../core/bridge";
+import { createCharacter, type Character } from "../mascot/character";
+import { getFeatures, onFeatures } from "../core/featuresCache";
 import {
   SETTINGS_GOTO_KEY, appsPost, appsUpload, fetchApps, mediaBlobUrl, peekMediaUrl,
-  type AppAction, type AppInfo, type AppMedia, type AppMessage, type AppView,
+  type AppAction, type AppInfo, type AppItem, type AppMedia, type AppMessage, type AppView,
 } from "../core/appsApi";
 
 const iconPath = (name: string): string => (ICONS as Record<string, string>)[name] ?? ICONS.apps;
@@ -27,6 +29,16 @@ function avatar(name: string, image = "", size = 34, square = false): HTMLElemen
   if (image) el.append(h("img", { src: image, alt: "", loading: "lazy" }));
   else el.append(h("b", { text: initialOf(name) }));
   return el;
+}
+
+/** The mic on the chat list and in the reply bar: Lyra starts listening (the same call as the Chat tab's mic). */
+function talkToLyra(): void {
+  void fetch("http://127.0.0.1:8765/voice/toggle", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => undefined);
+}
+function micButton(): HTMLElement {
+  const b = h("button", { class: "ap-micbtn", type: "button", title: "Talk to Lyra", "aria-label": "Talk to Lyra" }, svg(ICONS.mic, 16, { stroke: 2 }));
+  b.addEventListener("click", (e) => { e.stopPropagation(); talkToLyra(); });
+  return b;
 }
 
 function openSettings(): void {
@@ -102,6 +114,22 @@ export function buildApps(onResize?: () => void): ViewHost {
   let attach: { token: string; name: string; kind: "image" | "file"; size: number; preview: string; busy: boolean; route: string } | null = null;
   const clearAttach = (): void => { if (attach?.preview) URL.revokeObjectURL(attach.preview); attach = null; };
   let wasBig = false;
+  let chatFilter: "all" | "unread" | "group" = "all";   // the chat list's filter chips and search box
+  let chatQuery = "";
+  // The real Mochi (the same character as the notch) at the top left of the chat list: made once, moved into each repaint.
+  let mochi: Character | null = null;
+  const mochiHost = h("span", { class: "ap-mochi", "aria-hidden": "true" });
+  function ensureMochi(): void {
+    if (mochi) return;
+    mochi = createCharacter(mochiHost, { tight: true, sharp: 2 });
+    mochi.setEmote("idle");
+    const readShape = async (): Promise<void> => {
+      const f = (await getFeatures()) as { mascot_shape?: string } | null;
+      mochi?.setShape?.(f?.mascot_shape ?? "cloud");
+    };
+    void readShape();
+    onFeatures(() => void readShape());
+  }
   const seenMsgs = new Map<string, Set<string>>();   // per chat: the messages already drawn, so only new ones animate
 
   const top = h("div", { class: "ap-top" });
@@ -205,11 +233,11 @@ export function buildApps(onResize?: () => void): ViewHost {
           onclick: (e: Event) => { e.stopPropagation(); void select(x.id); } },
           svg(iconPath(x.icon), 12), h("span", { text: x.title })));
       }
-    } else {
+    } else if (!(a.id === "whatsapp" && current?.type === "list")) {
       left.append(h("span", { class: "ap-dot", style: style(a) }), h("span", { class: "ap-title", text: a.title }));
     }
-    if (!stack.length && current?.type !== "thread" && current?.chip) left.append(h("span", { class: "ap-chip", style: style(a), text: current.chip }));
-    top.append(left);          // no gear here: the "Open Settings" link still shows when an app needs setting up
+    if (!stack.length && current?.type !== "thread" && current?.chip && a.id !== "whatsapp") left.append(h("span", { class: "ap-chip", style: style(a), text: current.chip }));
+    if (left.childNodes.length) top.append(left);          // no gear here: the "Open Settings" link still shows when an app needs setting up
   }
 
   function emptyState(): HTMLElement {
@@ -228,6 +256,7 @@ export function buildApps(onResize?: () => void): ViewHost {
     if (v.type === "message") return h("div", { class: "ap-msg", text: v.text ?? "" });
     if (v.type === "qr") return h("div", { class: "ap-msg", text: "Finish setting this app up in Settings → Apps." });
     if (v.type === "thread") return renderThread(a, v);
+    if (a.id === "whatsapp") return renderChats(a, v);
     const list = h("div", { class: "ap-list" });
     if (v.actions?.length) {
       list.append(h("div", { class: "ap-actions" }, ...v.actions.map((b) =>
@@ -248,6 +277,59 @@ export function buildApps(onResize?: () => void): ViewHost {
       list.append(row);
     }
     return list;
+  }
+
+  // ── WhatsApp's chat list: Mochi + search pill, filter chips, rows ──────────────────────────────────────
+
+  function renderChats(a: AppInfo, v: AppView): HTMLElement {
+    const items = v.items ?? [];
+    const isGroup = (it: AppItem): boolean => String(it.action?.params?.chat ?? it.id ?? "").endsWith("@g.us");
+    const unreadN = items.filter((i) => !!i.badge).length;
+
+    const find = h("input", { class: "ap-in ap-find", type: "text", placeholder: "Search chats", spellcheck: "false", autocomplete: "off", value: chatQuery }) as HTMLInputElement;
+    find.addEventListener("click", (e) => e.stopPropagation());
+    find.addEventListener("keydown", (e) => e.stopPropagation());
+    ensureMochi();
+    const search = h("div", { class: "ap-searchrow" },
+      mochiHost,
+      h("div", { class: "ap-find-pill" }, svg(ICONS.search, 15, { stroke: 2 }), find, micButton()));
+
+    const defs: Array<["all" | "unread" | "group", string]> = [["all", "All"], ["unread", unreadN ? `Unread ${unreadN}` : "Unread"], ["group", "Groups"]];
+    const chipEls = defs.map(([k, label]) => {
+      const b = h("button", { class: `ap-fchip${chatFilter === k ? " on" : ""}`, type: "button", text: label });
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        chatFilter = k;
+        chipEls.forEach((c, i) => c.classList.toggle("on", defs[i][0] === k));
+        paintRows();
+      });
+      return b;
+    });
+    const chips = h("div", { class: "ap-chips" }, ...chipEls);
+
+    const rows = h("div", { class: "ap-list" });
+    const first = (items[0]?.title ?? "").split(" ")[0];
+    const paintRows = (): void => {
+      rows.replaceChildren();
+      const q = chatQuery.trim().toLowerCase();
+      const shown = items.filter((it) =>
+        (chatFilter === "all" || (chatFilter === "unread" ? !!it.badge : isGroup(it)))
+        && (!q || it.title.toLowerCase().includes(q) || it.subtitle.toLowerCase().includes(q)));
+      if (!shown.length) rows.append(h("div", { class: "ap-msg", text: items.length ? "No chats match." : v.empty || "No chats yet. New messages show up here." }));
+      for (const it of shown) {
+        const unread = !!it.badge;
+        const row = h("div", { class: `ap-row${it.action ? " click" : ""}${unread ? " unread" : ""}` },
+          avatar(it.title, it.image, 40),
+          h("div", { class: "ap-rowtext" }, h("b", { text: it.title }), it.subtitle ? h("span", { class: "ap-sub", text: it.subtitle }) : null),
+          h("div", { class: "ap-rowend" }, it.time ? h("time", { text: it.time }) : null, unread ? h("em", { class: "ap-badge", text: it.badge }) : null));
+        if (it.action) row.addEventListener("click", (e) => { e.stopPropagation(); void runAction(a, it.action as AppAction); });
+        rows.append(row);
+      }
+      if (shown.length && first) rows.append(h("div", { class: "ap-hint" }, svg(ICONS.mic, 13, { stroke: 2 }), h("span", { text: `Say \u201Cdraft a reply to ${first}\u201D` })));
+    };
+    find.addEventListener("input", () => { chatQuery = find.value; paintRows(); });
+    paintRows();
+    return h("div", { class: "ap-chats" }, search, chips, rows);
   }
 
   // ── Photos and voice messages ──────────────────────────────────────────────────────────────────────────
@@ -470,7 +552,8 @@ export function buildApps(onResize?: () => void): ViewHost {
           });
         } }, svg(ICONS.star, 15)));
       }
-      compose.append(pill, send);
+      pill.append(micButton(), send);
+      compose.append(pill);
       row.append(compose);
       box.append(row);
     }
@@ -512,6 +595,7 @@ export function buildApps(onResize?: () => void): ViewHost {
       if (input) { input.focus(); if (caret != null) input.setSelectionRange(caret, caret); }
     }
     paintLightbox();
+    mochi?.setActive?.(active && body.contains(mochiHost));   // it only draws while the chat list shows it
     syncBig();
   }
 
@@ -542,9 +626,10 @@ export function buildApps(onResize?: () => void): ViewHost {
     sync() { paint(); },
     setActive(on) {
       active = on;
+      if (on) { chatQuery = ""; chatFilter = "all"; }
       timer?.stop(); timer = null;
       consumePendingChat = on ? () => void takePendingChat() : null;
-      if (!on) { stopAllAudio(); lightbox = ""; paintLightbox(); syncBig(); return; }
+      if (!on) { stopAllAudio(); lightbox = ""; paintLightbox(); mochi?.setActive?.(false); syncBig(); return; }
       void (async () => {
         await loadApps();
         if (selected) await loadView(current?.route ?? "");

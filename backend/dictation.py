@@ -153,15 +153,35 @@ def set_handsfree() -> None:
 # ---------------------------------------------------------------------------
 # internals
 # ---------------------------------------------------------------------------
-def _pill(state: str) -> None:
-    """Tell the island/pill what dictation is doing and where the pill should sit (Settings > Dictation)."""
+def _pill(state: str, app: str = "") -> None:
+    """Tell the island/pill what dictation is doing and where the pill should sit (Settings > Dictation).
+    `app` (the program you are dictating into, e.g. "winword") lets the island show its icon."""
     try:
         import ui_bridge
-        ui_bridge._push_event({"type": "dictation_pill", "state": state,
+        ui_bridge._push_event({"type": "dictation_pill", "state": state, "app": app,
                                "position": dictation_clean.pref("p2_pill_position"),
                                "ts": int(time.time() * 1000)})
     except Exception:
         pass
+
+
+def _live(text: str, final: bool = False) -> None:
+    """The words you are saying, shown on the island as you talk (display only: the text that is pasted
+    comes from the accurate engine when you let go, and replaces this live guess with `final=True`)."""
+    try:
+        import ui_bridge
+        ui_bridge.push_live_text(text, "dictation", final)
+    except Exception:
+        pass
+
+
+def _focus_app() -> str:
+    """The program that has the focus right now ("" if unknown)."""
+    try:
+        import computer.keyboard as kb
+        return _app_of(kb.focus_snapshot())
+    except Exception:
+        return ""
 
 
 def _app_of(snap: dict | None) -> str:
@@ -339,7 +359,7 @@ class _Session:
         hook_paused = False
         try:
             ui.set_state("listening")
-            _pill("listening")
+            _pill("listening", _focus_app())
             try:
                 import status_watch
                 status_watch.set_mic_active(True)
@@ -414,6 +434,7 @@ class _Session:
             stream = pa.open(format=pyaudio.paInt16, channels=1, rate=WAKE_SAMPLE_RATE, input=True,
                              frames_per_buffer=WAKE_CHUNK_SIZE, **kwargs)
             last_text, changed, flushed = "", time.monotonic(), False
+            done_text, live_last, live_at = "", "", 0.0      # live words for the island (all closed sentences + the one being said)
             dbg_t0 = dbg_t = time.monotonic()
             dbg.ev("dictation", f"microphone open; output={self.output}, refine={_refine_on()}")
             while not self.stop_evt.is_set():
@@ -433,6 +454,10 @@ class _Session:
                                         f"live text={len(text)} chars, no new words for {now - changed:.1f}s")
                 if text != last_text:
                     last_text, changed, flushed = text, now, False
+                shown = f"{done_text} {text}".strip()
+                if shown != live_last and now - live_at >= 0.15:   # a few updates a second are plenty
+                    live_last, live_at = shown, now
+                    _live(shown)
                 if now - changed > (HANDSFREE_IDLE_S if self.handsfree else IDLE_STOP_S):
                     dbg.ev("dictation", "idle timeout: no new words, stopping by itself")
                     self.stop_evt.set()                     # never listen forever, even if a key release was missed
@@ -442,6 +467,7 @@ class _Session:
                     self._emit(words.update(text, flush=True))
                     words.end_segment()
                     rec.reset()
+                    done_text = f"{done_text} {text}".strip()
                     last_text, flushed = "", False
                 elif text and not flushed and now - changed >= DICTATION_PAUSE_FLUSH_S:
                     self._emit(words.update(text, flush=True))   # paused: nothing more is coming soon
@@ -594,12 +620,15 @@ class _Session:
             text, engine, language = better
             text = dictation_text.apply_phrases(text, _phrase_map())
         if not text:
+            _live("", final=True)
             _notify("Nothing heard", "fail", 1600)
             return
         app = _app_of(kb.focus_snapshot())                  # style follows the window you paste into
         text, how = dictation_clean.cleanup(text, app)
         if not text:
+            _live("", final=True)
             return
+        _live(text, final=True)                             # the island swaps its live guess for the accurate text
         kb.release_modifiers()
         time.sleep(0.05)
         dbg.ev("dictation", f"pasting {len(text)} chars into {app!r}")

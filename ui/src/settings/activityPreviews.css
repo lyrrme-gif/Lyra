@@ -15,3 +15,18 @@
 @keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 @media (prefers-reduced-motion: reduce) { .ap-stage * { animation: none !important; } }
+
+/* The speaker button on a Live Activities tile: plays that activity's real sound (see playActivityPreview). */
+.ptile-snd {
+  position: absolute; top: 6px; right: 6px; z-index: 5; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer; color: #fff;
+  background: rgb(20 20 24 / .62); border: 1px solid rgb(255 255 255 / .18);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  opacity: 0; transform: scale(.85); transition: opacity .18s, transform .25s cubic-bezier(.34, 1.56, .64, 1), background .15s;
+}
+.ptile:hover .ptile-snd, .ptile:focus-within .ptile-snd, .ptile-snd:focus-visible { opacity: 1; transform: scale(1); }
+.ptile-snd:hover { background: rgb(10 132 255 / .85); }
+.ptile-snd:active { transform: scale(.9); }
+.ptile-snd svg { width: 14px; height: 14px; display: block; }
+.ptile-snd.playing svg path:nth-child(n+2) { animation: ptile-snd-wave .7s ease-in-out infinite alternate; }
+@keyframes ptile-snd-wave { from { opacity: .25; } to { opacity: 1; } }

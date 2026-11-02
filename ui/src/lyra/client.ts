@@ -26,6 +26,7 @@ export function sendChat(text: string): void {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type: "chat", text }),
   }).catch(() => {
+    window.dispatchEvent(new CustomEvent("lyra:typed-failed"));
     pushReply("Backend offline — run python main.py in backend/");
   });
 }
@@ -57,7 +58,7 @@ export function connectLyra(island: Island): void {
       const data = (await res.json()) as {
         events?: Array<{
           type: string; state?: string; role?: string; text?: string; _id?: number; local?: boolean;
-          levels?: number[]; hz?: number; start_ms?: number;
+          levels?: number[]; hz?: number; start_ms?: number; final?: boolean;
           app?: string; kind?: string; sender?: string; ts?: number;
           items?: unknown[]; now?: number;
           percent?: number; charging?: boolean; level?: number; muted?: boolean; mic?: boolean;
@@ -81,6 +82,24 @@ export function connectLyra(island: Island): void {
         if (replaying && ((msg.type === "chat" && !State.extras.keepChat) || msg.type === "notify" || msg.type === "reply")) continue;
         if (msg.type === "state" && msg.state) {
           applyState(island, msg.state as LyraState);
+        }
+        // The words you are saying, live (a fast guess), then the accurate text; and what dictation is doing.
+        if (msg.type === "live_text") {
+          if (!replaying && (!msg.ts || Date.now() - Number(msg.ts) < 4_000)) island.onLiveText(String(msg.text || ""), msg.final === true, String(msg.source || ""));
+          continue;
+        }
+        if (msg.type === "circle_pill") {
+          if (!replaying && (!msg.ts || Date.now() - Number(msg.ts) < 10_000)) island.onCirclePill(String(msg.state || ""));
+          continue;
+        }
+        if (msg.type === "dictation_pill") {
+          if (!replaying && (!msg.ts || Date.now() - Number(msg.ts) < 10_000)) island.onDictationPill(String(msg.state || ""), String(msg.app || ""));
+          continue;
+        }
+        // Loudness of the sentence Lyra is saying: the white wave on the island follows it. A Mochi sound never sends one.
+        if (msg.type === "wave") {
+          if (!replaying) island.feedWave(Array.isArray(msg.levels) ? msg.levels : [], Number(msg.hz) || 25, Number(msg.start_ms) || Date.now());
+          continue;
         }
         // A Mochi sound that is not a reply (tired, overheating ...): the backend already checked the setting.
         if (msg.type === "mochi_sound") {
@@ -263,7 +282,13 @@ export function connectLyra(island: Island): void {
           const role = String(msg.role || "").toLowerCase();
           // What Lyra heard / answered is drawn by the caption window; the island
           // keeps no conversation. A spoken or typed question needs nothing here.
-          if (role === "user" || role === "you") { tourSignal("said", String(msg.text)); Chats.user(String(msg.text)); continue; }
+          if (role === "user" || role === "you") {
+            tourSignal("said", String(msg.text));
+            Chats.user(String(msg.text));
+            // The accurate transcript of what you said replaces the live guess on the island (typed messages have none).
+            if (!msg.local) island.onLiveText(String(msg.text), true, "ptt");
+            continue;
+          }
           // An assistant reply is also a definitive end to the thinking phase.
           // Clear it here in case the following speaking/idle state event was
           // lost while this window was reconnecting to the backend.
@@ -275,6 +300,7 @@ export function connectLyra(island: Island): void {
           Chats.assistant(String(msg.text));
           // "Done" / "Opening ..." can be a Mochi sound instead of speech (Settings -> Voice).
           const mochi = isMochiKind(msg.mochi) ? msg.mochi : null;
+          island.onTypedReply(!!mochi);
           pushReply(String(msg.text), !!mochi);
           if (mochi && !replaying) playMochi(mochi);
         }

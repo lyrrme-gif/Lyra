@@ -8,7 +8,7 @@ import type { Overlay } from "./overlay";
 import { emitAway, emitMochiSound } from "./dock";
 import { emitCarryState, emitNestQuery, type CarryStart, type NestInfo } from "./carry";
 import { MOCHI_KINDS, mochiMode } from "../core/mochiSound";
-import { CHAR_DEFS, RAGE_LINES } from "./characters";
+import { CHAR_DEFS, DIZZY_LINES, RAGE_LINES } from "./characters";
 import { isReallyVisible, onVisibilityChange } from "../core/visibility";
 
 export type SizeName = "small" | "medium" | "large";
@@ -47,6 +47,12 @@ const BODY_CENTRE = 58 / 120;                // the body's centre sits this far 
 const CARRY_FAILSAFE_MS = 25_000;            // a carry whose release never arrived is let go after this long
 const ZONE_MARGIN = 18;                      // how far outside the island's shape still counts as "on the island"
 const NOTCH_ZONE = { halfW: 170, h: 84 };    // the notch area: counts while the island is hidden or only a notch
+const WHIRL_WINDOW_MS = 3500;                // shaking / swirling it about this fast, this soon, makes it dizzy ...
+const WHIRL_SPEED = 900;                     // ... at least this many px/s (for a medium Mochi) along its path
+const WHIRL_TURN = Math.PI * 14;             // ... while turning round by at least 7 turns in all: keep circling / shaking for about 2-3 seconds
+const WHIRL_SEG = 40;                        // the path is read in steps of this many px, and only turns sharper than WHIRL_FLOOR count,
+const WHIRL_FLOOR = 0.3;                     // so a shaky hand on a straight drag never adds up to a "turn"
+const DIZZY_MS = 3400;                       // how long it stays dizzy
 const HOP_MS = 560;                          // the little bounce when it is put down on the screen
 const SLEEP_AFTER_MS = 180_000;
 const EMOTES = new Set<string>([
@@ -124,6 +130,10 @@ export class Engine {
   private stay = false;                                      // "Mochi stays on screen": never docks by itself
 
   private dragging = false;
+  private whirl: Array<{ t: number; x: number; y: number }> = [];   // where the held Mochi has been lately (for the dizzy check)
+  private dizzyUntil = 0;
+  private dizzyLock = 0;           // until then the dizzy Mochi cannot be picked up
+  private forcedDrop = false;      // it was dropped by getting dizzy while the button was still down: that release must not place it again
   // Put down on the screen by the user: it stays there until it is dragged back onto the island (or sent home).
   private placed: { x: number; y: number } | null = null;
   // Held in the cursor's hand after being pulled out of the island's Mochi tab (the release comes from Rust).
@@ -136,6 +146,9 @@ export class Engine {
   private hop = 0;                 // when it was put down (the bounce), 0 = none
   private pop = 1;                 // the scale last applied (1 = full size, small = shrunk into the notch)
   private away = false;           // true while the Mochi is out of the notch
+  /** Start-up lock: after launch Mochi stays in the island and NEVER comes out on its own
+   *  (stay-on-screen, subtitles, goto / point / tour). Released the first time the user drags it out. */
+  private startupLocked = true;
   private awayBeat = 0;
   private homeTimer = 0;
   private facing: 1 | -1 = 1;
@@ -203,7 +216,7 @@ export class Engine {
     if (on === this.stay) return;
     this.stay = on;
     if (this.suspended || this.dragging) return;
-    if (on) { if (!this.away && !this.scripted) void this.goPark(); }
+    if (on) { if (!this.away && !this.scripted && !this.startupLocked) void this.goPark(); }
     else if (this.away && !this.atCaption && !this.scripted && !this.keepOut && !this.placed) void this.comeHome();
   }
 
@@ -248,6 +261,7 @@ export class Engine {
     }
     if (this.suspended) return;
     this.caption = { w: Math.max(40, c.w), h: Math.max(30, c.h), lift: Math.max(0, c.lift ?? 0) };
+    if (this.startupLocked) return;                          // still in the island: not until the user drags it out
     if (this.atCaption) { this.holdAtCaption(); return; }
     if (this.scripted || this.carry || this.flight) return; // a tour / goto / point / drag owns the Mochi right now
     void this.goCaption();
@@ -313,6 +327,7 @@ export class Engine {
   /** One mascot event from the backend (see the event contract in the plan). */
   command(c: MascotCmd): void {
     if ((this.carry || this.flight) && c.cmd !== "cursor") return;   // in the user's hand (or flying in): not now
+    if (this.startupLocked && (c.cmd === "goto" || c.cmd === "point" || c.cmd === "tour")) return;   // stays in the island
     const num = (v: unknown, d: number) => (typeof v === "number" && isFinite(v) ? v : d);
     switch (c.cmd) {
       case "say": this.wake(); void this.doSay(String(c.text ?? ""), num(c.ms, 4000)); break;
@@ -367,6 +382,7 @@ export class Engine {
   /** The user pulled the Mochi out of the island's Mochi tab: it hops out of the tab into the cursor's hand. */
   carryStart(c: CarryStart): void {
     if (this.suspended || this.gaming || this.dead) { emitCarryState({ end: "island" }); return; }   // nowhere to put it down
+    this.startupLocked = false;      // the user took Mochi out themselves: normal behaviour from now on
     window.clearTimeout(this.homeTimer);
     window.clearTimeout(this.keepOutTimer);
     this.cancelFlight();
@@ -409,6 +425,67 @@ export class Engine {
     const ok = Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x < this.W && y < this.H;
     if (ok) this.cursor = { x, y, seen: true };
     this.releaseMochi(this.cursor.seen ? this.cursor.x : this.pos.x, this.cursor.seen ? this.cursor.y : this.pos.y);
+  }
+
+  /** While the Mochi is held: moving it about too fast (shaking it, or whirling it round in circles) makes it dizzy,
+   *  each character in its own way (CharDef.dizzy in characters.ts). A plain fast drag across the screen does not. */
+  private trackWhirl(now: number): void {
+    if (now < this.dizzyUntil) { this.whirl.length = 0; return; }
+    const k = this.size / SIZE_PX.medium;                       // the limits are for a medium Mochi; bigger / smaller scale with it
+    const w = this.whirl, last = w[w.length - 1];
+    if (!last || Math.hypot(this.pos.x - last.x, this.pos.y - last.y) >= WHIRL_SEG * k) w.push({ t: now, x: this.pos.x, y: this.pos.y });
+    while (w.length && now - w[0].t > WHIRL_WINDOW_MS) w.shift();
+    if (w.length < 7) return;
+    let path = 0, turn = 0, prev = NaN;
+    for (let i = 1; i < w.length; i++) {
+      const dx = w[i].x - w[i - 1].x, dy = w[i].y - w[i - 1].y;
+      path += Math.hypot(dx, dy);
+      const a = Math.atan2(dy, dx);
+      if (!Number.isNaN(prev)) {
+        let d = a - prev;
+        if (d > Math.PI) d -= Math.PI * 2; else if (d < -Math.PI) d += Math.PI * 2;
+        if (Math.abs(d) > WHIRL_FLOOR) turn += Math.abs(d);
+      }
+      prev = a;
+    }
+    const secs = Math.max(0.6, (now - w[0].t) / 1000);
+    if (path / secs < WHIRL_SPEED * k || turn < WHIRL_TURN) return;
+    this.getDizzy(now);
+  }
+
+  /** It gets dizzy while held: it drops out of the hand where it is (even though the button is still down) and stays
+   *  on the screen, reeling, until it has recovered. The held button then does nothing (see forcedDrop). */
+  private dropHeld(now: number): void {
+    // A pointer drag still has the button down (its release must be ignored); a carry from the island ends right here.
+    this.forcedDrop = !this.carry;
+    if (this.carry) { this.carry = null; void native.carry(false); }
+    this.dragging = false;
+    this.actor.classList.remove("dragging");
+    this.overZone = false;
+    const s = this.size;
+    this.pos.x = clamp(this.pos.x, s / 2, this.W - s / 2);
+    this.pos.y = clamp(this.pos.y, s, this.H);
+    this.placed = { x: this.pos.x, y: this.pos.y };
+    this.keepOut = false;
+    this.vel = { x: 0, y: 0 };
+    this.hop = now;                                             // it drops with a little bounce
+    this.lastMoveAt = now;
+    emitCarryState({ end: "screen" });                          // the island gives the nest back
+  }
+
+  private getDizzy(now: number): void {
+    this.whirl.length = 0;
+    this.dizzyLock = now + DIZZY_MS;
+    if (this.dragging) this.dropHeld(now);
+    this.dizzyUntil = now + DIZZY_MS + 700;                     // and a short rest before it can be made dizzy again
+    this.scriptEmote = { name: "dizzy", until: now + DIZZY_MS };
+    const id = this.shapeId;
+    // The dizzy sound + a line in the Mochi's own words (only when Settings -> Voice allows Mochi sounds).
+    void mochiMode().then((m) => {
+      if (m === "speak") return;
+      emitMochiSound("dizzy");
+      this.ov.say(DIZZY_LINES[id] ?? MOCHI_KINDS.dizzy.subtitle, MOCHI_KINDS.dizzy.ms);
+    });
   }
 
   /** Let go of the Mochi (from either direction): over the island it flies in, anywhere else it stays on the screen. */
@@ -839,6 +916,8 @@ export class Engine {
     this.actor.addEventListener("pointerdown", (e) => {
       if (this.gaming) return;                        // never take a click away from the game
       if (e.button !== 0) return;
+      if (performance.now() < this.dizzyLock) return; // seeing stars: it cannot be picked up (or poked) until it has recovered
+      this.forcedDrop = false;
       this.actor.setPointerCapture(e.pointerId);
       void native.raise();             // drawn over the island too, so it can be dragged onto it
       this.queryNest();
@@ -846,7 +925,7 @@ export class Engine {
       moved = false;
     });
     this.actor.addEventListener("pointermove", (e) => {
-      if (!down) return;
+      if (!down || this.forcedDrop) return;           // dropped by getting dizzy: the held button no longer moves it
       if (!moved && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) {
         moved = true;
         this.dragging = true;
@@ -864,10 +943,13 @@ export class Engine {
     const up = (e: PointerEvent) => {
       if (!down) return;
       const wasDrag = moved;
+      const dropped = this.forcedDrop;
+      this.forcedDrop = false;
       down = null;
       this.dragging = false;
       this.actor.classList.remove("dragging");
       try { this.actor.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+      if (dropped) return;                                      // it already dropped (dizzy): nothing more to do
       if (wasDrag) this.releaseMochi(e.clientX, e.clientY);     // onto the island: it flies in; anywhere else: it stays there
       if (!wasDrag) {
         this.wake();
@@ -1058,6 +1140,8 @@ export class Engine {
     }
 
     // Held above the island (either direction): it looks happy and the island lights up its nest.
+    if (this.dragging) this.trackWhirl(now);
+    else if (this.whirl.length) this.whirl.length = 0;
     if (this.dragging) {
       const over = this.cursor.seen && this.overIsland(this.cursor.x, this.cursor.y);
       if (over !== this.overZone) { this.overZone = over; emitCarryState({ over }); }
@@ -1123,7 +1207,12 @@ export class Engine {
   private resolveEmote(now: number): EmoteName {
     if (this.gaming) return "gaming";                  // a game is in front: it plays too
     if (this.scriptEmote && (this.scriptEmote.until === 0 || now < this.scriptEmote.until)) return this.scriptEmote.name;
+    const was = this.scriptEmote?.name;
     this.scriptEmote = null;
+    if (was === "dizzy" && !this.dragging) {                    // the spinning stops: a moment to catch its breath
+      this.scriptEmote = { name: "tired", until: now + 1600 };
+      return "tired";
+    }
     if (this.dragging) return this.overZone ? "happy" : "surprised";
     if (this.asleep) return "sleep";
     if (this.stateEmote && (this.stateEmote.until === 0 || now < this.stateEmote.until)) return this.stateEmote.name;

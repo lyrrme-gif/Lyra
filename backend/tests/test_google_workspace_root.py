@@ -1,5 +1,8 @@
 """Offline tests for google_workspace.py: python -m unittest test_google_workspace -v
 Google's HTTP API, the token and the LLM are stubbed; no network."""
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # backend/ on the path
+
 import base64, json, logging, sys, tempfile, types, unittest
 from datetime import datetime, timedelta
 from pathlib import Path

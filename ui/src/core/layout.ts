@@ -76,12 +76,12 @@ export const PANEL_H = 320;
 
 // No notch on a PC: these are the hidden/compact sizes from docs/SPEC.md.
 export const NOTCH_W = 150;
-export const NOTCH_H = 38;
-export const COMPACT_W = 248; // compact Dynamic-Island footprint: deliberately minimal
+export const NOTCH_H = 44;   // was 38: the resting notch now has the size it used to have under the pointer
+export const COMPACT_W = 274; // resting notch (was 248; 274 x 44 is the old "pointer on it" size). Pointer / notifications / activities grow from here
 /** Width of the notch while the volume HUD is showing (speaker icon, label, slider). */
-export const VOLUME_HUD_W = 320;
+export const VOLUME_HUD_W = 340;
 /** Height of the notch while the volume HUD is showing. */
-export const VOLUME_HUD_H = 42;
+export const VOLUME_HUD_H = 48;
 export const EXPANDED_W = 600;
 
 

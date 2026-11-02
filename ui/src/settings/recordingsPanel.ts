@@ -190,6 +190,35 @@ export function recordingsCards(d: RecordingsDeps): HTMLElement[] {
     pathEl.value = String(j.obs_path ?? "");
     hostEl.value = String(j.obs_host ?? "127.0.0.1"); portEl.value = String(j.obs_port ?? 4455); passEl.value = String(j.obs_password ?? "");
   }).catch(() => { /* backend not up: the defaults stay shown */ });
+  // ── Which recorder, and the built-in one (experimental) ──
+  const pick = (opts: Array<[string, string]>, onSave: (v: string) => void) => {
+    const el = h("select", { style: "padding:7px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:inherit;font:inherit" }) as HTMLSelectElement;
+    for (const [v, label] of opts) el.append(h("option", { value: v, text: label, style: "color:#000" }));
+    el.addEventListener("change", () => onSave(el.value));
+    return el;
+  };
+  const backendEl = pick([["obs", "OBS Studio (recommended)"], ["lyra", "Built-in (experimental)"]], (v) => save({ record_backend: v }));
+  const fpsEl = pick([["30", "30 frames per second"], ["60", "60 frames per second"]], (v) => save({ record_fps: Number(v) }));
+  const soundEl = pick([["off", "No sound"], ["system", "PC sound"], ["mic", "Microphone"], ["both", "PC sound + microphone"]], (v) => save({ record_audio: v }));
+  const builtNote = h("div", { style: "margin-top:6px;min-height:1.2em" });
+  const builtBtn = btn("Test built-in recorder", () => {
+    builtBtn.disabled = true; builtNote.style.color = ""; builtNote.textContent = "Recording a few seconds… keep something moving on screen.";
+    void post("/record/builtin-test").then((r) => {
+      const j = r as { ok?: boolean; message?: string };
+      builtNote.style.color = j.ok ? "#30d158" : "#ffb340";
+      builtNote.textContent = j.message ?? (j.ok ? "Works." : "Didn't work.");
+    }).finally(() => { builtBtn.disabled = false; });
+  }) as HTMLButtonElement;
+  void fetch(`${d.lyra}/settings/recordings`).then((r) => r.json()).then((j: Record<string, unknown>) => {
+    backendEl.value = j.record_backend === "lyra" ? "lyra" : "obs";
+    fpsEl.value = String(j.record_fps === 60 ? 60 : 30);
+    soundEl.value = ["off", "system", "mic", "both"].includes(String(j.record_audio)) ? String(j.record_audio) : "system";
+  }).catch(() => { /* backend not up */ });
+  const builtCard = d.card("Recorder",
+    d.item("Which recorder", "OBS gives the smoothest result. The built-in recorder needs no OBS but is experimental: it uses Windows Graphics Capture too, and needs one extra package (pip install windows-capture), then a restart of Lyra.", backendEl),
+    d.item("Built-in: frame rate", "60 looks smoother but costs more of your processor.", fpsEl),
+    d.item("Built-in: sound", "OBS uses its own sound settings.", soundEl),
+    d.item("Built-in: test", builtNote, builtBtn));
   const obsCard = d.card("Recording with OBS",
     d.item("How it works", "Lyra records through OBS Studio, so a recording looks exactly like one made in OBS (its capture, encoder and sound settings). In OBS open Tools → WebSocket Server Settings, tick “Enable WebSocket server” and press OK. Then press Test connection here.", null),
     d.item("Open OBS by itself", "When you start a recording and OBS isn't open, Lyra opens it hidden in the system tray (no window) and leaves it there, so the next recording starts straight away. Needs OBS's tray icon enabled (OBS: Settings → General → System Tray).", autoEl),
@@ -201,5 +230,5 @@ export function recordingsCards(d: RecordingsDeps): HTMLElement[] {
   const qualityCard = d.card("Recording quality",
     d.item("Quality", qualityHint, qualityEl),
     d.item("Good to know", "Lyra sets this in OBS just before each recording starts, so it also becomes OBS's own video setting. It scales the recorded picture; your screen capture itself isn't changed. Takes effect on the next recording.", null));
-  return [obsCard, qualityCard, folderCard, listCard];
+  return [builtCard, obsCard, qualityCard, folderCard, listCard];
 }

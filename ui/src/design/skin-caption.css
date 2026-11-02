@@ -1,17 +1,13 @@
-/* ═══ Caption window skin (subtitle pills) ═══════════════════ */
+/* ═══ Caption window skin (subtitle pill) ═══════════════════ */
 
 @supports (color: oklch(from red l c h)) {
 
 html body { font-family: var(--d-font-ui); }
+/* Lyra's answer is white on plain black (no gradient, no accent): the Mochi and the wave moved to the island. */
 html #subs .pill.lyra {
-  background: linear-gradient(180deg, oklch(0.2 0 0), oklch(0.12 0 0));
+  background: #000; color: #fff;
   /* No drop shadow: the caption window is only slightly bigger than a pill, so a shadow was cut by the window edge. */
-  box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.1), inset 0 1px 0 oklch(1 0 0 / 0.1);
+  box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.12);
 }
-html #subs .pill.you {
-  background: linear-gradient(180deg, oklch(0.99 0.008 var(--p4-h)), oklch(0.93 0.025 var(--p4-h))); color: oklch(0.22 0.04 var(--p4-h));
-}
-html #subs .pill.lyra .lyra-copy .who { color: var(--d-ac); }
-html #subs .voice-wave i { background: var(--d-ac); box-shadow: 0 0 7px oklch(from var(--d-ac) l c h / 0.6); }
 
 }

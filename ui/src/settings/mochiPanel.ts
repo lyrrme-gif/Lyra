@@ -5,7 +5,7 @@
 
 import { h } from "../views/dom";
 import { CHAR_DEFS } from "../mascot/characters";
-import { createCharacter, gazeToward, type Character, type EmoteName } from "../mascot/character";
+import { createCharacter, type Character, type EmoteName } from "../mascot/character";
 import { Sound } from "../core/sound";
 
 type Kid = Node | string | null | undefined | false;
@@ -72,12 +72,6 @@ function hero(d: MochiDeps): HTMLElement {
   const spot = h("div", { class: "mc-hero-mochi" });
   const stage = h("div", { class: "mc-stage" }, h("div", { class: "mc-floor" }), spot);
   const ch = liveMochi(spot, 150, "idle", false, 2);
-
-  // The eyes follow the pointer, like the real thing follows your cursor.
-  window.addEventListener("pointermove", (e) => {
-    const [gx, gy] = gazeToward(spot, e.clientX, e.clientY);
-    ch.look(gx, gy);
-  });
 
   const status = h("span", { class: "mc-status" });
   const setSwitch = (el: HTMLElement, on: boolean) => { el.classList.toggle("on", on); el.setAttribute("aria-pressed", String(on)); };

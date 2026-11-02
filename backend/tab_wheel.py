@@ -34,6 +34,14 @@ DEFAULT_COMBO = "ctrl+capslock"     # Settings -> Shortcuts -> Tab wheel (shortc
 SPEC_RELOAD_SECONDS = 1.0           # the combo is re-read this often, so a change in Settings applies at once
 _KEYEVENTF_KEYUP = 0x0002
 POLL_SECONDS = 0.025
+
+
+def _eco() -> bool:
+    try:
+        import settings_store
+        return settings_store.eco_on()
+    except Exception:
+        return False
 TAP_SECONDS = 0.25      # a press shorter than this is a tap: the wheel stays open
 RESTORE_CAPS = True     # put the Caps Lock light back after the shortcut flipped it
 _QUIET_SECONDS = 0.25   # ignore the keyboard this long after we press CapsLock ourselves
@@ -125,7 +133,7 @@ def _poll_loop() -> None:
             if not warned:
                 log.warning("Tab wheel hotkey error: %s", e)
                 warned = True
-        time.sleep(POLL_SECONDS)
+        time.sleep(0.05 if _eco() else POLL_SECONDS)   # Eco mode: slower key polling
 
 
 def start() -> bool:

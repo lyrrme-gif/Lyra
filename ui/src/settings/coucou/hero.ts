@@ -10,6 +10,7 @@
 import { createCharacter, gazeToward, type Character, type EmoteName } from "../../mascot/character";
 import { isReallyVisible, onVisibilityChange } from "../../core/visibility";
 import { FRAME_MS } from "../../core/fps";
+import { isEco } from "../../core/eco";
 
 export interface Hero {
   el: HTMLElement;
@@ -83,7 +84,7 @@ export function createHero(): Hero {
   function resize() {
     const r = el.getBoundingClientRect();
     if (!r.width) return;
-    dpr = Math.min(2, window.devicePixelRatio || 1);
+    dpr = isEco() ? 1 : Math.min(2, window.devicePixelRatio || 1);   // Eco mode: a quarter of the pixels to fill, same 60 fps
     const first = !W;
     W = r.width; H = r.height;
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);

@@ -1,4 +1,4 @@
-// Phase 1 — Voice engine card: Auto / Parakeet / Whisper, one-click model download, status pill.
+// Phase 1 — Voice engine card: the Parakeet voice model (required, no engine choice, no delete), one-click download, status pill.
 // Built only from the Settings helpers (card/item/toggle/confirmButton) so the design pass can restyle it.
 import { h } from "../../views/dom";
 import { visiblePoll, type VisiblePoll } from "../../core/visiblePoll";
@@ -41,17 +41,6 @@ export function voiceEngineCards(c: P1Ctx): HTMLElement[] {
   const pillText = h("span", { text: "Checking voice model…" });
   const pill = h("span", { class: "chip" }, dot, pillText);
 
-  const select = h("select", { "data-seg": "1" },
-    h("option", { value: "auto", text: "Auto" }),
-    h("option", { value: "parakeet", text: "Parakeet" }),
-    h("option", { value: "whisper", text: "Whisper" }),
-  ) as HTMLSelectElement;
-  select.addEventListener("change", async () => {
-    const r = await call("engine", { engine: select.value });
-    c.flashSaved(!!r?.ok);
-    if (r) apply(r);
-  });
-
   const bar = h("div", { class: "p1-bar", style: "height:6px;border-radius:3px;background:rgba(128,128,128,.25);overflow:hidden;flex:1;min-width:120px" },
     h("div", { class: "p1-bar-fill", style: "height:100%;width:0%;background:#22c55e;transition:width .3s" }));
   const barFill = bar.firstElementChild as HTMLElement;
@@ -62,17 +51,11 @@ export function voiceEngineCards(c: P1Ctx): HTMLElement[] {
   dlBtn.addEventListener("click", async () => { const r = await call("download", {}); if (r) apply(r); });
   const cancelBtn = h("button", { text: "Cancel" });
   cancelBtn.addEventListener("click", async () => { const r = await call("cancel", {}); if (r) apply(r); });
-  const delBtn = c.confirmButton("Delete model", "Click again to delete", async () => {
-    const r = await call("delete", {});
-    if (r) apply(r);
-    c.flashSaved(!!r?.ok);
-  });
 
   function apply(s: P1Status) {
     const p = s.parakeet;
     dot.style.background = s.ready ? "#22c55e" : s.downloading ? "#f5a524" : "#f4505e";
     pillText.textContent = s.pill;
-    select.value = s.mode;
     const showProgress = s.downloading;
     bar.style.display = showProgress ? "" : "none";
     progressText.style.display = showProgress ? "" : "none";
@@ -81,8 +64,7 @@ export function voiceEngineCards(c: P1Ctx): HTMLElement[] {
     dlBtn.style.display = !p.installed && !s.downloading ? "" : "none";
     dlBtn.textContent = p.resumable ? "Resume download" : "Download voice model (~700 MB)";
     cancelBtn.style.display = s.downloading ? "" : "none";
-    delBtn.style.display = p.installed && !s.downloading ? "" : "none";
-    const msg = p.error || (!p.available ? "The speech package (onnx-asr) is not installed, so Whisper is used." : "");
+    const msg = p.error || (!p.available ? "The speech package (onnx-asr) is not installed, so Whisper is used for now." : "");
     err.textContent = s.error || msg;
     // Download progress every 0.7 s only while downloading; cleared while this window is hidden.
     if (s.downloading && !dlPoll) dlPoll = visiblePoll(() => refresh(), { ms: 700, runOnShow: false });
@@ -98,11 +80,8 @@ export function voiceEngineCards(c: P1Ctx): HTMLElement[] {
   return [
     c.card("Voice engine",
       c.item("Status", "Everything runs on this computer after the one-time download. No audio is saved or sent anywhere.", pill),
-      c.item("Engine",
-        "Auto uses Parakeet when it supports your language and falls back to Whisper otherwise. Whisper is the original engine.",
-        select),
-      c.item("Voice model", "Parakeet v3, about 700 MB, stored in Lyra's data folder. Safe to stop and resume; the files are checked before use.",
-        h("div", { style: "display:flex;gap:10px;align-items:center;flex-wrap:wrap" }, dlBtn, bar, progressText, cancelBtn, delBtn)),
+      c.item("Voice model", "Lyra understands your voice with this model (Parakeet v3, about 700 MB), stored in Lyra's data folder. It is required, so it can't be removed. Safe to stop and resume; the files are checked before use.",
+        h("div", { style: "display:flex;gap:10px;align-items:center;flex-wrap:wrap" }, dlBtn, bar, progressText, cancelBtn)),
       err,
     ),
   ];

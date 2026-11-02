@@ -128,6 +128,8 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     if (State.chatExtra !== px) { State.chatExtra = px; onHeightChange(); }
   }
   const open = () => State.view === "prompt" && State.mode === "expanded";
+  // A command typed here folds the island away while Lyra works: its answer is kept for the double-click (last conversation).
+  let typedWaiting = false;
   const trim = () => { if (convo.length > MAX_TURNS) convo = convo.slice(-MAX_TURNS); };
 
   // Lyra's answer arrives while Chat is open: it joins the conversation and opens under the pill.
@@ -135,7 +137,14 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     const ex = Chats.last();
     if (!ex || ex.id === lastSeen) return;
     lastSeen = ex.id;
-    if (!open()) return;   // Chat is closed: it starts empty when opened
+    if (!open()) {   // Chat is closed: it starts empty when opened
+      if (typedWaiting) {
+        typedWaiting = false;
+        lastConvo = [...lastConvo, { q: ex.q, a: ex.a, ts: ex.ts }].slice(-MAX_TURNS);
+      }
+      return;
+    }
+    typedWaiting = false;   // answered while Chat is open (e.g. a search brought it back): the normal path keeps it
     const prev = convo[convo.length - 1];
     if (prev?.search && !prev.a && ex.ts - prev.ts < SEARCH_JOIN_MS) { prev.a = ex.a; if (!prev.q) prev.q = ex.q; }   // the sentence that goes with a search card
     else convo.push({ q: ex.q, a: ex.a, ts: ex.ts });
@@ -170,6 +179,9 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     pushUser(query);
     onHeightChange();
     sendChat(query);
+    typedWaiting = State.mode === "expanded" && State.view === "prompt" && !State.searchResult;
+    // The island folds to the small notch (Thinking, then the voice wave) and comes back here when Lyra is done.
+    window.dispatchEvent(new CustomEvent("lyra:chat-typed", { detail: query }));
     input.focus();
   }
 
