@@ -48,7 +48,13 @@ winsdk; sys_platform == "win32"
 # Shazam-compatible fingerprint recognition (no API key required)
 shazamio==0.8.1
 screen-brightness-control
-pyaudiowpatch; sys_platform == "win32"   # system-audio capture for the Recognize (song ID) tab
+pyaudiowpatch; sys_platform == "win32"   # system-audio capture for the Recognize (song ID) tab AND the recorder's sound
+
+# Screen recording (Record tab). Everything the built-in recorder needs lives here, so the built app never asks for a pip install:
+windows-capture; sys_platform == "win32"   # the built-in recorder's screen capture (Windows Graphics Capture). Needs no OBS.
+#   imageio-ffmpeg (above)  -> the ffmpeg that encodes the recording and makes thumbnails
+#   pyaudiowpatch (above)   -> the sound in the recording
+#   numpy, psutil (above)   -> frames and process checks
 pynput>=1.7.7                            # macro recorder (Step 9): global mouse/keyboard hooks and replay
 # File indexing formats (pptx support is optional at runtime)
 pypdf

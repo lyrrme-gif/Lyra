@@ -17,14 +17,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np  # noqa: E402
 
-for _m in ("pyaudio", "openwakeword", "openwakeword.model", "pygame", "speech_recognition", "faster_whisper"):
+for _m in ("pyaudio", "pygame", "speech_recognition", "faster_whisper"):
     if _m not in sys.modules:
         try:
             __import__(_m)
         except Exception:
             sys.modules[_m] = types.ModuleType(_m)
-if not hasattr(sys.modules["openwakeword.model"], "Model"):
-    sys.modules["openwakeword.model"].Model = object
 if not hasattr(sys.modules["faster_whisper"], "WhisperModel"):
     sys.modules["faster_whisper"].WhisperModel = object
 if not hasattr(sys.modules["speech_recognition"], "Recognizer"):

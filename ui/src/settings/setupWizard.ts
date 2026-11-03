@@ -1043,8 +1043,7 @@ export async function showSetupWizard(ctx: WizardCtx): Promise<void> {
     // Feature switches: island tabs apply now, helpers when the backend restarts below.
     for (const f of FEATURES) if (!f.soon) ctx.applyFeature(f, choices.features[f.id], featPrefs);
     featPrefs.set("mascot_shape", choices.shape);
-    // Talk is Right Ctrl only (there is no wake word any more).
-    voicePrefs.set("voice_activation_mode", "ptt");
+    // Talk is Right Ctrl only (there is no wake word).
     voicePrefs.set("audio_input", choices.mic);
     voicePrefs.set("mochi_sound_mode", choices.reply);
     voicePrefs.set("tts_engine", choices.ttsEngine);

@@ -13,9 +13,11 @@
 // small thread watches for both: Esc, or a left click outside the window, closes it.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use serde_json::Value;
+use tauri::webview::PageLoadEvent;
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
@@ -46,9 +48,32 @@ static UP: AtomicBool = AtomicBool::new(false);
 /// The thread that watches for Esc / an outside click is running.
 static WATCHING: AtomicBool = AtomicBool::new(false);
 
-/// Called once from lib.rs setup (Windows only). The window is built hidden and kept.
-pub fn create(app: &AppHandle) {
+/// The wheel's window only exists while it is needed: it is built the first time the wheel opens (about half a second, once)
+/// and destroyed again after it has been closed for IDLE_DESTROY_S, so an unused wheel costs no WebView2 process at all.
+const IDLE_DESTROY_S: u64 = 90;
+
+/// The payload of an open that is waiting for a freshly built window to finish loading its page.
+static PENDING: Mutex<Option<Value>> = Mutex::new(None);
+/// A "commit" / "stay" that arrived while that open was still waiting (a quick tap of the shortcut): sent right after the open.
+static PENDING_CMD: Mutex<Option<String>> = Mutex::new(None);
+
+/// Builds the (hidden) window; when its page has loaded the waiting open, if any, is shown.
+fn build(app: &AppHandle) {
+    if app.get_webview_window(LABEL).is_some() {
+        return;
+    }
+    let handle = app.clone();
     let built = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("wheel.html".into()))
+        .on_page_load(move |_win, payload| {
+            if matches!(payload.event(), PageLoadEvent::Finished) {
+                let h = handle.clone();
+                std::thread::spawn(move || {
+                    // a moment for the page's own listeners to be set up before the first event
+                    std::thread::sleep(Duration::from_millis(150));
+                    flush_pending(&h);
+                });
+            }
+        })
         .title("Lyra launcher")
         .inner_size(WIDTH, HEIGHT)
         .decorations(false)
@@ -94,10 +119,34 @@ fn place(app: &AppHandle, win: &WebviewWindow, _at_cursor: bool) {
     let _ = win.set_position(PhysicalPosition::new(x, y));
 }
 
+/// Shows the open that was waiting for the window to load.
+fn flush_pending(app: &AppHandle) {
+    let payload = match PENDING.lock() {
+        Ok(mut g) => g.take(),
+        Err(_) => None,
+    };
+    let Some(payload) = payload else { return };
+    let Some(win) = app.get_webview_window(LABEL) else { return };
+    show_now(app, &win, false, payload);
+    let cmd = match PENDING_CMD.lock() {
+        Ok(mut g) => g.take(),
+        Err(_) => None,
+    };
+    if let Some(cmd) = cmd {
+        let _ = app.emit_to(LABEL, "wheel-cmd", cmd);
+    }
+}
+
 /// Takes the wheel down. True if it was actually up. The page is told first so it can play its
 /// closing animation; the window itself goes LEAVE_MS later, unless the wheel was shown again
 /// in the meantime.
 fn hide(app: &AppHandle) -> bool {
+    if let Ok(mut g) = PENDING.lock() {
+        *g = None;                      // closed before the page had even loaded: nothing to show any more
+    }
+    if let Ok(mut c) = PENDING_CMD.lock() {
+        *c = None;
+    }
     let was_up = UP.swap(false, Ordering::SeqCst);
     if !was_up {
         return false;
@@ -113,6 +162,13 @@ fn hide(app: &AppHandle) -> bool {
         if let Some(win) = app.get_webview_window(LABEL) {
             let _ = win.hide();
         }
+        // Closed for a good while: give the WebView2 process back (the next open builds it again).
+        std::thread::sleep(Duration::from_secs(IDLE_DESTROY_S));
+        if GEN.load(Ordering::SeqCst) == gen && !UP.load(Ordering::SeqCst) {
+            if let Some(win) = app.get_webview_window(LABEL) {
+                let _ = win.destroy();
+            }
+        }
     });
     true
 }
@@ -121,14 +177,29 @@ fn hide(app: &AppHandle) -> bool {
 /// `at_cursor` is kept for the island's call but no longer moves the window: it is always centred.
 #[tauri::command]
 pub fn wheel_open(app: AppHandle, at_cursor: bool, payload: Value) {
-    let Some(win) = app.get_webview_window(LABEL) else { return };
-    GEN.fetch_add(1, Ordering::SeqCst);        // cancels a hide that is still waiting out its animation
-    place(&app, &win, at_cursor);
+    GEN.fetch_add(1, Ordering::SeqCst);        // cancels a hide (or the idle destroy) that is still waiting
+    let Some(win) = app.get_webview_window(LABEL) else {
+        // No window yet (first open, or destroyed after idling): build it; its page shows the wheel once loaded.
+        // Built on a thread: building a window from a sync command can deadlock on Windows.
+        if cfg!(windows) {
+            if let Ok(mut g) = PENDING.lock() {
+                *g = Some(payload);
+            }
+            std::thread::spawn(move || build(&app));
+        }
+        return;
+    };
+    show_now(&app, &win, at_cursor, payload);
+}
+
+/// Places, shows and fills the wheel window (which exists).
+fn show_now(app: &AppHandle, win: &WebviewWindow, at_cursor: bool, payload: Value) {
+    place(app, win, at_cursor);
     let _ = win.set_always_on_top(true);
     let _ = win.show();
     UP.store(true, Ordering::SeqCst);
     let _ = app.emit_to(LABEL, "wheel-open", payload);
-    watch(&app);
+    watch(app);
 }
 
 /// Hide the wheel without a choice.
@@ -149,6 +220,17 @@ pub fn wheel_pick(app: AppHandle, view: String) {
 /// The island forwards "commit" (the shortcut was held and let go) or "stay" (it was only tapped).
 #[tauri::command]
 pub fn wheel_cmd(app: AppHandle, cmd: String) {
+    let waiting = match PENDING.lock() {
+        Ok(g) => g.is_some(),
+        Err(_) => false,
+    };
+    if waiting {
+        // the window is still loading: keep the command and send it right after the wheel opens
+        if let Ok(mut c) = PENDING_CMD.lock() {
+            *c = Some(cmd);
+        }
+        return;
+    }
     let _ = app.emit_to(LABEL, "wheel-cmd", cmd);
 }
 

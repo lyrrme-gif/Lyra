@@ -1,12 +1,12 @@
-// Settings — Lyra: LLM providers + editable mod slots + Coucou general prefs.
+// Settings — Lyra: LLM providers + editable mod slots + Lyra general prefs.
 
 import "./settings.css";
 import "./settings-mac.css";
 import "./settings-lyra.css";
-import "./settings-coucou.css";
+import "./settings-lyra-shell.css";
 import "./settings-frameless.css";
 import "./controls-v2.css";
-import { lineIcon } from "./coucou/icons";
+import { lineIcon } from "./lyra/icons";
 import { Bridge, onEvent } from "../core/bridge";
 import { DEFAULT_SETTINGS, readExtras, writeExtras, type LiveActivity, type Settings } from "../core/state";
 import { h, clear } from "../views/dom";
@@ -484,7 +484,7 @@ function llmSection(info: LlmInfo): HTMLElement {
 // ── Mods (editable names, up to 4) ────────────────────────────────────────────
 
 
-// ── General / Island prefs (Coucou island prefs — unchanged behaviour) ────────
+// ── General / Island prefs (Lyra island prefs — unchanged behaviour) ────────
 
 function soundCard(): HTMLElement {
   const volume = h("input", {
@@ -849,7 +849,7 @@ function advancedCards(a: Prefs): HTMLElement[] {
       "Backend",
       item(
         "Restart backend",
-        "Restarts Lyra’s Python process. Needed after changing the microphone, speaker or wake sensitivity if they do not apply on their own.",
+        "Restarts Lyra’s Python process. Needed after changing the microphone or speaker if they do not apply on their own.",
         restart,
       ),
       item(
@@ -899,8 +899,6 @@ const PREF_DEFAULTS: Record<string, Record<string, PrefVal>> = {
   voice: {
     audio_input: "Default Microphone",
     audio_output: "Default Speaker",
-    wake_sensitivity: 3,
-    voice_activation_mode: "ptt",
     tts_voice: "",
     tts_engine: "edge",
     dictation_enabled: true,
@@ -1634,7 +1632,7 @@ export const GLYPHS: Record<string, Glyph> = {
 
 function sideIcon(id: string): HTMLElement {
   const el = h("span", { class: "tab-icon" });
-  el.innerHTML = lineIcon(id);   // line icons (coucou/icons.ts); the coloured GLYPHS above stay for the onboarding / tour
+  el.innerHTML = lineIcon(id);   // line icons (lyra/icons.ts); the coloured GLYPHS above stay for the onboarding / tour
   return el;
 }
 

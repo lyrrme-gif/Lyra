@@ -1183,10 +1183,18 @@ def main():
                 _k.SetThreadPriority(_k.GetCurrentThread(), -1)     # THREAD_PRIORITY_BELOW_NORMAL
         except Exception:
             pass
+        # Whisper is only the fallback now (Parakeet is the voice model): do not load ~1 GB of it at every launch when
+        # Parakeet is installed. It still loads by itself the first time a sentence needs it.
         try:
-            voice._stt_engine.load()
-        except Exception as e:
-            ui.log.error("Speech model unavailable (%s) - voice commands will not work.", e)
+            import stt_engines
+            _need_whisper = not stt_engines.parakeet_ready()
+        except Exception:
+            _need_whisper = True
+        if _need_whisper:
+            try:
+                voice._stt_engine.load()
+            except Exception as e:
+                ui.log.error("Speech model unavailable (%s) - voice commands will not work.", e)
         try:
             import streaming_stt
             streaming_stt.load()
@@ -1203,8 +1211,15 @@ def main():
         try:
             import stt_engines
             stt_engines.preload()
+            stt_engines.start_idle_unloader()     # Parakeet and the streaming model give their RAM back after a few idle minutes
         except Exception as e:
             ui.log.warning("Parakeet preload not started: %s", e)
+        # The openai package is no longer imported at launch (it cost ~0.9 s of startup). Load it here, in the background
+        # and after everything above, so the first command that needs the LLM is not the one that pays for it.
+        try:
+            import openai  # noqa: F401
+        except Exception:
+            pass
     threading.Thread(target=_speech_warmup, name="lyra-speech-warmup", daemon=True).start()
     try:    # recording keyboard shortcuts (Settings -> Shortcuts): Ctrl+Alt+R / Ctrl+Alt+P unless changed or removed
         import record_hotkey

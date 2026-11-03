@@ -18,7 +18,6 @@ import tempfile
 import threading
 import queue
 
-import edge_tts
 import pygame
 import speech_recognition as sr
 
@@ -275,6 +274,7 @@ def _synthesize_to_file(text: str) -> str:
                 voice_id = pick_voice(text, voice_id)
         except Exception:
             pass
+        import edge_tts           # first spoken sentence only: edge_tts + aiohttp cost ~0.14 s at launch otherwise
         try:
             await edge_tts.Communicate(text, voice=voice_id, rate=rate, connector=_edge_connector()).save(path)
         except Exception as e:

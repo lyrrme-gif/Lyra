@@ -31,13 +31,31 @@ function avatar(name: string, image = "", size = 34, square = false): HTMLElemen
   return el;
 }
 
-/** The mic on the chat list and in the reply bar: Lyra starts listening (the same call as the Chat tab's mic). */
-function talkToLyra(): void {
-  void fetch("http://127.0.0.1:8765/voice/toggle", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => undefined);
+/** Dictation, not "talk to Lyra": Lyra types what you say into the focused box (the backend's dictation). */
+function dictation(action: "toggle" | "stop" | "status"): Promise<boolean> {
+  return fetch("http://127.0.0.1:8765/dictation/toggle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) })
+    .then((r) => r.json()).then((j: { active?: boolean }) => !!j.active).catch(() => false);
 }
-function micButton(): HTMLElement {
-  const b = h("button", { class: "ap-micbtn", type: "button", title: "Talk to Lyra", "aria-label": "Talk to Lyra" }, svg(ICONS.mic, 16, { stroke: 2 }));
-  b.addEventListener("click", (e) => { e.stopPropagation(); talkToLyra(); });
+/** The mic in the chat bar and the search box: click, say it, and the words appear in that box. Click again (or stop talking) to finish. */
+function micButton(target: HTMLInputElement): HTMLElement {
+  const b = h("button", { class: "ap-micbtn", type: "button", title: "Dictate: writes what you say here", "aria-label": "Dictate into this box", "aria-pressed": "false" }, svg(ICONS.mic, 16, { stroke: 2 }));
+  let on = false;
+  let poll = 0;
+  const set = (v: boolean) => {
+    on = v;
+    b.classList.toggle("on", v);
+    b.setAttribute("aria-pressed", String(v));
+    window.clearInterval(poll);
+    // dictation also ends by itself after a few seconds of silence: follow it
+    if (v) poll = window.setInterval(() => { void dictation("status").then((a) => { if (!a) set(false); }); }, 1200);
+  };
+  b.addEventListener("mousedown", (e) => e.preventDefault());          // the caret stays in the box: that is where the words go
+  b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    target.focus();
+    void dictation("toggle").then(set);
+  });
+  target.addEventListener("blur", () => { if (on) { set(false); void dictation("stop"); } });
   return b;
 }
 
@@ -292,7 +310,7 @@ export function buildApps(onResize?: () => void): ViewHost {
     ensureMochi();
     const search = h("div", { class: "ap-searchrow" },
       mochiHost,
-      h("div", { class: "ap-find-pill" }, svg(ICONS.search, 15, { stroke: 2 }), find, micButton()));
+      h("div", { class: "ap-find-pill" }, svg(ICONS.search, 15, { stroke: 2 }), find, micButton(find)));
 
     const defs: Array<["all" | "unread" | "group", string]> = [["all", "All"], ["unread", unreadN ? `Unread ${unreadN}` : "Unread"], ["group", "Groups"]];
     const chipEls = defs.map(([k, label]) => {
@@ -552,7 +570,7 @@ export function buildApps(onResize?: () => void): ViewHost {
           });
         } }, svg(ICONS.star, 15)));
       }
-      pill.append(micButton(), send);
+      pill.append(micButton(input), send);
       compose.append(pill);
       row.append(compose);
       box.append(row);

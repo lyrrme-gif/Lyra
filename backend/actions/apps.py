@@ -12,7 +12,7 @@ from io import BytesIO
 from urllib.parse import quote_plus
 from typing import Optional
 
-from openai import OpenAI, BadRequestError
+from lazy_imports import OpenAI          # the openai package is imported on first use (it costs ~0.9 s at launch)
 from PIL import ImageGrab, ImageDraw, ImageFont
 import pygetwindow as gw
 import pyautogui
@@ -240,11 +240,11 @@ def _vision_complete(messages, max_tokens=180):
                 resp = client.chat.completions.create(**kwargs)
                 _vision_last_ok = name
                 return (resp.choices[0].message.content or ""), None
-            except BadRequestError as e:      # often just the extra param - retry bare
+            except Exception as e:
                 last_err = e
-                continue
-            except Exception as e:            # 404 / auth / rate limit -> next provider
-                last_err = e
+                if type(e).__name__ == "BadRequestError":      # often just the extra param - retry bare
+                    continue
+                # 404 / auth / rate limit -> next provider
                 if getattr(e, "status_code", None) == 429 or "rate limit" in str(e).lower():
                     _vision_cooldown[name] = _time.monotonic() + _rate_limit_wait(e)
                     log.warning("Vision via %s/%s rate limited - skipping it for %.0fs", name, model,

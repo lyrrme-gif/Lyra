@@ -20,6 +20,7 @@ and then the callers simply keep the streaming text, exactly as before.
 from __future__ import annotations
 
 import threading
+import time
 
 import numpy as np
 
@@ -49,8 +50,38 @@ def available() -> bool:
         return False
 
 
+_last_use = time.monotonic()
+
+
 def loaded() -> bool:
     return _rec is not None
+
+
+def _touch() -> None:
+    global _last_use
+    _last_use = time.monotonic()
+
+
+def idle_for() -> float:
+    """Seconds since a session last started (or the model loaded)."""
+    return time.monotonic() - _last_use
+
+
+def unload() -> bool:
+    """Free the model (the idle unloader calls this). It loads again by itself on the next dictation / voice turn."""
+    global _rec
+    with _load_lock:
+        if _rec is None:
+            return False
+        _rec = None
+    import gc
+    gc.collect()
+    log.info("Streaming speech model unloaded after idling (it loads again when you next speak).")
+    return True
+
+
+def _load_in_background() -> None:
+    threading.Thread(target=load, name="lyra-streaming-reload", daemon=True).start()
 
 
 def load() -> bool:
@@ -81,6 +112,7 @@ def load() -> bool:
                 rule3_min_utterance_length=20.0,   # hard cap on one segment (seconds)
                 decoding_method="greedy_search",
             )
+            _touch()
             log.info("Streaming speech model loaded: %s", STREAMING_MODEL_NAME)
             return True
         except Exception as e:
@@ -92,7 +124,11 @@ def load() -> bool:
 def new_session() -> "Session | None":
     """A fresh recognition stream, or None if the model is not loaded (yet)."""
     if _rec is None:
+        # Unloaded after idling: this turn goes without early end-of-speech (silence ends it), and the model comes back for the next one.
+        if STREAMING_ENABLED and not _failed:
+            _load_in_background()
         return None
+    _touch()
     try:
         return Session(_rec)
     except Exception as e:

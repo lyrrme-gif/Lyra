@@ -6,15 +6,14 @@ import os
 # ---------------------------------------------------------------------------
 # Wake words / phrases
 # ---------------------------------------------------------------------------
-# Wake phrases from settings.json (wake_name). openWakeWord still uses
-# hey_jarvis phonetically; STT maps transcripts to the configured name.
+# The assistant's name as people say it ("hey Lyra", "Lyra"), from settings.json (wake_name): spoken
+# commands may start with it and it is stripped. (There is no wake-word detector: talking starts with Right Ctrl.)
 try:
     from settings_store import wake_phrases as _wake_phrases
     WAKE_WORDS = _wake_phrases()
 except Exception:
     WAKE_WORDS = [
-        "hey lyra", "hey lira", "hey lyra", "hey jarvis", "jarvis",
-        "lyra", "lyra",
+        "hey lyra", "hey lira", "lyra",
     ]
 EXIT_PHRASES = ["shut down system", "power off", "goodbye forever"]
 STANDBY_PHRASES = ["thank you", "stop listening", "go to sleep", "standby"]
@@ -213,27 +212,10 @@ ECHO_THRESHOLD_MULTIPLIER = 1.8
 POWER_ACTION_DELAY = 8
 
 # ---------------------------------------------------------------------------
-# Phase 0: Wake word detection (openWakeWord)
+# Microphone capture (dictation and push-to-talk): 16 kHz mono, 80 ms chunks.
 # ---------------------------------------------------------------------------
-# Pre-trained models: alexa, hey_mycroft, hey_jarvis, etc. No native "hey_lyra"
-# model, so hey_jarvis is the phonetic detector; STT maps transcripts to "lyra".
-WAKE_MODEL = "hey_jarvis"
-# Lower = more sensitive. 0.3 works when saying "hey Lyra" into hey_jarvis.
-WAKE_THRESHOLD = 0.25
-WAKE_CHUNK_SIZE = 1280      # audio chunk size for wake word detection (80ms at 16kHz)
-WAKE_SAMPLE_RATE = 16000    # sample rate for wake word audio
-
-# Utterance capture while in standby (see wake.py). Lyra only acts on speech that
-# contains the wake phrase; everything else is ignored.
-WAKE_MIN_SPEECH_RMS = 350   # mic level that counts as speech. Lower it if Lyra misses quiet voices,
-                            # raise it if background noise keeps triggering transcription.
-WAKE_END_SILENCE = 0.9      # seconds of silence that end an utterance
-WAKE_MAX_UTTERANCE = 12     # hard cap on one utterance (seconds)
-WAKE_PREROLL_CHUNKS = 8     # audio kept from BEFORE speech starts (8 x 80ms) so "hey" isn't clipped
-# If you say only "Hey Lyra" and pause, wait this long (seconds) for the command that
-# belongs to THAT wake. After the command runs Lyra always returns to standby.
-# Set to 0 to require the command in the same breath.
-WAKE_FOLLOWUP_GRACE = 4.0
+MIC_CHUNK_SIZE = 1280       # frames per read (80 ms at 16 kHz)
+MIC_SAMPLE_RATE = 16000
 
 # ---------------------------------------------------------------------------
 # Phase 0: Speech-to-text (faster-whisper)
@@ -270,7 +252,7 @@ STREAMING_MODEL_URL = (
     "sherpa-onnx-streaming-zipformer-en-20M-2023-02-17.tar.bz2"
 )
 STREAMING_THREADS = 2
-# Wake / PTT turns: end the turn after this much silence (instead of WAKE_END_SILENCE)
+# PTT turns: end the turn after this much silence (instead of the normal pause threshold)
 # once the partial text has stopped changing for STREAMING_STABLE_S.
 STREAMING_EARLY_END = True
 STREAMING_END_SILENCE = 0.5

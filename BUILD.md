@@ -18,7 +18,7 @@ After that first drag, it behaves normally. Code: `ui/src/mascot/engine.ts` -> `
 - backend/mods.py + mods.json (nothing imports them)
 - backend/build_and_install.ps1 (old PyInstaller script for a deleted app_qt.py)
 - ui/src/design/skin-wheel.css (not imported anywhere)
-- ui/src-tauri/tauri.linux.conf.json (pointed at missing coucou-hook files)
+- ui/src-tauri/tauri.linux.conf.json (pointed at missing lyra-hook files)
 - empty backend/notetaker/sessions + tmp (created at runtime), all __pycache__
 - backend/test_guide.py, test_google_workspace.py moved into backend/tests/
 

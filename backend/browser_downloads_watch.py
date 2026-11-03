@@ -45,7 +45,7 @@ def _history_changed(src) -> bool:
 
 
 _INTERVAL = 0.8
-_IDLE_INTERVAL = 2.5   # light mode: nothing downloading -> copy and read the browser history less often
+_IDLE_INTERVAL = 2.0   # nothing downloading -> look at the browser history less often (every mode, not only Light)
 
 
 def _light() -> bool:
@@ -342,10 +342,9 @@ def start(publisher: Publisher) -> None:
     # immediately, even if they began before Lyra started.
     seen: dict[tuple[str, str], tuple] = {}
 
-    light = _light()
 
     def _wait_s() -> float:
-        if not light or _ACTIVE or seen:
+        if _ACTIVE or seen:
             return _INTERVAL
         try:
             import downloads_watch as _dw
@@ -359,7 +358,7 @@ def start(publisher: Publisher) -> None:
         nonlocal seen
         while not _stop.wait(_wait_s()):
             for browser, src in _profiles():
-                if light and not seen and not _ACTIVE and not _history_changed(src):
+                if not seen and not _ACTIVE and not _history_changed(src):
                     continue                              # the browser wrote nothing since the last look: no copy, no read
                 db = _copy_db(src)
                 if not db:

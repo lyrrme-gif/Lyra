@@ -172,6 +172,71 @@ def preload() -> bool:
         return False
 
 
+_idle_started = False
+
+
+def _idle_limit_s() -> float:
+    """Minutes of silence after which the speech models give their memory back (Settings: speech_idle_unload_min; 0 = never)."""
+    try:
+        m = float(_setting("speech_idle_unload_min", 5) or 0)
+    except (TypeError, ValueError):
+        m = 5.0
+    return 0.0 if m <= 0 else max(60.0, m * 60.0)
+
+
+def unload_idle(now: float | None = None) -> list[str]:
+    """Unload Parakeet and the streaming model if neither was used for the idle limit. Returns what was unloaded.
+    Never while a dictation or a voice command is running. Both load themselves again on the next use."""
+    limit = _idle_limit_s()
+    if limit <= 0:
+        return []
+    try:
+        import dictation
+        if dictation.is_active():
+            return []
+    except Exception:
+        pass
+    try:
+        import ptt
+        if getattr(ptt, "_holding", False):
+            return []
+    except Exception:
+        pass
+    freed: list[str] = []
+    now = time.monotonic() if now is None else now
+    with _lock:
+        eng = _engine
+    if eng is not None and eng.loaded() and now - getattr(eng, "last_use", now) >= limit:
+        eng.unload()
+        log.info("Parakeet unloaded after %d idle minutes (it loads again on the next sentence).", int(limit // 60))
+        freed.append("parakeet")
+    try:
+        import streaming_stt
+        if streaming_stt.loaded() and streaming_stt.idle_for() >= limit and streaming_stt.unload():
+            freed.append("streaming")
+    except Exception:
+        pass
+    return freed
+
+
+def start_idle_unloader() -> None:
+    """One daemon thread that checks every 30 s. Safe to call more than once."""
+    global _idle_started
+    with _lock:
+        if _idle_started:
+            return
+        _idle_started = True
+
+    def loop() -> None:
+        while True:
+            time.sleep(30)
+            try:
+                unload_idle()
+            except Exception:                                  # noqa: BLE001
+                pass
+    threading.Thread(target=loop, name="lyra-speech-idle", daemon=True).start()
+
+
 def route(language: str | None = None, engine_override: str | None = None) -> tuple[str, str]:
     """Which engine would handle this language right now? -> ('parakeet' | 'whisper', reason)."""
     return _lang.choose_engine(engine_override or mode(), language, parakeet_ready=parakeet_ready())

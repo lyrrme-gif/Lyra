@@ -449,7 +449,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     let handle = app.clone();
                     let _ = app.run_on_main_thread(move || platform::unblock_webview_drops(&handle));
                     // Diagnostics: every press is logged with what the hit-test thought, so a
-                    // "dead" click can be explained from %LOCALAPPDATA%\Coucou\coucou.log.
+                    // "dead" click can be explained from %LOCALAPPDATA%\Lyra\lyra.log.
                     let r = *gate.rect.lock().unwrap();
                     crate::log::line(format!(
                         "press at ({:.0},{:.0}) island rect ({:.0},{:.0} {:.0}x{:.0}) hit={} ignoring={} window={:.0}x{:.0} scale={:.2}",

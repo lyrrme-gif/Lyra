@@ -52,6 +52,7 @@ class ParakeetEngine:
         self._lock = threading.Lock()          # load once
         self._run_lock = threading.Lock()      # one decode at a time (ORT sessions are shared)
         self.last_error = ""
+        self.last_use = time.monotonic()       # for the idle unloader (stt_engines.start_idle_unloader)
 
     def loaded(self) -> bool:
         return self._model is not None
@@ -97,12 +98,14 @@ class ParakeetEngine:
         a = prepare_audio(audio)
         if a.size < int(0.08 * SAMPLE_RATE):
             return ""
+        self.last_use = time.monotonic()
         self.load()
         parts = []
         for piece in split_long(a, MAX_PIECE_SECONDS):
             if piece.size < int(0.08 * SAMPLE_RATE):
                 continue
             with self._run_lock:
+                self.last_use = time.monotonic()
                 text = self._model.recognize(piece, sample_rate=SAMPLE_RATE)
             text = (text if isinstance(text, str) else str(getattr(text, "text", text) or "")).strip()
             if text:

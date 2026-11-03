@@ -99,6 +99,10 @@ export function buildTabDock(actions: ViewActions): ViewHost {
       // alone beside it (timer on the left, any other open tab on the right), exactly like in wheel mode.
       const nav = State.extras.navStyle === "wheel" ? "wheel" : "scroller";   // "both" shows the scroller too; the wheel opens from its own gestures
       el.dataset.nav = nav;
+      // "Tab wheel" = no bar under the island. "Scroller" / "Both" = the scroller bar, while the island is open.
+      const show = nav === "scroller" && visible;
+      el.style.opacity = show ? "1" : "0";
+      el.style.pointerEvents = show ? "auto" : "none";
 
       // Tabs the user switched off in Settings → Features are taken out of the dock.
       permTabs.forEach((b) => { b.hidden = !State.viewAllowed(b.dataset.view as IslandViewName); });

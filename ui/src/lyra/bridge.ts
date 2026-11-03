@@ -5,7 +5,7 @@
  *   idle | listening | thinking | speaking | executing | success | error
  *
  * Options to connect them:
- * 1. Named pipe / Unix socket (same pattern Coucou used for hooks)
+ * 1. Named pipe / Unix socket (same pattern Lyra used for hooks)
  * 2. Local WebSocket server in the Tauri process
  * 3. Tauri command that Python calls via a small sidecar
  *

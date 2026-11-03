@@ -29,7 +29,7 @@ let lyraThinking = false;
 let replyReceived = false;
 let answerUntil = 0; // an answer stays at least until here, whatever the state events say
 
-// ── Diagnostics: a few lines in Lyra's log (%LOCALAPPDATA%\Coucou\coucou.log) so a silent caption can be traced ──
+// ── Diagnostics: a few lines in Lyra's log (%LOCALAPPDATA%\Lyra\lyra.log) so a silent caption can be traced ──
 let dbgLeft = 80;
 function dbg(msg: string): void {
   if (!IS_TAURI || dbgLeft <= 0) return;

@@ -1,4 +1,4 @@
-"""Lyra ↔ Coucou UI bridge over local HTTP (more reliable than WS on Windows).
+"""Lyra ↔ Lyra UI bridge over local HTTP (more reliable than WS on Windows).
 
   POST http://127.0.0.1:8765/chat   body: {"text":"..."}
   GET  http://127.0.0.1:8765/events?since=0
@@ -1158,6 +1158,29 @@ class Handler(BaseHTTPRequestHandler):
                 if not ok and message.startswith("Put the cursor"):
                     push_dictation_polish("Move the cursor to the end, then Apply")
                 self._json(200, {"ok": ok, "message": message})
+            except Exception as e:
+                self._json(500, {"ok": False, "error": str(e)})
+            return
+
+        if parsed.path == "/dictation/toggle":
+            # The mic in the WhatsApp chat bar: dictation (it types what you say into the focused box, here the chat bar or
+            # the search box) instead of talking to Lyra. One click starts it hands-free, the next click (or 8 s of silence) ends it.
+            # action: "toggle" (default) | "stop" | "status".
+            try:
+                import dictation
+                action = str(msg.get("action") or "toggle")
+                if action == "status":
+                    self._json(200, {"ok": True, "active": dictation.is_active()})
+                elif dictation.is_active():
+                    dictation.stop()
+                    self._json(200, {"ok": True, "active": False})
+                elif action == "stop":
+                    self._json(200, {"ok": True, "active": False})
+                else:
+                    started = dictation.start()
+                    if started:
+                        dictation.set_handsfree()           # keeps listening until the next click; the words are pasted at the end
+                    self._json(200, {"ok": started, "active": started})
             except Exception as e:
                 self._json(500, {"ok": False, "error": str(e)})
             return

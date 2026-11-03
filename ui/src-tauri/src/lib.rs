@@ -1,4 +1,4 @@
-// Lyra UI — Coucou visual shell (window, tray, island). Agent/Claude code removed.
+// Lyra UI — Lyra visual shell (window, tray, island). Agent/Claude code removed.
 
 mod autohide;
 mod backend;
@@ -324,8 +324,8 @@ pub fn run() {
             // Bottom-of-screen caption pill (what Lyra heard / answered). Windows only.
             if cfg!(windows) {
                 caption::create(&handle, &loaded.screen);
-                // The tab wheel (hold Ctrl+CapsLock): its own hidden window, shown at the cursor.
-                wheel::create(&handle);
+                // The tab wheel (hold Ctrl+CapsLock) is NOT built here any more: wheel::wheel_open builds its window the first
+                // time it is needed and wheel.rs destroys it again after it has been closed for a while.
             }
 
             if let Some(win) = island::window(&handle) {

@@ -12,6 +12,12 @@ if (-not (Test-Path -LiteralPath $py)) {
     throw "venv not found at $py. Create it first: py -3.13 -m venv venv ; & '.\venv\Scripts\python.exe' -m pip install -r requirements.txt"
 }
 
+# Always bring the venv up to date with requirements.txt first (fast when nothing changed). Without this, a venv made before a
+# package was added (for example windows-capture, which the recorder needs) builds an exe that asks for "pip install ...".
+Write-Host "Installing requirements.txt into the venv..."
+& $py -m pip install -r (Join-Path $PSScriptRoot "requirements.txt")
+if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements.txt failed" }
+
 Write-Host "Installing/Updating PyInstaller in the venv..."
 & $py -m pip install --upgrade pyinstaller pyinstaller-hooks-contrib
 if ($LASTEXITCODE -ne 0) { throw "pip failed" }

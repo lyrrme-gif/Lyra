@@ -38,7 +38,7 @@ export function readExtras(): UiExtras {
       // Prefs removed from Settings (outline, idle circle, swipe, tab-bar mode) are dropped, not carried around.
       for (const k of ["outline", "outlineRest", "idleStyle", "swipeNav", "dockMode", "cleanIsland"]) delete saved[k];
       // "Scroller" used to come with a separate "keep the wheel" switch (on unless turned off): that pair is now one choice.
-      if (saved.navStyle === "scroller" && saved.keepWheel !== false) saved.navStyle = "both";
+      if (saved.navStyle === "scroller" && saved.keepWheel === true) saved.navStyle = "both";   // only an old explicit "keep the wheel" pair; a plain "scroller" saved now stays "scroller"
       delete saved.keepWheel;
       if (saved.navStyle !== "wheel" && saved.navStyle !== "scroller" && saved.navStyle !== "both") delete saved.navStyle;
       return { ...DEFAULT_EXTRAS, ...saved };
@@ -71,7 +71,7 @@ export interface AgentTask {
   emote?: BotEmoteName | null;
   pillBadge?: PillBadge | null;
   sessionCwd?: string | null;
-  /** Lyra mod slot (Gaming / Focus / ...) rather than a Coucou integration. */
+  /** Lyra mod slot (Gaming / Focus / ...) rather than a Lyra integration. */
   /** The built-in white "Lyra" pill: normal mode, always first and always on. */
   isNormal?: boolean;
 }
@@ -453,7 +453,7 @@ class AppState {
   }
 
   defaultView(): IslandViewName {
-    // Coucou behaviour: overview if tasks exist, otherwise empty — not chat
+    // Lyra behaviour: overview if tasks exist, otherwise empty — not chat
     return this.tasks.length === 0 ? "empty" : "overview";
   }
 }

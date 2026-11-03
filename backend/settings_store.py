@@ -56,6 +56,7 @@ _DEFAULTS: dict[str, Any] = {
     # >>> phase-1 begin
     "whisper_model": "base",          # tiny | base | small | medium: smaller = far less CPU per sentence, a little less exact ("small" was the old default)
     "whisper_threads": 0,             # CPU threads for the speech model; 0 = half of your cores
+    "speech_idle_unload_min": 5,      # Parakeet + streaming model: free their memory after this many idle minutes (0 = never)
     "whisper_idle_unload_min": 10,    # free the speech model's memory after this many idle minutes (0 = never)
     "low_priority_backend": True,     # run Lyra's engine below normal priority so games and apps always win
     "p1_stt_engine": "parakeet",    # fixed to parakeet: Lyra works with the Parakeet voice model only (stt_engines)
@@ -88,8 +89,6 @@ _DEFAULTS: dict[str, Any] = {
     "llm_fallback_provider": "",            # "" = none | openrouter | gemini | groq
     "reply_style": "balanced",              # short | balanced | detailed
     # Voice
-    "wake_sensitivity": 3,                  # 1 (needs a loud voice) .. 5 (picks up quiet speech)
-    "voice_activation_mode": "ptt",        # always push-to-talk (Right Ctrl): there is no wake word any more
     # Dictation (Phase 4): hold or toggle a shortcut and Lyra types what you say into the focused window.
     "dictation_enabled": True,
     "dictation_hotkey": "ctrl+alt",         # see dictation_hotkey.HOTKEYS
@@ -294,12 +293,11 @@ PREF_GROUPS: dict[str, dict[str, tuple]] = {
     "voice": {
         "audio_input": ("text", 200),
         "audio_output": ("text", 200),
-        "wake_sensitivity": ("int", 1, 5),
         "whisper_model": ("choice", ("tiny", "base", "small", "medium")),
         "whisper_threads": ("int", 0, 64),
+        "speech_idle_unload_min": ("int", 0, 240),
         "whisper_idle_unload_min": ("int", 0, 240),
         "low_priority_backend": ("bool",),
-        "voice_activation_mode": ("choice", ("ptt", "wake", "both")),
         "tts_voice": ("choice", ("",) + TTS_VOICES),
         "tts_engine": ("choice", ("edge", "offline")),
         "tts_auto_language": ("bool",),
@@ -448,7 +446,7 @@ def _ensure_loaded() -> dict[str, Any]:
                 # p2_* (dictation preferences) are not in _DEFAULTS but must survive a restart.
                 data.update({k: raw[k] for k in raw if k in _DEFAULTS or str(k).startswith("p2_")})
                 # Persist newly introduced defaults too. This prevents a new
-                # preference such as voice_activation_mode from reverting to
+                # preference such as speech_idle_unload_min from reverting to
                 # its default after a restart/update.
                 needs_write = any(k not in raw for k in _DEFAULTS)
                 _migrate(data, raw)
@@ -531,23 +529,13 @@ def wake_name() -> str:
 
 
 def wake_phrases() -> list[str]:
-    """Build the list of spoken wake phrases from the configured name.
-
-    Always includes a set of Jarvis / Lyra phonetic variants so that the
-    openWakeWord "hey_jarvis" model still triggers even when the user has
-    renamed the assistant.
-    """
+    """The ways the assistant's name can start a spoken command ("hey lyra", "lyra"), from the configured name."""
     name = wake_name()
     low = name.lower().strip()
     phrases = [
         f"hey {low}",                                    # "hey lyra"
         low,                                             # bare name
         f"hey {low}a" if not low.endswith("a") else f"hey {low}",  # phonetic padding
-    ]
-    # Always keep jarvis variants for openWakeWord phonetic hits
-    phrases += [
-        "hey jarvis", "hey jarviss", "hey jarves", "jarvis",
-        "hey lyra", "lyra", "hey lyra", "lyra",
     ]
     # De-duplicate while preserving order
     seen = set()

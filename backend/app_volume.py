@@ -267,6 +267,7 @@ def start(push: Callable[[dict], None]) -> None:
 
     def loop() -> None:
         prev: dict[str, tuple[float, bool]] | None = None
+        calm = 0                                   # polls in a row without a change
         while True:
             try:
                 sessions = _sessions()
@@ -277,6 +278,7 @@ def start(push: Callable[[dict], None]) -> None:
                         if old and (abs(old[0] - level) >= CHANGE or old[1] != muted):
                             push({"type": "appvolume", "app": sessions[key]["name"], "level": level,
                                   "muted": muted, "ts": int(time.time() * 1000)})
+                calm = calm + 1 if cur == prev else 0
                 prev = cur
             except Exception as e:  # pycaw missing or Core Audio hiccup: try again next tick
                 if not _warned:
@@ -284,6 +286,6 @@ def start(push: Callable[[dict], None]) -> None:
                     log.warning("app volume watch: %s", e)
                 else:
                     log.debug("app volume watch: %s", e)
-            time.sleep(POLL_S)
+            time.sleep(POLL_S if calm < 20 else POLL_S * 2)     # nobody touched the mixer for ~30 s: half the polling
 
     threading.Thread(target=loop, daemon=True, name="lyra-app-volume").start()

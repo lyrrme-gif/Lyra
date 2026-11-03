@@ -184,3 +184,8 @@
   .apps-view .ap-bubble.fresh, .apps-view .ap-sug, .apps-view .ap-attach, .apps-view .ap-lightbox, .apps-view .ap-lightbox img { animation: none; }
   .apps-view .ap-send, .apps-view .ap-play, .apps-view .ap-back, .apps-view .ap-plus, .apps-view .ap-sugbtn, .apps-view .ap-fchip, .apps-view .ap-micbtn, .apps-view .ap-row { transition: none; }
 }
+
+/* The chat-bar mic is a dictation switch: lit while Lyra is writing what you say into the box. */
+.apps-view .ap-micbtn.on { background: #ff453a; color: #fff; animation: ap-mic-live 1.1s ease-in-out infinite; }
+@keyframes ap-mic-live { 0%, 100% { box-shadow: 0 0 0 0 rgb(255 69 58 / .5); } 50% { box-shadow: 0 0 0 6px rgb(255 69 58 / 0); } }
+@media (prefers-reduced-motion: reduce) { .apps-view .ap-micbtn.on { animation: none; } }

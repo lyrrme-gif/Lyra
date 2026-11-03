@@ -14,7 +14,7 @@ Lyra UI — visual shell for the Lyra desktop assistant.
 
 - Claude / Codex / Gemini agent system
 - Agent hooks and permission cards
-- Coucou chat
+- Lyra chat
 - Integrations (Stripe, n8n, GitHub, etc.)
 - File-upload → Claude flow
 

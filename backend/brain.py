@@ -14,9 +14,12 @@ Flow for every user utterance that reaches ask_brain():
 import re
 import threading
 import time
-from openai.types.chat import ChatCompletionMessageParam
+from typing import TYPE_CHECKING
 
-from openai import OpenAI  # Groq is OpenAI-compatible; we just change the base_url
+if TYPE_CHECKING:                                  # a type only: do not import openai at launch for it
+    from openai.types.chat import ChatCompletionMessageParam
+
+from lazy_imports import LazyClient, OpenAI  # Groq is OpenAI-compatible; we just change the base_url (openai itself loads on first use)
 
 import ui
 import perf
@@ -160,7 +163,7 @@ def _fallback_client():
     except Exception:
         return None
 
-_llm_client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY) if LLM_API_KEY else None
+_llm_client = LazyClient(lambda: OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)) if LLM_API_KEY else None
 _groq_client = _llm_client  # back-compat
 
 
@@ -397,7 +400,7 @@ def ask_brain(prompt: str, history: list, intent: str = "unknown", on_text=None)
         # ------------------------------------------------------------------
         # Groq is a chat-completions endpoint, so history becomes proper
         # alternating user/assistant turns instead of one flattened string.
-        messages: list[ChatCompletionMessageParam] = [
+        messages: list["ChatCompletionMessageParam"] = [
             {"role": "system", "content": system_content}
         ]
         for turn in history[-CONVO_MEMORY_TURNS:]:

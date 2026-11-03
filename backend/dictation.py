@@ -42,7 +42,7 @@ import dbg
 import ui
 from config import (
     DICTATION_MAX_POLISH_CHARS, DICTATION_PAUSE_FLUSH_S, DICTATION_PENDING_WORDS,
-    WAKE_CHUNK_SIZE, WAKE_SAMPLE_RATE,
+    MIC_CHUNK_SIZE, MIC_SAMPLE_RATE,
 )
 import dictation_clean
 import dictation_text
@@ -259,7 +259,11 @@ def _why_not() -> str:
     if not streaming_stt.loaded():
         if not streaming_stt.available():
             return "Dictation needs sherpa-onnx (pip install sherpa-onnx)"
-        return "Dictation model is still loading"
+        # It may have been unloaded after idling (or still be loading at startup): load() waits for a load in progress,
+        # otherwise loads now (a second or two). This runs on the hotkey thread, never the UI.
+        streaming_stt.load()
+        if not streaming_stt.loaded():
+            return "Dictation model is still loading"
     return ""
 
 
@@ -431,18 +435,18 @@ class _Session:
                     kwargs["input_device_index"] = idx
             except Exception:
                 pass
-            stream = pa.open(format=pyaudio.paInt16, channels=1, rate=WAKE_SAMPLE_RATE, input=True,
-                             frames_per_buffer=WAKE_CHUNK_SIZE, **kwargs)
+            stream = pa.open(format=pyaudio.paInt16, channels=1, rate=MIC_SAMPLE_RATE, input=True,
+                             frames_per_buffer=MIC_CHUNK_SIZE, **kwargs)
             last_text, changed, flushed = "", time.monotonic(), False
             done_text, live_last, live_at = "", "", 0.0      # live words for the island (all closed sentences + the one being said)
             dbg_t0 = dbg_t = time.monotonic()
             dbg.ev("dictation", f"microphone open; output={self.output}, refine={_refine_on()}")
             while not self.stop_evt.is_set():
                 try:
-                    data = stream.read(WAKE_CHUNK_SIZE, exception_on_overflow=False)
+                    data = stream.read(MIC_CHUNK_SIZE, exception_on_overflow=False)
                 except Exception:
                     break
-                if (self.output == "paste" or _refine_on()) and self.audio_bytes < MAX_AUDIO_S * WAKE_SAMPLE_RATE * 2:
+                if (self.output == "paste" or _refine_on()) and self.audio_bytes < MAX_AUDIO_S * MIC_SAMPLE_RATE * 2:
                     self.audio.append(data)                 # RAM only; dropped when the dictation ends
                     self.audio_bytes += len(data)
                     self.seg_chunks.append(data)
@@ -450,7 +454,7 @@ class _Session:
                 now = time.monotonic()
                 if now - dbg_t >= 1.0:
                     dbg_t = now
-                    dbg.ev("dictation", f"listening {now - dbg_t0:.0f}s: audio={self.audio_bytes / (WAKE_SAMPLE_RATE * 2):.1f}s, "
+                    dbg.ev("dictation", f"listening {now - dbg_t0:.0f}s: audio={self.audio_bytes / (MIC_SAMPLE_RATE * 2):.1f}s, "
                                         f"live text={len(text)} chars, no new words for {now - changed:.1f}s")
                 if text != last_text:
                     last_text, changed, flushed = text, now, False
@@ -573,7 +577,7 @@ class _Session:
                 or not (self.output == "paste" or _refine_on())):
             return
         pcm = b"".join(chunks)
-        if len(pcm) < 0.2 * WAKE_SAMPLE_RATE * 2:           # under 0.2 s: nothing worth decoding
+        if len(pcm) < 0.2 * MIC_SAMPLE_RATE * 2:           # under 0.2 s: nothing worth decoding
             return
         try:
             if self._pool is None:

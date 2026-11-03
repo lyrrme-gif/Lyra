@@ -19,7 +19,8 @@ Publisher = Callable[[dict], None]
 _PARTIAL = {".crdownload", ".part", ".tmp", ".download"}
 _IGNORE = {"desktop.ini"}
 _INTERVAL = 0.35
-_IDLE_INTERVAL = 1.0   # light mode: while nothing is downloading, look at the folder once a second
+_IDLE_INTERVAL = 1.0   # while nothing is downloading, look at the folder once a second (was 0.35 s unless Light mode)
+_MAX_DEPTH = 2         # the Downloads folder and one level of sub-folders (it used to walk the WHOLE tree every 0.35 s)
 
 
 def _light() -> bool:
@@ -80,14 +81,32 @@ def _downloads_dir() -> Path:
 
 
 def _snapshot(folder: Path) -> dict[str, tuple[int, int, bool]]:
-    out={}
-    try:
-        for p in folder.rglob("*"):
-            if not p.is_file() or p.name.lower() in _IGNORE: continue
-            try:
-                st=p.stat(); key=str(p.relative_to(folder)); out[key]=(int(st.st_size),int(st.st_mtime_ns),p.suffix.lower() in _PARTIAL)
-            except OSError: pass
-    except OSError: pass
+    """{relative name: (size, mtime_ns, is_partial)} for the Downloads folder and one level of sub-folders.
+    os.scandir hands back size and mtime with the directory listing (no extra system call per file), and the
+    walk stops at _MAX_DEPTH: a Downloads folder holding extracted projects used to cost 12-15 % of a core."""
+    out: dict[str, tuple[int, int, bool]] = {}
+
+    def walk(path: str, rel: str, depth: int) -> None:
+        try:
+            with os.scandir(path) as it:
+                for e in it:
+                    try:
+                        if e.is_symlink():
+                            continue
+                        if e.is_dir(follow_symlinks=False):
+                            if depth + 1 < _MAX_DEPTH:
+                                walk(e.path, rel + e.name + os.sep, depth + 1)
+                            continue
+                        if e.name.lower() in _IGNORE or not e.is_file(follow_symlinks=False):
+                            continue
+                        st = e.stat(follow_symlinks=False)
+                        out[rel + e.name] = (int(st.st_size), int(st.st_mtime_ns), os.path.splitext(e.name)[1].lower() in _PARTIAL)
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+
+    walk(str(folder), "", 0)
     return out
 
 def _pretty_name(name: str) -> str:
@@ -140,12 +159,11 @@ def start(publisher: Publisher) -> None:
     announced: set[str] = set()
     gone: dict[str, float] = {}  # temp files that disappeared -> when (finished or cancelled?)
 
-    light = _light()
 
     def run() -> None:
         global LAST_PROGRESS_TS
         nonlocal previous, partial_names, folder
-        while not _stop.wait(_INTERVAL if (partial_names or fresh or gone or not light) else _IDLE_INTERVAL):
+        while not _stop.wait(_INTERVAL if (partial_names or fresh or gone) else _IDLE_INTERVAL):
             # Re-resolve in case the Downloads known folder is created/redirected after Lyra starts.
             resolved = _downloads_dir()
             if resolved != folder:

@@ -58,46 +58,71 @@ pub fn create(app: &AppHandle, pref: &str) {
     {
         let app = app.clone();
         std::thread::spawn(move || {
+            use std::time::{Duration, Instant};
             let mut last = (f64::NAN, f64::NAN);
-            let mut ticks: u32 = 0;
+            let mut last_raw: Option<(f64, f64)> = None;
+            let mut last_moved = Instant::now();
+            let mut last_beat = Instant::now();
+            let mut last_maint = Instant::now();
+            let mut maint_n: u32 = 0;
+            let mut chat_was = false;
             // Click-through state while the chat bar is open: only the bar itself takes the mouse.
             let mut passthrough = true;
             loop {
                 let Some(win) = app.get_webview_window(LABEL) else { break };
                 // Windows can hide or un-topmost a click-through overlay (full-screen app, show-desktop,
                 // display change). Without this a hidden caption window never shows another subtitle.
-                ticks = ticks.wrapping_add(1);
-                if ticks % 60 == 0 && !win.is_visible().unwrap_or(true) {
-                    let _ = win.show();
-                }
-                if ticks % 120 == 0 {
-                    let _ = win.set_always_on_top(true);
-                }
-                if let (Some((x, y)), Ok(pos)) = (crate::platform::cursor_physical(), win.outer_position()) {
-                    let scale = win.scale_factor().unwrap_or(1.0).max(0.1);
-                    let point = (x - pos.x as f64, y - pos.y as f64);
-                    if point != last {
-                        let _ = win.emit("caption-cursor", CursorPoint { x: point.0 / scale, y: point.1 / scale });
-                        last = point;
+                // Once a second (the topmost refresh every other second).
+                if last_maint.elapsed() >= Duration::from_millis(1000) {
+                    last_maint = Instant::now();
+                    maint_n = maint_n.wrapping_add(1);
+                    if !win.is_visible().unwrap_or(true) {
+                        let _ = win.show();
                     }
-                    if CHAT_OPEN.load(Ordering::Relaxed) {
-                        let (lx, ly) = (point.0 / scale, point.1 / scale);
-                        let left = (W - BAR_W) / 2.0 - BAR_HIT_PAD;
-                        let right = (W + BAR_W) / 2.0 + BAR_HIT_PAD;
-                        let extra = CHAT_EXTRA.load(Ordering::Relaxed) as f64;
-                        let bottom = H_CHAT + CHAT_EXTRA_MAX - BAR_BOTTOM + BAR_HIT_PAD;
-                        let top = bottom - BAR_H - extra - 2.0 * BAR_HIT_PAD;
-                        let inside = lx >= left && lx <= right && ly >= top && ly <= bottom;
-                        if inside == passthrough {
-                            passthrough = !inside;
-                            let _ = win.set_ignore_cursor_events(passthrough);
+                    if maint_n % 2 == 0 {
+                        let _ = win.set_always_on_top(true);
+                    }
+                }
+                // GetCursorPos is cheap; every window query below is a round trip to the UI thread. So those only run when
+                // the cursor moved, the chat bar was opened or closed, or on a half-second heartbeat (the window itself may have moved).
+                let raw = crate::platform::cursor_physical();
+                let moved = raw != last_raw;
+                if moved {
+                    last_raw = raw;
+                    last_moved = Instant::now();
+                }
+                let chat = CHAT_OPEN.load(Ordering::Relaxed);
+                if moved || chat != chat_was || last_beat.elapsed() >= Duration::from_millis(500) {
+                    chat_was = chat;
+                    last_beat = Instant::now();
+                    if let (Some((x, y)), Ok(pos)) = (raw, win.outer_position()) {
+                        let scale = win.scale_factor().unwrap_or(1.0).max(0.1);
+                        let point = (x - pos.x as f64, y - pos.y as f64);
+                        if point != last {
+                            let _ = win.emit("caption-cursor", CursorPoint { x: point.0 / scale, y: point.1 / scale });
+                            last = point;
                         }
-                    } else if !passthrough {
-                        passthrough = true;
-                        let _ = win.set_ignore_cursor_events(true);
+                        if chat {
+                            let (lx, ly) = (point.0 / scale, point.1 / scale);
+                            let left = (W - BAR_W) / 2.0 - BAR_HIT_PAD;
+                            let right = (W + BAR_W) / 2.0 + BAR_HIT_PAD;
+                            let extra = CHAT_EXTRA.load(Ordering::Relaxed) as f64;
+                            let bottom = H_CHAT + CHAT_EXTRA_MAX - BAR_BOTTOM + BAR_HIT_PAD;
+                            let top = bottom - BAR_H - extra - 2.0 * BAR_HIT_PAD;
+                            let inside = lx >= left && lx <= right && ly >= top && ly <= bottom;
+                            if inside == passthrough {
+                                passthrough = !inside;
+                                let _ = win.set_ignore_cursor_events(passthrough);
+                            }
+                        } else if !passthrough {
+                            passthrough = true;
+                            let _ = win.set_ignore_cursor_events(true);
+                        }
                     }
                 }
-                std::thread::sleep(std::time::Duration::from_millis(16));
+                // 60 Hz while the cursor is moving (the avatar follows it) or the chat bar is open; 10 Hz when it has been still.
+                let calm = !chat && last_moved.elapsed() > Duration::from_millis(1500);
+                std::thread::sleep(Duration::from_millis(if calm { 100 } else { 16 }));
             }
         });
     }

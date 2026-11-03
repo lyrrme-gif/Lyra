@@ -1,4 +1,4 @@
-// Entry point: full Coucou UI shell + Lyra brain connection.
+// Entry point: full Lyra UI shell + Lyra brain connection.
 
 import "./style.css";
 import "./apple.css";
@@ -107,7 +107,7 @@ async function main() {
     }
   } catch { /* localStorage may be unavailable in hardened WebViews */ }
 
-  // Only addition: Lyra brain over WebSocket (does not change Coucou UI)
+  // Only addition: Lyra brain over WebSocket (does not change Lyra UI)
   // "Keep chat": restore the last conversation and save it as it changes.
   const CHAT_KEY = "lyra-chat-keep";
   if (State.extras.keepChat) {

@@ -15,7 +15,14 @@ import threading
 import time
 import wave
 import numpy as np
-from faster_whisper import WhisperModel
+
+
+def WhisperModel(*args, **kwargs):                 # noqa: N802
+    """faster_whisper.WhisperModel. The package (with ctranslate2, av, tokenizers: ~0.2 s and a lot of RAM) is only imported
+    when Whisper is really needed: Parakeet is the voice model now and Whisper is just the fallback."""
+    from faster_whisper import WhisperModel as _WhisperModel
+    return _WhisperModel(*args, **kwargs)
+
 
 import ui
 import perf

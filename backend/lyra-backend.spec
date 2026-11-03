@@ -44,6 +44,12 @@ hiddenimports += ["pyaudio", "_portaudio", "audioop"]
 for p in ("kokoro_onnx", "espeakng_loader", "phonemizer", "soundfile", "pyaudiowpatch", "onnxruntime", "shazamio", "shazamio_core"):
     grab_all(p)
 hiddenimports += ["app_icons", "numpy"]
+# Screen recording (Record tab): windows_capture is a native extension; imageio_ffmpeg carries the ffmpeg.exe that encodes the
+# video and makes thumbnails (without collecting it the built app says "ffmpeg wasn't found. Run pip install ..."). The recorder
+# modules are imported lazily, so PyInstaller can't see them either.
+for p in ("windows_capture", "imageio_ffmpeg"):
+    grab_all(p)
+hiddenimports += ["wgc_recorder", "screen_record", "screen_capture", "record_audio", "record_hotkey", "obs_control"]
 datas += collect_data_files("certifi")
 subs("aiohttp")
 

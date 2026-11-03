@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    Lyra Settings · Controls v2  ("Choice Studio")
    Content area only: the sidebar, the top bar and the island are not touched.
-   Loaded after settings-coucou.css (see main.ts). Behaviour lives in choiceKit.ts / uiKit.ts.
+   Loaded after settings-lyra-shell.css (see main.ts). Behaviour lives in choiceKit.ts / uiKit.ts.
    Everything reads the existing tokens (--cb-*, --d-*), so accent, light/dark and density keep working.
    ═══════════════════════════════════════════════════════════════════════════ */
 

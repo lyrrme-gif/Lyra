@@ -30,6 +30,8 @@ _NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 # own baseline in a tiny sampler thread and snapshot() just reads the latest number.
 _cpu_state: dict = {"pct": None}
 _cpu_thread_started = False
+_last_cpu_request = 0.0
+_SAMPLER_IDLE_S = 30.0          # nobody asked for the CPU number for this long: the sampler thread ends (no 1 Hz timer for nothing)
 
 
 def _busy_idle(t) -> tuple[float, float]:
@@ -39,8 +41,13 @@ def _busy_idle(t) -> tuple[float, float]:
 
 
 def _cpu_sampler() -> None:
+    global _cpu_thread_started
     prev = None
     while True:
+        if time.monotonic() - _last_cpu_request > _SAMPLER_IDLE_S:
+            _cpu_state["pct"] = None          # stale after a pause: the next request measures afresh
+            _cpu_thread_started = False
+            return
         try:
             cur = _busy_idle(psutil.cpu_times())
             if prev is not None:
@@ -62,6 +69,8 @@ def _ensure_cpu_sampler() -> None:
 
 
 def _cpu_pct() -> int:
+    global _last_cpu_request
+    _last_cpu_request = time.monotonic()
     _ensure_cpu_sampler()
     if _cpu_state["pct"] is None:  # first poll, sampler hasn't got two readings yet
         try:
@@ -71,8 +80,7 @@ def _cpu_pct() -> int:
     return round(_cpu_state["pct"])
 
 
-if psutil:
-    _ensure_cpu_sampler()
+# (The sampler is started by the first _cpu_pct() call, not at import: the Stats tab may never be opened.)
 
 # ── static facts, looked up once ─────────────────────────────────────────────────────────────
 _cpu_name = ""

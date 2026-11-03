@@ -2,7 +2,6 @@
 
 Models are never bundled in the installer. They are fetched on first run into
 <data dir>\\models (installed: %APPDATA%\\Lyra\\models) and re-used afterwards:
-  models\\openwakeword\\   hey_jarvis + the two feature models (a few MB)
   models\\whisper\\        faster-whisper model (WHISPER_MODEL in config.py)
   models\\parakeet-tdt-0.6b-v3-int8\\   optional Parakeet v3 voice model (~670 MB, one click in
                                        Settings > Voice; downloaded by stt_engines, not here)
@@ -92,35 +91,6 @@ class _Announce:
             log.error("Download of %s failed: %s", self.what, exc)
             _toast("Voice model download failed - check your internet connection")
         return False
-
-
-# -- openWakeWord -------------------------------------------------------------
-def wake_model_files(name: str) -> dict:
-    d = models_dir() / "openwakeword"
-
-    def pick(pattern: str):
-        m = sorted(d.glob(pattern))
-        return str(m[0]) if m else None
-
-    return {"wake": pick(f"{name}*.onnx"),
-            "melspec": pick("melspectrogram.onnx"),
-            "embedding": pick("embedding_model.onnx")}
-
-
-def ensure_wake_models(name: str) -> dict:
-    files = wake_model_files(name)
-    if all(files.values()):
-        return files
-    target = models_dir() / "openwakeword"
-    target.mkdir(parents=True, exist_ok=True)
-    from openwakeword.utils import download_models
-    with _Announce("wake-word models"):
-        download_models(model_names=[name], target_directory=str(target))
-    files = wake_model_files(name)
-    missing = [k for k, v in files.items() if not v]
-    if missing:
-        raise RuntimeError(f"openWakeWord files missing after download in {target}: {', '.join(missing)}")
-    return files
 
 
 # -- faster-whisper -----------------------------------------------------------

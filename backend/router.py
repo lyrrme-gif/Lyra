@@ -26,7 +26,7 @@ For websites, the existing known-site/learned-URL behavior still applies.
 import json
 import re
 
-from openai import OpenAI
+from lazy_imports import LazyClient, OpenAI     # the openai package is imported on first use
 
 import ui
 import perf
@@ -35,7 +35,7 @@ from config import LLM_API_KEY, LLM_BASE_URL, LLM_ROUTER_MODEL, GROQ_API_KEY, GR
 trace = ui.trace
 
 # Shared client pointed at Groq; None when the key is missing
-_router_client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY, max_retries=0, timeout=12.0) if LLM_API_KEY else None
+_router_client = LazyClient(lambda: OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY, max_retries=0, timeout=12.0)) if LLM_API_KEY else None
 
 _ROUTER_PROVIDERS = {
     # provider -> (key field in llm_keys.json, base url, config attr with the router model)

@@ -637,7 +637,7 @@ export class Island {
     // the user is composing/reading, including the first empty Chat launch.
     this.fsm.holdOpen = () => State.lyricsOpen || State.view === "prompt" || State.view === "camera" || State.recognitionBusy || this.pulseBanner || mochiCarry.active;   // mochiCarry: the Mochi is being dragged out of its tab
     this.fsm.onTransition = (from, to) => {
-      // One line per open / close, with what caused it: coucou.log is where to look
+      // One line per open / close, with what caused it: lyra.log is where to look
       // when the island does something unexpected.
       void Bridge.log(`island: ${from} -> ${to} (${this.fsm.lastReason})`);
       trace("island", `FSM ${from} -> ${to}  because: ${this.fsm.lastReason}  | pointer ${this.wasInIsland ? "IS" : "is not"} on the island, pinned=${State.isPinned}, holdOpen=${this.fsm.holdOpen()}`);
@@ -2403,9 +2403,7 @@ export class Island {
     const dockTop = islandTop + hh + 6;
     this.tabDock.el.style.top = `${dockTop}px`;
     this.tabDock.el.style.zIndex = "1000";
-    // No tab bar under the island: navigation is the wheel / scroller.
-    this.tabDock.el.style.opacity = "0";
-    this.tabDock.el.style.pointerEvents = "none";
+    // Whether the dock (it holds the scroller) shows is decided in views/dock.ts sync(): hidden for "Tab wheel", shown while expanded for "Scroller" / "Both".
     // These follow the island as it resizes, so they belong here rather than in
     // the state-driven DOM sync.
 
