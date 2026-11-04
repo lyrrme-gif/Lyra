@@ -1,7 +1,7 @@
 """Lyra - live trace for debugging. Prints what happens (keys, clicks, dictation steps, loops) to the
 backend terminal AND ui.log, as lines starting with "[trace]".
 
-* ON when running from source, OFF in the built app. LYRA_TRACE=0 / 1 forces it either way.
+* OFF by default (source and built). Set LYRA_TRACE=1 to enable live key/click/CPU/GPU tracing.
 * Privacy: ordinary character keys are NEVER logged by name - only "key". Modifiers and special keys
   (Ctrl, Alt, Shift, Win, Esc, Enter, Space, arrows, F-keys...) are named. Dictated words ARE logged
   (cut to 80 characters) so a dictation problem can be diagnosed; look before you share a log.
@@ -16,9 +16,8 @@ import time
 
 import ui
 
-# On when running from source (that is where it is read), OFF in the built app: its CPU/GPU sampler runs nvidia-smi and
-# polls every 5 s for nothing anyone reads. Set LYRA_TRACE=1 to switch it on in the exe when diagnosing something.
-_DEFAULT_ON = "0" if getattr(__import__("sys"), "frozen", False) else "1"
+# Off by default. Set LYRA_TRACE=1 to switch on key/click/CPU/GPU sampling when diagnosing something.
+_DEFAULT_ON = "0"
 _ON = os.environ.get("LYRA_TRACE", _DEFAULT_ON).strip().lower() not in ("0", "false", "off", "no")
 _q: "queue.SimpleQueue[tuple[str, str]]" = queue.SimpleQueue()
 _lock = threading.Lock()

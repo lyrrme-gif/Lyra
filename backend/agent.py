@@ -120,17 +120,6 @@ def _execute_step(step: dict):
 _CTX: dict = {}   # per-run scratch (engine_context for tools that need it)
 
 
-def _run_saved_shortcut(name: str, engine_context=None) -> str:
-    import shortcuts
-    want = (name or "").strip().lower()
-    for item in shortcuts._manager.list_shortcuts():
-        if want in (item["id"].lower(), item["name"].lower()) or want in [t.lower() for t in item["triggers"]]:
-            sc = shortcuts._manager.get_shortcut(item["id"])
-            ok, msg = shortcuts._executor.execute_shortcut(item["name"], sc.get("actions", []), engine_context)
-            return msg if ok else f"Failed: {msg}"
-    return f"No shortcut named '{name}'"
-
-
 def _llm():
     """Shared provider client (Settings / llm_keys.json), else legacy Groq."""
     try:
@@ -199,14 +188,6 @@ def _describe(step: dict) -> str:
     if tool in ("double_click_on_screen","right_click_on_screen"): return f"{tool.replace('_on_screen','').replace('_','-')} {str(args.get('description','the target'))[:60]} on the screen"
     if tool == "switch_window": return f"switch to the window {str(args.get('title','specified'))[:60]}"
     return f"run {tool}"
-
-
-def run_agent(command: str, engine_context=None) -> str | None:
-    """Back-compat wrapper: only handles multi-step looking requests and
-    returns the reply, or None if the agent shouldn't handle it."""
-    if not looks_multi_step(command):
-        return None
-    return route_and_run(command, engine_context, force=False)[0]
 
 
 def route_and_run(command: str, engine_context=None, force: bool = False) -> tuple[str | None, str]:

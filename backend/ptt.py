@@ -65,14 +65,6 @@ _events: "queue.SimpleQueue[tuple[str, bool]]" = queue.SimpleQueue()
 _dispatcher: threading.Thread | None = None
 
 
-def set_mic_hooks(before_record: Callable[[], None] | None = None, after_record: Callable[[], None] | None = None) -> None:
-    """Coordinate PTT with another microphone owner (the wake-word listener)."""
-    global _before_record, _after_record
-    _before_record = before_record
-    _after_record = after_record
-
-
-
 class KBDLLHOOKSTRUCT(ctypes.Structure):
     _fields_ = [
         ("vkCode", wintypes.DWORD),

@@ -57,12 +57,6 @@ def remember_fact(key: str, value: str) -> None:
         )
 
 
-def forget_fact(key: str) -> bool:
-    with _lock, _connect() as conn:
-        cur = conn.execute("DELETE FROM memory WHERE kind = 'fact' AND key = ?", (key.strip().lower(),))
-        return cur.rowcount > 0
-
-
 def all_facts() -> list[tuple[str, str]]:
     """Every remembered fact as (key, value) pairs, oldest first — what
     brain.py folds into the system prompt so Lyra actually knows them."""
@@ -98,12 +92,6 @@ def remember_path(alias: str, path: str) -> None:
             "INSERT INTO memory(kind, key, value, timestamp) VALUES ('path', ?, ?, ?)",
             (alias, path.strip(), datetime.now().isoformat()),
         )
-
-
-def forget_path(alias: str) -> bool:
-    with _lock, _connect() as conn:
-        cur = conn.execute("DELETE FROM memory WHERE kind = 'path' AND key = ?", (alias.strip().lower(),))
-        return cur.rowcount > 0
 
 
 def get_path(alias: str) -> str | None:

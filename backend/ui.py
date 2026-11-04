@@ -48,7 +48,7 @@ elif HAS_CONSOLE:
 else:
     _console_handler = None
 if _console_handler is not None:
-    _console_handler.setLevel(logging.WARNING if os.environ.get("LYRA_TRACE", "1").strip().lower() in ("0", "false", "off", "no") else logging.INFO)  # terminal shows everything unless LYRA_TRACE=0
+    _console_handler.setLevel(logging.WARNING if os.environ.get("LYRA_TRACE", "0").strip().lower() in ("0", "false", "off", "no") else logging.INFO)  # terminal shows everything unless LYRA_TRACE=0
     _handlers.append(_console_handler)
 logging.basicConfig(
     level=logging.INFO,

@@ -66,12 +66,6 @@ _NO_REPLACE_APPS = frozenset({
     "mintty.exe", "putty.exe", "alacritty.exe", "wezterm-gui.exe",
 })
 
-def set_mic_hooks(before_record=None, after_record=None) -> None:
-    """Coordinate with the wake-word listener, which must give the microphone up while we dictate."""
-    global _before_record, _after_record
-    _before_record, _after_record = before_record, after_record
-
-
 def is_active() -> bool:
     """True while Lyra is listening for dictation (not while the polish pass runs)."""
     return _session is not None

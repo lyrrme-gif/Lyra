@@ -21,10 +21,13 @@ After that first drag, it behaves normally. Code: `ui/src/mascot/engine.ts` -> `
 - ui/src-tauri/tauri.linux.conf.json (pointed at missing lyra-hook files)
 - empty backend/notetaker/sessions + tmp (created at runtime), all __pycache__
 - backend/test_guide.py, test_google_workspace.py moved into backend/tests/
+- backend/plugins/spotify_library.py (notch Spotify library plugin; Now Playing is unchanged)
+- ui/src/settings/lyra/hero.ts (old settings hero banner; nothing imported it)
+- ui/public/sounds/blackcat/, penguin/, whitecat/ (no character ids; ~3 MB)
+- Runtime leftovers that belonged in %APPDATA%: decks.json, updater.json, shortcuts.json, routines_v1.flag
 
 ## Fixed
 - lyra-backend.spec did not bundle backend/plugins, so the exe would have lost the WhatsApp,
-  dice and quote plugins. It does now, plus data files for docx/pptx/keyring/onnx-asr/winsdk etc.
   dice and quote plugins. It does now, plus data files for docx/pptx/keyring/onnx-asr/winsdk etc.
 
 ## Live Activities: sound + light (new)
@@ -35,5 +38,5 @@ After that first drag, it behaves normally. Code: `ui/src/mascot/engine.ts` -> `
 
 ## Live Activities: glow switch, WhatsApp only, tour QR
 - Each Live Activities tile has a sparkle button (Settings → Live Activities) that turns that activity's light show off or on. Stored as `extras.glow[activity]` (missing = on); checked in `island/activityFx.ts` (`glowEnabled`), so the island and the previews obey it. Sounds are not affected. Clipboard has no light, so no switch.
-- Spotify library plugin removed (`backend/plugins/spotify_library.py`); WhatsApp is the only notch app. The music Now Playing activity is unchanged.
+- Spotify library plugin removed (`backend/plugins/spotify_library.py` deleted); WhatsApp is the only notch app. The music Now Playing activity is unchanged.
 - Setup tour → Link WhatsApp now starts WhatsApp's helper itself (`/apps/connect`, retried every ~8 s while there is no code) and has a Connect button as a fallback. Before, only Settings → Apps started it, so the tour sat on "Press Connect to link WhatsApp."

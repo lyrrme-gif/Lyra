@@ -1,58 +1,33 @@
 # Lyra UI
 
-Lyra UI — visual shell for the Lyra desktop assistant.
+Tauri + TypeScript shell for Lyra: Dynamic Island, Mochi mascot, Settings, caption, tab wheel.
 
-## What's included
-
-- Animated Lyra character (animations, expressions, greeting)
-- Dynamic Island at the top of the screen
-- Transparent always-on-top window + system tray
-- Settings window shell
-- Sounds support (you need to point SOUNDS_DIR or place sounds)
-
-## What's removed
-
-- Claude / Codex / Gemini agent system
-- Agent hooks and permission cards
-- Lyra chat
-- Integrations (Stripe, n8n, GitHub, etc.)
-- File-upload → Claude flow
-
-## Try it
-
-### Frontend only (browser preview)
+## Dev
 
 ```bash
+cd ui
 npm install
-npm run dev
+npm run tauri:dev          # full app (starts backend)
+# or frontend-only preview:
+npm run dev                # http://localhost:1420
 ```
 
-Open http://localhost:1420 — click the page to wake Lyra UI.
+Requirements for Tauri: Rust (MSVC on Windows), Node 20+, WebView2.
 
-### Full Tauri app (Windows)
+## Windows
 
-Requirements: Rust, Node 20+, MSVC build tools, WebView2.
+| HTML entry | Role |
+|------------|------|
+| `index.html` | Island (main notch) |
+| `mascot.html` | Mochi overlay |
+| `settings.html` | Settings |
+| `caption.html` | Spoken-answer subtitles |
+| `wheel.html` | Tab launcher wheel |
 
-```bash
-npm install
-npm run tauri:dev
-```
+## Notes
 
-## Lyra integration (next step)
+- Sounds live under `public/sounds/<character>/` (see `src/core/sound.ts` for character ids).
+- Eco mode and visibility helpers throttle work when windows are hidden.
+- The UI talks to the Python backend over local HTTP (see CSP in `src-tauri/tauri.conf.json`).
 
-Lyra's Python backend already broadcasts states via `ui.set_state(...)`.
-
-Next: add a thin bridge (WebSocket or named pipe) so Lyra can push:
-
-```
-IDLE | LISTENING | THINKING | SPEAKING | EXECUTING | SUCCESS | ERROR
-```
-
-into the island FSM / Lyra UI expressions.
-
-## Structure
-
-```
-src/          TypeScript frontend (Lyra character, island, views)
-src-tauri/    Rust + Tauri (window, tray, platform)
-```
+Build the installer from the repo root: `BUILD.md` / `build_exe.ps1`.

@@ -401,13 +401,6 @@ def launch(entry: AppEntry) -> bool:
         return False
 
 
-def launch_by_name(query: str) -> AppEntry | None:
-    entry = find(query)
-    if not entry:
-        return None
-    return entry if launch(entry) else None
-
-
 def count() -> int:
     return len(_INDEX)
 

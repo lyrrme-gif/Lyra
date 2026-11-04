@@ -16,3 +16,10 @@ llm_keys.json
 settings.json
 contacts.json
 lyra_memory.db
+
+# Runtime data lives in %APPDATA%\Lyra (or LYRA_DATA_DIR) — never commit if it appears locally
+backend/decks.json
+backend/updater.json
+backend/shortcuts/shortcuts.json
+backend/shortcuts/*.flag
+backend/ui.log
