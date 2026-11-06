@@ -85,10 +85,61 @@ def _toast(text: str) -> None:
         pass
 
 
+# One "ready" notice for ALL the voice models. Every voice-model download (speech recognition here, the optional
+# offline voice in voice/tts_offline.py) reports to voice_download_finished(); the notice is shown once, after the last
+# one that was running has finished, and not again within a few minutes.
+_ready_lock = threading.Lock()
+_ready_pending = False
+_last_ready_toast: float | None = None      # None = not shown yet (time.monotonic() starts at boot, so 0.0 would look recent)
+_READY_COOLDOWN_S = 600.0
+
+
+def _other_download_running() -> bool:
+    """Is any voice-model download still going? (speech recognition or the offline voice)"""
+    try:
+        if get_downloader().status().get("downloading"):
+            return True
+    except Exception:
+        pass
+    try:
+        from engine.voice import tts_offline
+        if tts_offline.status().get("downloading"):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def voice_download_finished(ok: bool) -> None:
+    """A voice-model download ended. Shows the single "ready" notice once nothing is downloading any more."""
+    global _ready_pending, _last_ready_toast
+    with _ready_lock:
+        if ok:
+            _ready_pending = True
+        if _other_download_running() or not _ready_pending:
+            return                                   # another model is still on its way (it reports here too), or nothing new
+        _ready_pending = False
+        if _last_ready_toast is not None and time.monotonic() - _last_ready_toast < _READY_COOLDOWN_S:
+            return
+        try:
+            if not parakeet_installed():             # the required model is not there: nothing to celebrate
+                return
+        except Exception:
+            return
+        _last_ready_toast = time.monotonic()
+        both = False
+        try:
+            from engine.voice import tts_offline
+            both = bool(tts_offline.installed())
+        except Exception:
+            pass
+    _toast("Voice models ready" if both else PILL_READY)
+
+
 def _on_download_done(ok: bool, msg: str) -> None:
     if ok:
-        _toast(PILL_READY)
         threading.Thread(target=preload, name="lyra-parakeet-preload", daemon=True).start()
+        voice_download_finished(True)
     elif msg and "cancelled" not in msg.lower():
         _toast("Voice model download failed - open Settings > Voice for details")
 
@@ -157,15 +208,12 @@ def preload() -> bool:
     try:
         if mode() == "whisper" or not parakeet_ready():
             return False
-        try:                                  # background warm-up must not fight the UI for the CPU
-            import os as _os
-            if _os.name == "nt":
-                import ctypes
-                _k = ctypes.windll.kernel32
-                _k.SetThreadPriority(_k.GetCurrentThread(), -1)     # THREAD_PRIORITY_BELOW_NORMAL
-        except Exception:
-            pass
-        get_engine().warmup()
+        # A background warm-up must not fight the UI for the CPU. Lowering this one Python thread (what was done before) did
+        # nothing for ONNX Runtime's own worker threads, which is what froze the mouse. gentle() waits for a quiet PC, loads
+        # one model at a time, and runs the whole load + warm-up at below-normal priority.
+        from engine.voice import polite_load as _polite
+        with _polite.gentle():
+            get_engine().warmup()
         return get_engine().loaded()
     except Exception as e:
         log.debug("Parakeet preload skipped: %s", e)

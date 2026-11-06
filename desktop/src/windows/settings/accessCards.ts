@@ -67,13 +67,15 @@ function googleCard({ card, item, lyra }: AccessDeps): HTMLElement {
   const connect = h("button", { class: "btn", type: "button", text: "Connect Google" }) as HTMLButtonElement;
   const disconnect = h("button", { class: "btn", type: "button", text: "Disconnect", style: "margin-left:8px" }) as HTMLButtonElement;
   const refresh = async () => {
-    const st = await api<{ connected: boolean; has_client_secret: boolean; libs: boolean; folder: string }>(lyra, "/google/status");
+    const st = await api<{ connected: boolean; has_client_secret: boolean; libs: boolean; folder: string; python?: string; frozen?: boolean }>(lyra, "/google/status");
     if (!st) { note(status, down(), false); connect.disabled = true; disconnect.disabled = true; return; }
     disconnect.disabled = !st.connected;
     connect.disabled = !st.libs || !st.has_client_secret;
     connect.textContent = st.connected ? "Sign in again" : "Connect Google";
     if (st.connected) note(status, "Connected (read-only).", true);
-    else if (!st.libs) note(status, "Needs: pip install google-auth google-auth-oauthlib", false);
+    else if (!st.libs) note(status, st.frozen
+      ? "Needs: rebuild the backend (scripts/build_backend.ps1) so google-auth is bundled"
+      : `Needs: pip install google-auth google-auth-oauthlib into ${st.python || "the Python that runs Lyra"}`, false);
     // Optional feature, nothing is broken: say so in the normal text colour, not as a red error.
     else if (!st.has_client_secret) note(status, "Optional, not set up. To use it, put client_secret.json in the folder below (see GOOGLE_SETUP.md).", null);
     else note(status, "Not connected.", null);

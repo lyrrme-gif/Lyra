@@ -109,11 +109,15 @@ _last_state = "idle"
 _speech_end = 0.0
 
 
-def set_state(state: str) -> None:
+def set_state(state: str, _force: bool = False) -> None:
     """Broadcast Lyra's current activity state. The console UI ignores
     this entirely (it has no concept of 'state') — it exists purely for
     listeners like the Qt bubble, which uses it to pick a pulse animation."""
     global _last_state, _speech_end
+    if not _force and state in ("thinking", "speaking"):
+        from engine.core import turn_control
+        if turn_control.turn_cancelled():
+            return                   # Esc was pressed: this turn must not light the island up again
     if state == _last_state and state in ("standby", "idle"):
         return                       # resting states carry no news; never flood the UI feed
     if _last_state == "speaking" and state != "speaking":
@@ -167,6 +171,10 @@ def print_chat(role: str, text: str, detail: str = "", info: bool = False) -> No
     """Print one line of the chat transcript: '[time] Role: text', plus an
     optional dim detail line underneath when VERBOSE_DISPLAY is on. Also
     notifies any registered UI listeners (e.g. the Qt bubble's caption)."""
+    if role == "lyra":
+        from engine.core import turn_control
+        if turn_control.turn_cancelled():
+            return                   # the turn was stopped with Esc: its answer is dropped, not shown
     ts = datetime.now().strftime("%I:%M %p")
     color, label = {
         "user": (_C_USER, "You"),

@@ -109,6 +109,7 @@ def _download_one(name: str, size: int, base_done: int) -> bool:
 
 
 def _run() -> None:
+    ok = False
     try:
         base = 0
         for name, size in FILES:
@@ -121,6 +122,7 @@ def _run() -> None:
                 return
             base += size
         log.info("offline voice downloaded")
+        ok = True
         try:
             from engine.voice import voice
             voice.preload_offline()
@@ -133,6 +135,12 @@ def _run() -> None:
     finally:
         with _lock:
             _state["downloading"] = False
+        if ok:      # the shared "voice models ready" notice: shown once, after the LAST voice download has finished
+            try:
+                from engine.voice import stt_engines
+                stt_engines.voice_download_finished(True)
+            except Exception:
+                pass
 
 
 def start_download() -> bool:

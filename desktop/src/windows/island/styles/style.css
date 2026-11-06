@@ -2713,6 +2713,16 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 0 0 28px 28px;
 }
 
+/* Music is full-bleed too (its cover-coloured background is part of the player): no black 10px strip above it in the
+   attached island. The player draws its own background to the very top and keeps its controls where they were by
+   adding those 10px as padding inside (musicLiner.css, "attached" rules). */
+#island[data-position="attached"][data-mode="expanded"][data-view="music"][data-view] #content {
+  top: 0;
+  transform: none;
+  padding: 0;
+  border-radius: 0 0 28px 28px;
+}
+
 /* v28: navigation dock is a first-class surface, not part of the view content. */
 #tab-dock { z-index: 9000 !important; }
 #island[data-view="settings"] ~ #tab-dock,

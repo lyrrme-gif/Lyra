@@ -456,19 +456,17 @@ def friendly_error(e: Exception, c: Any = None, model: str | None = None) -> str
     try:
         import openai
         if isinstance(e, openai.APITimeoutError):
-            return (f"Ollama took too long to answer. The model {model} may still be loading into memory - "
-                    "try again in a moment, or pick a smaller model.")
+            return "Ollama is too slow. Try again."
         if isinstance(e, openai.APIConnectionError):
-            return f"I can't reach Ollama at {base}. Start the Ollama app (or run: ollama serve) and try again."
+            return "Can't reach Ollama. Start it."
     except ImportError:
         pass
     if code == 404 or "not found" in low:
-        return f"Ollama doesn't have the model {model} yet. Download it by running: {pull_command(model)}"
+        return f"Model missing. Run: {pull_command(model)}"
     if "more system memory" in low or "out of memory" in low:
-        return f"The model {model} needs more memory than this PC has free. Pick a smaller model in Settings -> AI."
+        return "Not enough memory. Pick a smaller model."
     if code == 400 and ("image" in low or "vision" in low or "multimodal" in low):
-        return (f"The model {model} can't read images. Choose a vision model such as {SUGGESTED_VISION} "
-                f"in Settings -> AI (run: {pull_command(SUGGESTED_VISION)}).")
+        return "This model can't read images."
     return None
 
 
@@ -481,13 +479,13 @@ def not_ready_message() -> str | None:
     except Exception:
         return None
     if not enabled():
-        return "Local models (Ollama) are switched off in Settings -> Features."
+        return "Local models are off in Settings."
     models, err = installed(force=True)
     if err:
-        return err
+        return "Can't reach Ollama. Start it."
     if not models:
-        return f"Ollama is running but has no models yet. Download one by running: {pull_command()}"
-    return "Ollama isn't ready yet. Pick a model in Settings -> AI."
+        return f"No local model. Run: {pull_command()}"
+    return "Pick a model in Settings."
 
 
 # ── Settings -> AI helpers ───────────────────────────────────────────────────────────────────

@@ -47,3 +47,26 @@
 .ptile-glow svg { width: 14px; height: 14px; display: block; }
 .ptile-glow .glow-slash { display: none; stroke: currentColor; }
 .ptile-glow.off .glow-slash { display: block; }
+
+/* ── The Mochi's slot in the previews (the real rules live in island/styles/mochiSlot.css and use the same numbers) ──
+   The snapshots carry their computed styles inline, so these need !important to move the content over. */
+.ap-mochi-slot { position: absolute; left: 14px; top: 50%; width: 30.4px; transform: translateY(-50%); z-index: 40; pointer-events: none; }
+.ap-island:not(.ap-mochi) .ap-mochi-slot { display: none; }
+.ap-island.ap-mochi [data-r="spotify-compact"],
+.ap-island.ap-mochi [data-r="notify-toast"] { padding-left: 54px !important; gap: 10px !important; }
+.ap-island.ap-mochi [data-r="spotify-compact-art"] { margin: 0 2px !important; }
+.ap-island.ap-mochi [data-r="volume-hud"] { padding-left: 54px !important; }
+.ap-island.ap-mochi [data-r="volume-hud-icon"] {
+  flex: 0 0 32px !important; width: 32px !important; min-width: 32px !important;
+  display: flex !important; align-items: center !important; justify-content: center !important;
+}
+.ap-island.ap-mochi [data-r="timer-chip"] { left: 54px !important; right: 16px !important; justify-content: flex-start !important; gap: 10px !important; }
+.ap-island.ap-mochi [data-r="timer-chip-icon"] {
+  flex: 0 0 32px !important; width: 32px !important; display: flex !important; align-items: center !important; justify-content: center !important;
+}
+.ap-timer-label { display: none; }
+.ap-island.ap-mochi .ap-timer-label {
+  display: block; flex: 1 1 0; min-width: 0; margin-left: -2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 600 13px/1 system-ui, sans-serif; color: #aeb2ba;
+}
+.ap-island.ap-mochi [data-r="timer-chip-time"] { flex: 0 0 auto !important; margin-left: auto !important; }

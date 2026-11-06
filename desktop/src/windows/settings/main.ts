@@ -15,9 +15,9 @@ import { filesHost } from "./files";
 import { visiblePoll, type VisiblePoll } from "../../shared/core/visiblePoll";
 import { islandScene, navScene as navScreen } from "./screenPreview";
 import { themePreview } from "./themePreview";
-import { getFeatures } from "../../shared/core/featuresCache";
+import { announceFeaturesChanged, getFeatures } from "../../shared/core/featuresCache";
 import { featurePreview } from "./featureScenes";
-import { activityScene, playActivityPreview, replayActivityFx } from "./activityPreviews";
+import { activityScene, playActivityPreview, replayActivityFx, setPreviewMochi } from "./activityPreviews";
 import { showSetupWizard } from "./setupWizard";
 // >>> phase-8 begin
 import { updateCards } from "./panels/p8_updates";
@@ -1514,6 +1514,17 @@ function displayCards(): { look: HTMLElement; behaviour: HTMLElement[] } {
   const navStyle = radioTiles([["wheel", "Tab wheel"], ["scroller", "Scroller"], ["both", "Both"]], ex.navStyle, (v) => {
     writeExtras({ navStyle: v as "wheel" | "scroller" | "both" });
   }, (v) => navScreen(v as "wheel" | "scroller" | "both"));
+  // Music tab colours: follow the album cover (default) or stay on the island theme.
+  const musicScene = (v: string): HTMLElement => {
+    const d = h("div", { class: "mt-prev" });
+    d.style.cssText = "width:100%;height:100%;min-height:54px;border-radius:10px;display:flex;flex-direction:column;justify-content:flex-end;gap:5px;padding:8px;box-sizing:border-box;" +
+      (v === "music" ? "background:linear-gradient(135deg,#7a3cff,#ff5fa2 70%,#ffb36b);" : "background:#0b0b0d;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);");
+    for (const w of ["70%", "45%"]) { const l = h("div", {}); l.style.cssText = `height:5px;width:${w};border-radius:3px;background:rgba(255,255,255,${w === "70%" ? ".9" : ".45"})`; d.append(l); }
+    return d;
+  };
+  const musicTheme = radioTiles([["music", "Music theme"], ["island", "Island theme"]], ex.musicTheme, (v) => {
+    writeExtras({ musicTheme: v as "music" | "island" });
+  }, musicScene);
   const hideCompact = toggle(ex.hideCompact, (v) => writeExtras({ hideCompact: v }));
   const keepClipboard = toggle(ex.keepClipboard, (v) => { writeExtras({ keepClipboard: v }); void fetch(`${LYRA}/clipboard/keep`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keep: v }) }).catch(() => undefined); });
   paintLive();
@@ -1524,6 +1535,7 @@ function displayCards(): { look: HTMLElement; behaviour: HTMLElement[] } {
       liveItem,
       item("Shape", "Windows screens have no hardware notch, so this is the shape Lyra draws.", notchless),
       item("Material", "Black, Frost or Glass for the small island, whatever the theme.", compactStyle),
+      item("Music player colours", "Music theme: the player and the lyrics take their colours from the album cover. Island theme: they stay on your island theme, whatever is playing.", musicTheme),
       item("Tab navigation", "Tab wheel: everything on the wheel. Scroller: three tab icons at a time that you scroll through. Both: the scroller, and the wheel still opens with Ctrl+CapsLock, right-click or your voice.", navStyle),
     ),
     behaviour: [
@@ -1997,6 +2009,8 @@ async function main() {
   }
 
   const mascotDef = FEATURES.find((f) => f.id === "mascot")!;
+  // A Mochi switch was flipped: once it is saved, tell the island (another window) so it follows right away.
+  const announceMochi = () => void featurePrefs.flush().then((ok) => { if (ok) announceFeaturesChanged(); });
   const stayDef = FEATURES.find((f) => f.id === "mascot_stay")!;
   // Only General is built before the window is first drawn. Every other tab starts as an empty shell (title and
   // subtitle, so the sidebar, the page title and search keep working) and is filled in one task at a time afterwards,
@@ -2022,9 +2036,14 @@ async function main() {
         setOn: (v) => {
           applyFeature(mascotDef, v, featurePrefs);
           if (!v && featureIsOn(stayDef, featurePrefs)) applyFeature(stayDef, false, featurePrefs);   // no Mochi, nothing on screen
+          setPreviewMochi({ mascot: v });
+          announceMochi();
         },
         isStay: () => featureIsOn(stayDef, featurePrefs),
-        setStay: (v) => applyFeature(stayDef, v, featurePrefs),
+        setStay: (v) => { applyFeature(stayDef, v, featurePrefs); announceMochi(); },
+        // On unless switched off (a missing value is ON, same default as the backend).
+        isActs: () => featurePrefs.data.feature_mascot_activities !== false,
+        setActs: (v) => { featurePrefs.set("feature_mascot_activities", v); setPreviewMochi({ activities: v }); announceMochi(); },
       }),
     ];
   });

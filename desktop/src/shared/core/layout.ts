@@ -74,6 +74,9 @@ export const VOLUME_HUD_W = 340;
 /** Height of the notch while the volume HUD is showing. */
 export const VOLUME_HUD_H = 48;
 export const EXPANDED_W = 600;
+/** Extra width the compact notch gets while a Live Activity is showing, so the Mochi has its own slot on the left
+ *  (Mochi body 30 px + the gap before the activity's icon). See windows/island/notchMochi.ts and styles/mochiSlot.css. */
+export const MOCHI_SLOT_W = 40;
 
 export const ROUNDED_CORNER = 16; // hidden / compact
 export const EXPANDED_CORNER = 24;

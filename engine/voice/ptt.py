@@ -402,6 +402,9 @@ def _dispatch_loop() -> None:
                 _end_hold(discard=flag)
             elif kind == "chat":
                 _open_chat_bar()
+            elif kind == "stop":
+                from engine.core import turn_control
+                turn_control.cancel_turn()
             elif kind == "chatmod":
                 time.sleep(0.3)               # Ctrl+Win+<key> is somebody else's shortcut: only a bare hold counts
                 spec = _chat_spec
@@ -506,6 +509,8 @@ def _on_key(down: bool, vk: int, injected: bool = False) -> None:
     global _hook_hold, _chat_held, _chat_mod_armed, _chat_mod_cancel
     if injected:
         return
+    if down and vk == 0x1B and getattr(ui, "_last_state", "idle") in ("speaking", "thinking"):
+        _events.put(("stop", False))      # Esc while she talks or thinks: stop her (the key still reaches the app)
     is_mod = vk in _ALL_MODS
     spec = _chat_spec
     if spec is not None and vk == spec[1] and not down:

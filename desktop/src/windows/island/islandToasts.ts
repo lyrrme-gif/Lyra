@@ -18,6 +18,9 @@ export class IslandToasts {
     return ms && ms > 0 ? Math.min(15_000, Math.max(1500, ms)) : TOAST_MS;
   }
 
+  private lastReminderKey = "";
+  private lastReminderAt = 0;
+
   /** A message, call or reminder arrived (from the backend's "notify" event). */
   onNotify(ev: NotifyEvent) {
     // The tray's Pause is silent: nothing shown, nothing kept.
@@ -31,6 +34,20 @@ export class IslandToasts {
       void Bridge.log("toast: dropped, event too old");
       trace("toast", `notification from ${ev.app} DROPPED: too old (${Date.now() - ev.ts}ms)`);
       return;
+    }
+
+    // The same reminder twice (a backend that reports one event more than once, or a toast that was suspended by a HUD
+    // and re-queued): once is enough. Messages are left alone, a repeated message is a new message.
+    if (ev.kind === "reminder") {
+      const key = `${ev.app}|${ev.sender}|${ev.text}`;
+      const queued = this.i.toastQueue.some((q) => q.kind === "reminder" && `${q.app}|${q.sender}|${q.text}` === key);
+      const now = performance.now();
+      if (queued || (key === this.lastReminderKey && now - this.lastReminderAt < 20_000)) {
+        trace("toast", `reminder DROPPED: same notice already shown / queued (${key.slice(0, 60)})`);
+        return;
+      }
+      this.lastReminderKey = key;
+      this.lastReminderAt = now;
     }
 
     // Another message from the same chat while its toast is up: update in place.

@@ -26,6 +26,7 @@ log = ui.log
 _API = "https://lrclib.net/api"
 _UA = "Lyra/1.0 (personal desktop assistant)"
 _TIMEOUT = 8
+_WORDS_WAIT = 4.0     # seconds to wait, after LRCLIB answered, for NetEase's word-timed version
 
 _cache: dict[tuple, dict] = {}
 _lock = threading.Lock()
@@ -82,6 +83,39 @@ def parse_lrc(text: str) -> list[dict]:
     return out
 
 
+# NetEase's word-timed format ("YRC"), asked for with yv=1:
+#   [lineStartMs,lineDurMs](wordStartMs,wordDurMs,0)word(wordStartMs,wordDurMs,0)next word ...
+# Word starts are absolute (from the start of the song). A "word" can be one syllable; its text keeps its own spaces.
+_YRC_LINE = re.compile(r"^\[(\d+),(\d+)\](.*)$")
+_YRC_WORD = re.compile(r"\((\d+),(\d+),-?\d+\)")
+
+
+def parse_yrc(text: str) -> list[dict]:
+    """YRC text -> [{'t': ms, 'text': 'whole line', 'words': [{'t': ms, 'd': ms, 'text': 'word '}, ...]}], sorted.
+    Lines that are not word-timed (JSON credit lines, blanks) are skipped. Never raises."""
+    out: list[dict] = []
+    for raw in (text or "").splitlines():
+        m = _YRC_LINE.match(raw.strip())
+        if not m:
+            continue
+        body = m.group(3)
+        marks = list(_YRC_WORD.finditer(body))
+        words: list[dict] = []
+        for i, mk in enumerate(marks):
+            end = marks[i + 1].start() if i + 1 < len(marks) else len(body)
+            piece = body[mk.end():end]
+            if not piece.strip() and not piece:
+                continue
+            words.append({"t": int(mk.group(1)), "d": max(1, int(mk.group(2))), "text": piece})
+        words = [w for w in words if w["text"] != ""]
+        if not words:
+            continue
+        line = "".join(w["text"] for w in words).strip()
+        out.append({"t": words[0]["t"], "text": line, "words": words})
+    out.sort(key=lambda x: x["t"])
+    return out
+
+
 def _clean_title(title: str) -> str:
     """'Song - Remastered 2011' / 'Song (feat. X)' -> 'Song' for the fallback search."""
     t = re.sub(r"\s*[\(\[].*?[\)\]]", "", title or "")
@@ -119,30 +153,55 @@ def _ne_json(url: str, data: dict | None = None):
         return json.loads(resp.read().decode("utf-8"))
 
 
-def _netease_lookup(title: str, artist: str, duration: int | None) -> dict:
-    """Search NetEase for the track and return its LRC in the same shape as _shape()."""
-    res = _ne_json(
+def _as_dict(x) -> dict:
+    """NetEase sometimes answers with a string / list / None where an object is expected (rate limit, region block,
+    changed shape). Treat anything that is not a dict as empty instead of crashing on .get()."""
+    return x if isinstance(x, dict) else {}
+
+
+def _as_list(x) -> list:
+    return x if isinstance(x, list) else []
+
+
+def _netease_lookup(title: str, artist: str, duration: int | None, want_words: bool = False) -> dict:
+    """Search NetEase for the track and return its LRC in the same shape as _shape().
+    With want_words, only a result that has word-by-word timing counts (lines carry a "words" list).
+    Defensive on purpose: every part of the response is checked for its type (see _as_dict)."""
+    res = _as_dict(_ne_json(
         "https://music.163.com/api/search/get/web?csrf_token=",
         {"s": f"{_clean_title(title)} {artist}", "type": 1, "offset": 0, "limit": 8},
-    )
-    songs = ((res or {}).get("result") or {}).get("songs") or []
+    ))
+    songs = _as_list(_as_dict(res.get("result")).get("songs"))
     want_a = _norm(artist.split(",")[0].split("&")[0])
     want_t = _norm(_clean_title(title))
     for sng in songs:
-        names = [_norm(a.get("name", "")) for a in (sng.get("artists") or sng.get("ar") or [])]
+        if not isinstance(sng, dict):
+            continue
+        arts = _as_list(sng.get("artists") or sng.get("ar"))
+        names = [_norm(a.get("name", "") if isinstance(a, dict) else str(a)) for a in arts]
         if want_a and not any(want_a in n or n in want_a for n in names if n):
             continue
-        got_t = _norm(sng.get("name", ""))
+        got_t = _norm(str(sng.get("name") or ""))
         if want_t and got_t and want_t not in got_t and got_t not in want_t:
             continue
         dur_ms = sng.get("duration") or sng.get("dt")
-        if duration and dur_ms and abs(dur_ms / 1000 - duration) > 8:
+        if duration and isinstance(dur_ms, (int, float)) and abs(dur_ms / 1000 - duration) > 8:
             continue
-        lyr = _ne_json(
+        sid = sng.get("id")
+        if sid is None:
+            continue
+        lyr = _as_dict(_ne_json(
             "https://music.163.com/api/song/lyric?" + urllib.parse.urlencode(
-                {"id": sng["id"], "lv": 1, "kv": 1, "tv": -1}))
-        lrc = ((lyr or {}).get("lrc") or {}).get("lyric") or ""
-        synced = [l for l in parse_lrc(lrc) if not _NE_CREDIT.match(l["text"])]
+                {"id": sid, "lv": 1, "kv": 1, "tv": -1, "yv": 1})))
+        y = lyr.get("yrc")
+        ytxt = y.get("lyric") if isinstance(y, dict) else (y if isinstance(y, str) else "")
+        yrc = [l for l in parse_yrc(ytxt if isinstance(ytxt, str) else "") if not _NE_CREDIT.match(l["text"])]
+        if yrc:
+            return {"found": True, "instrumental": False, "synced": yrc, "plain": "", "word_timed": True}
+        if want_words:
+            continue
+        lrc = _as_dict(lyr.get("lrc")).get("lyric")
+        synced = [l for l in parse_lrc(lrc if isinstance(lrc, str) else "") if not _NE_CREDIT.match(l["text"])]
         if synced:
             return {"found": True, "instrumental": False, "synced": synced, "plain": ""}
     return {"found": False}
@@ -192,6 +251,18 @@ def lookup(title: str, artist: str, album: str = "", duration: int | None = None
 
     result: dict = {"found": False}
     lrclib_err: str | None = None
+    words_box: dict = {}
+
+    def _words_job() -> None:                  # runs next to the LRCLIB request: word timing costs no extra wait
+        try:
+            alt = _netease_lookup(title, artist, duration, want_words=True)
+            if alt.get("found"):
+                words_box["r"] = alt
+        except Exception as e:  # noqa: BLE001
+            log.info("lyrics: no word timing for %r - %r (%s)", artist, title, str(e)[:120])
+
+    words_thread = threading.Thread(target=_words_job, name="lyra-lyrics-words", daemon=True)
+    words_thread.start()
     try:
         result = _lrclib_lookup(title, artist, album, duration)
     except Exception as e:  # outage / network error
@@ -213,6 +284,14 @@ def lookup(title: str, artist: str, album: str = "", duration: int | None = None
     if lrclib_err and not result.get("found"):
         # Do not cache outages: the next attempt should retry.
         return {"found": False, "error": lrclib_err}
+
+    # Word-by-word timing, when NetEase has it AND it is the same lyrics (similar number of lines).
+    words_thread.join(timeout=_WORDS_WAIT)
+    wr = words_box.get("r")
+    if wr and not result.get("instrumental"):
+        have = result.get("synced") or []
+        if not have or abs(len(wr["synced"]) - len(have)) <= max(2, len(have) // 4):
+            result = wr
 
     with _lock:
         _cache[key] = result

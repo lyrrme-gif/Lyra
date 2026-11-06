@@ -8,7 +8,7 @@ import { PULSE_H, PULSE_W } from "./pulse";
 import { deckHeight } from "./views/searchDeck";
 import { translatePillActive, translatePillSize } from "./views/translate";
 import { APPS_CHAT_H, APPS_CHAT_W, appsChatActive } from "./views/apps";
-import { EXPANDED_CORNER, EXPANDED_W, PANEL_W, ROUNDED_CORNER, VOLUME_HUD_H, VOLUME_HUD_W, islandSize, PEEK_SIZES } from "../../shared/core/layout";
+import { EXPANDED_CORNER, EXPANDED_W, MOCHI_SLOT_W, PANEL_W, ROUNDED_CORNER, VOLUME_HUD_H, VOLUME_HUD_W, islandSize, PEEK_SIZES } from "../../shared/core/layout";
 import { traceLimited } from "../../shared/core/trace";
 
 export class IslandGeometry {
@@ -22,7 +22,22 @@ export class IslandGeometry {
     return s;
   }
 
+  /** True while a compact Live Activity owns the notch AND the Mochi is shown in its left slot (notchMochi.ts sets
+   *  `mochi-ok` on the island while the Mochi is enabled, home and not hidden by a screen share). */
+  mochiSlotOn(): boolean {
+    const i = this.i;
+    if (State.mode !== "compact" || i.lyraStatusKind !== null) return false;      // Lyra's own turn draws its own Mochi
+    if (!i.islandEl.classList.contains("mochi-ok")) return false;
+    return i.toastOn || i.pulseOn || i.volumeHudOn || i.timerChip.el.classList.contains("show") || i.isSpotifyCompactActive();
+  }
+
+  /** The notch size for the current state, plus the Mochi's slot on the left while an activity is showing. */
   targetSizeBase(): { w: number; h: number; r: number } {
+    const s = this.sizeBase();
+    return this.mochiSlotOn() ? { ...s, w: s.w + MOCHI_SLOT_W } : s;
+  }
+
+  private sizeBase(): { w: number; h: number; r: number } {
     // Lyra listening / thinking / speaking owns the compact notch: a slightly wider pill (Mochi + text or wave).
     if (this.i.lyraStatusKind !== null && State.mode === "compact") {
       // The same look as the setup previews: a roomy pill with the Mochi, the words / bars and the round button.
@@ -70,7 +85,11 @@ export class IslandGeometry {
     const MUSIC_W = 400;
     const MUSIC_H = 176;
     const MUSIC_R = 40;
+    const LYRICS_W = 580;
+    const LYRICS_H = 268;
+    const LYRICS_R = 36;
     if (State.mode === "expanded" && State.view === "music") {
+      if (State.lyricsOpen) return { w: LYRICS_W, h: LYRICS_H, r: LYRICS_R };
       return { w: MUSIC_W, h: MUSIC_H, r: MUSIC_R };
     }
     // Same footprint as Music for timer / volume / clipboard / recognition / etc.

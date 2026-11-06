@@ -38,6 +38,8 @@ export interface ViewActions {
   setIslandPosition(position: IslandPosition): void;
   /** true = small peek, false = the full tab (Music, Timer, Weather, Recognize). */
   setPeek(on: boolean): void;
+  /** The island's target size changed without a view/mode change (Music: lyrics opened / closed): animate to it. */
+  relayout(shrinking: boolean): void;
   openSettingsWindow(): void;
   blip(): void;
 }
@@ -143,7 +145,7 @@ export function buildViews(
   map.set("empty", buildEmpty(actions));
   map.set("note", buildNote());
   map.set("prompt", buildPrompt(onChatHeightChange));
-  map.set("music", withPeek(buildMusic(), peekMusic(), actions.setPeek));
+  map.set("music", withPeek(buildMusic(actions), peekMusic(), actions.setPeek));
   map.set("volume", buildVolume());
   map.set("recognition", withPeek(buildRecognition(), peekRecognition(), actions.setPeek));
   map.set("translate", buildTranslate(onChatHeightChange));

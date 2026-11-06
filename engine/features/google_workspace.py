@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import sys
 import threading
 import time
 from datetime import date, datetime, timedelta
@@ -138,6 +139,16 @@ def _libs_installed() -> bool:
               and importlib.util.find_spec("google_auth_oauthlib") is not None)
     except (ImportError, ValueError):
         ok = False
+    if not ok:
+        # find_spec can say "no" for packages that ARE there: "google" is a namespace package shared by many
+        # distributions, and in the PyInstaller exe it is resolved differently. Before telling the user to pip install
+        # something, really import once (about a second, paid only on this path, and only once: the answer is cached).
+        try:
+            import google.oauth2.credentials  # noqa: F401
+            import google_auth_oauthlib.flow  # noqa: F401
+            ok = True
+        except Exception as e:  # noqa: BLE001
+            log.info("google: libraries not importable in %s: %s", sys.executable, e)
     _libs_cache.append(ok)
     return ok
 
@@ -150,7 +161,9 @@ def status() -> dict:
         has_secret = False
     libs = _libs_installed()
     return {"connected": connected(), "has_client_secret": has_secret, "libs": libs,
-            "scopes": list(READ_SCOPES), "folder": str(_file("client_secret.json").parent)}
+            "scopes": list(READ_SCOPES), "folder": str(_file("client_secret.json").parent),
+            # which Python is answering: "Needs pip install" is about THIS interpreter, not the one you installed into
+            "python": sys.executable, "frozen": bool(getattr(sys, "frozen", False))}
 
 
 def _revoke(token_json: dict) -> bool:

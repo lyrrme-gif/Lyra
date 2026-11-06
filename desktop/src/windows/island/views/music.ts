@@ -1,22 +1,41 @@
-// Music tab — Spotify controls inside the island (cover, title, progress, transport).
+// Music tab — Spotify controls inside the island (cover, title, progress, transport) and its Lyrics view.
 //
 // It shows what Rust reads from the Windows media session and sends clicks back
 // through the same `spotify_control` command as the small pill. No account, no
 // login: if Spotify's desktop app is closed there is nothing to show, and the tab
 // says so and offers to open it. It never invents a track.
+//
+// Look ("Liner"): the whole tab takes its colours from the album cover (coverTheme.ts / musicTheme.ts, via the existing
+// artColor()), the lyrics view is cover + controls on the left and large lyrics on the right. All styling is in
+// musicLiner.css. Cost notes (the app is already GPU heavy): no blur, no backdrop-filter, only opacity/transform
+// animate; the one rAF loop below runs only while the lyrics are visible AND playing AND the window is really on
+// screen, and does no layout reads (line positions are read once per line change, not per frame).
 
 import { h, svg } from "../../../shared/views/dom";
 import { ICONS } from "../../../shared/views/icons";
 import { IS_TAURI } from "../../../shared/core/bridge";
-import { State } from "../../../shared/core/state";
+import { EXTRAS_KEY, State, readExtras } from "../../../shared/core/state";
+import { isReallyVisible, onVisibilityChange } from "../../../shared/core/visibility";
 import { SpotifyFeed } from "../../../shared/spotify/feed";
 import { currentPosition, formatTime, isSpotifySource, labels, progressFraction } from "../../../shared/spotify/model";
-import type { ViewHost } from "./views";
+import { lineIndexAt } from "../lyricsLine";
+import { UNSUNG_ALPHA, type CoverTheme } from "./coverTheme";
+import { cleanTimedWords, evenWordTimings, fillAt, singWindow, splitWords, timedSpans, type TimedWord, type WordSpan } from "./lyricsFill";
+import { cachedTheme, themeForCover } from "./musicTheme";
+import type { ViewActions, ViewHost } from "./views";
+import "./musicLiner.css";
 
 const LYRICS_BASE = "http://127.0.0.1:8765";
-const EQ_BARS = 11;
+/** Where (px from the top of the lyrics panel) the centre of the current line stays while the lyrics scroll. */
+const LYR_ANCHOR_Y = 92;
+/** Lines further than this from the current one all look the same (data-d is capped here). */
+const DIST_CAP = 5;
+/** Moving by at most this many lines only restyles the lines around the old and the new current line. */
+const DIST_STEP = 6;
+/** Cross-fade of the background gradient between two songs (CSS: .lm-bg transition 0.7 s) + a little. */
+const FADE_MS = 800;
 
-interface LyricLine { t: number; text: string }
+interface LyricLine { t: number; text: string; words?: TimedWord[] }
 type LyricsView =
   | { kind: "loading" }
   | { kind: "none" }
@@ -30,60 +49,58 @@ const lyricsCache = new Map<string, LyricsView>();
 
 type Mode = "preview" | "loading" | "closed" | "idle" | "playing" | "paused";
 
-export function buildMusic(): ViewHost {
+/** Time-stamped lines from the backend, cleaned: numeric stamps only, in order. */
+function cleanLines(raw: unknown): LyricLine[] {
+  if (!Array.isArray(raw)) return [];
+  const out: LyricLine[] = [];
+  for (const l of raw) {
+    const t = Number((l as LyricLine)?.t);
+    if (!Number.isFinite(t)) continue;
+    const words = cleanTimedWords((l as LyricLine).words);          // real word timing, when the service had it
+    out.push({ t, text: String((l as LyricLine).text ?? "").trim(), ...(words ? { words } : {}) });
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+const reduceMotionQuery = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
+
+export function buildMusic(actions: Pick<ViewActions, "relayout">): ViewHost {
   // ── DOM ─────────────────────────────────────────────────────────────────────
-  const ambience = h("div", { class: "m-ambience", "aria-hidden": "true" });
+  // Two background layers: a new song's gradient fades in on the idle one over the old one (opacity only).
+  const bgA = h("div", { class: "lm-bg", "aria-hidden": "true" });
+  const bgB = h("div", { class: "lm-bg", "aria-hidden": "true" });
+  let front = bgA;
+
   const img = h("img", { alt: "" }) as HTMLImageElement;
   img.draggable = false;
   img.decoding = "async";
-  const art = h("div", { class: "m-art" }, img, h("div", { class: "m-ph" }, svg(ICONS.music, 30)));
+  const art = h("div", { class: "lm-art" }, img, h("div", { class: "lm-ph" }, svg(ICONS.music, 30)));
   // A cover that fails to decode falls back to the placeholder.
   img.addEventListener("error", () => art.classList.remove("has-art"));
 
-  const title = h("div", { class: "m-title" });
-  const artist = h("div", { class: "m-artist" });
+  const title = h("div", { class: "lm-title" });
+  const artist = h("div", { class: "lm-artist" });
   // Small animated playback wave sits AFTER the title, never before it.
-  const musicWave = h("div", { class: "m-music-wave", "aria-hidden": "true" }, ...Array.from({ length: 5 }, () => h("i")));
-  const titleLine = h("div", { class: "m-title-line" }, title, musicWave);
-  const text = h("div", { class: "m-text" }, titleLine, artist);
-  // Same look as the voice wave on the notch: white bars, tallest in the middle,
-  // tapering to dots at the ends. Spotify gives us no audio levels, so it is animated.
-  const eqBars: HTMLElement[] = [];
-  for (let i = 0; i < EQ_BARS; i++) {
-    const x = (i - (EQ_BARS - 1) / 2) / ((EQ_BARS - 1) / 2);
-    const amp = 0.12 + 0.88 * Math.exp(-(x * 1.7) * (x * 1.7));
-    const b = h("i");
-    b.style.setProperty("--amp", amp.toFixed(3));
-    b.style.animationDuration = `${(0.55 + ((i * 7) % 5) * 0.13).toFixed(2)}s`;
-    b.style.animationDelay = `${(-((i * 3) % 7) * 0.11).toFixed(2)}s`;
-    eqBars.push(b);
-  }
-  // Build these before the main tree: v35 accidentally referenced them before declaration.
-  const lyrArtImg = h("img", { class: "m-lyr-art", alt: "" }) as HTMLImageElement;
-  lyrArtImg.draggable = false;
-  const lyrMetaTitle = h("div", { class: "m-lyr-title" });
-  const lyrMetaArtist = h("div", { class: "m-lyr-artist" });
-  const lyrClose = h("button", { class: "m-lyr-close", type: "button", title: "Close lyrics", "aria-label": "Close lyrics" }, svg("M6 6l12 12M18 6 6 18", 17)) as HTMLButtonElement;
-  const lyrTop = h("div", { class: "m-lyr-top" }, lyrArtImg, h("div", { class: "m-lyr-meta" }, lyrMetaTitle, lyrMetaArtist), lyrClose);
-  const lyrInner = h("div", { class: "m-lyr-inner" });
-  const lyrics = h("div", { class: "m-lyrics", title: "Lyrics from LRCLIB" }, lyrTop, lyrInner);
+  const musicWave = h("div", { class: "lm-wave", "aria-hidden": "true" }, ...Array.from({ length: 5 }, () => h("i")));
+  const titleLine = h("div", { class: "lm-titleline" }, title, musicWave);
+  const text = h("div", { class: "lm-meta" }, titleLine, artist);
+
   const cur = h("span");
   const dur = h("span");
   const fill = h("i");
-  const bar = h("div", { class: "m-bar", role: "slider", "aria-label": "Song position", tabindex: "0" }, fill);
-  const progress = h("div", { class: "m-progress" }, cur, bar, dur);
-  // Compact player actions: the reference has no top-row action buttons.
-  // Keep Lyrics accessible as a dedicated transport-side control instead.
+  const bar = h("div", { class: "lm-bar", role: "slider", "aria-label": "Song position", tabindex: "0" }, fill);
+  const progress = h("div", { class: "lm-progress" }, cur, bar, dur);
+
   const lyrBtn = h(
     "button",
-    { class: "m-lyr-btn transport-side lyrics-side", title: "Lyrics", "aria-label": "Lyrics", "aria-pressed": "false", type: "button" },
+    { class: "lm-btn side lyr", title: "Lyrics", "aria-label": "Lyrics", "aria-pressed": "false", type: "button" },
     svg(ICONS.lyrics, 15),
   ) as HTMLButtonElement;
 
   const transport = (label: string, path: string, size: number, action: "toggle" | "next" | "previous", extra = "") => {
     const b = h(
       "button",
-      { class: `m-btn ${extra}`.trim(), title: label, "aria-label": label, type: "button" },
+      { class: `lm-btn ${extra}`.trim(), title: label, "aria-label": label, type: "button" },
       svg(path, size),
     ) as HTMLButtonElement;
     let pointerHandled = false;
@@ -106,7 +123,7 @@ export function buildMusic(): ViewHost {
   };
   const shuffleBtn = h(
     "button",
-    { class: "m-action transport-side shuffle", title: "Shuffle", "aria-label": "Shuffle", "aria-pressed": "false", type: "button" },
+    { class: "lm-btn side shuffle", title: "Shuffle", "aria-label": "Shuffle", "aria-pressed": "false", type: "button" },
     svg(ICONS.shuffle, 17, { stroke: 2 }),
   ) as HTMLButtonElement;
   let shufflePointer = false;
@@ -128,19 +145,77 @@ export function buildMusic(): ViewHost {
   const prevBtn = transport("Previous", ICONS.backFill, 20, "previous");
   const toggleBtn = transport("Play / pause", ICONS.play, 23, "toggle", "main");
   const nextBtn = transport("Next", ICONS.forwardFill, 20, "next");
-  const controls = h("div", { class: "m-controls" }, shuffleBtn, prevBtn, toggleBtn, nextBtn, lyrBtn);
-  const head = h("div", { class: "m-head" }, text);
+  // Visual order (CSS `order`): Lyrics · Previous · Play · Next · Shuffle.
+  const controls = h("div", { class: "lm-controls" }, shuffleBtn, prevBtn, toggleBtn, nextBtn, lyrBtn);
 
   const openBtn = h(
     "button",
-    { class: "btn primary m-open", type: "button", onclick: () => SpotifyFeed.launch() },
+    { class: "btn primary lm-open", type: "button", onclick: () => SpotifyFeed.launch() },
     h("span", { text: "Open Spotify" }),
   );
 
-  const main = h("div", { class: "m-main" }, head, lyrics, progress, controls, openBtn);
-  const row = h("div", { class: "music" }, art, main);
+  // Lyrics panel: a synced column (moved with transform), a plain-text box, or a status message. CSS shows one.
+  const track = h("div", { class: "lm-track" });
+  const plainBox = h("div", { class: "lm-plain" });
+  const msgBox = h("div", { class: "lm-msg" });
+  const lyrics = h("div", { class: "lm-lyrics", title: "Lyrics from LRCLIB", "data-kind": "msg" }, track, plainBox, msgBox);
+  const lyrClose = h("button", { class: "lm-close", type: "button", title: "Close lyrics", "aria-label": "Close lyrics" }, svg("M6 6l12 12M18 6 6 18", 14, { stroke: 2.2 })) as HTMLButtonElement;
+
+  const left = h("div", { class: "lm-left" }, art, text, progress, controls, openBtn);
+  const stage = h("div", { class: "lm-stage" }, left, lyrics, lyrClose);
   // Music is intentionally full-bleed. There is no inner .card surface in the DOM.
-  const el = h("div", { class: "view music-view" }, ambience, row);
+  const el = h("div", { class: "view music-view lm-view" }, bgA, bgB, stage);
+  el.style.setProperty("--lm-unsung", String(UNSUNG_ALPHA));
+
+  // ── Theme from the cover ────────────────────────────────────────────────────
+  const THEME_VARS = ["--cv-rgb", "--cv-light-rgb", "--cv-dark-rgb", "--cv-hi-rgb", "--cv-bg-a", "--cv-bg-b", "--cv-glow-rgb", "--cv-glow-a"];
+  let themed: CoverTheme | null = null;
+  let themeToken = 0;
+  let fadeTimer: number | undefined;
+
+  function applyTheme(t: CoverTheme | null) {
+    if (t === themed) return;
+    themed = t;
+    window.clearTimeout(fadeTimer);
+    if (!t) {
+      // No usable colour (or no cover): back to the island theme, gradient fades out.
+      for (const k of THEME_VARS) el.style.removeProperty(k);
+      el.classList.remove("lm-themed");
+      bgA.classList.remove("on", "top");
+      bgB.classList.remove("on", "top");
+      return;
+    }
+    for (const [k, v] of Object.entries(t.vars)) el.style.setProperty(k, v);
+    el.classList.add("lm-themed");
+    // Fade the new gradient in on the idle layer, on top of the old one; drop the old one once it is covered.
+    const back = front === bgA ? bgB : bgA;
+    back.style.setProperty("--bg-a", t.bgA);
+    back.style.setProperty("--bg-b", t.bgB);
+    back.style.setProperty("--bg-glow", t.glow);
+    back.style.setProperty("--bg-glow-a", t.glowA);
+    back.style.setProperty("--bg-glow-a2", t.glowA2);
+    back.classList.add("on", "top");
+    front.classList.remove("top");
+    front = back;
+    fadeTimer = window.setTimeout(() => (front === bgA ? bgB : bgA).classList.remove("on"), FADE_MS);
+  }
+
+  /** Called when the cover changes. Cached covers apply at once; a new one waits for ONE artColor() call. */
+  let lastCover: string | null = null;
+  /** Settings -> "Music player colours": "island" keeps the Music tab on the island theme and ignores the cover. */
+  const followCover = () => readExtras().musicTheme !== "island";
+  function updateTheme(url: string | null) {
+    lastCover = url;
+    const token = ++themeToken;
+    if (!url || !followCover()) { applyTheme(null); return; }
+    const hit = cachedTheme(url);
+    if (hit !== undefined) { applyTheme(hit); return; }
+    // Until the colour is known the previous song's theme stays: no flash back to the default.
+    void themeForCover(url).then((t) => { if (token === themeToken) applyTheme(t); });
+  }
+
+  // The Settings window writes the choice to localStorage: re-apply at once, no restart.
+  window.addEventListener("storage", (e) => { if (e.key === EXTRAS_KEY) updateTheme(lastCover); });
 
   // ── Rendering ───────────────────────────────────────────────────────────────
   bar.addEventListener("click", (event: MouseEvent) => {
@@ -149,8 +224,6 @@ export function buildMusic(): ViewHost {
     if (!rect.width || !total || !Number.isFinite(total)) return;
     const fraction = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
     SpotifyFeed.seek(fraction * total);
-    bar.style.setProperty("--seek-preview", `${fraction * 100}%`);
-    window.setTimeout(() => bar.style.removeProperty("--seek-preview"), 220);
   });
   bar.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -168,61 +241,205 @@ export function buildMusic(): ViewHost {
   let lastTrack = "";
   let active = false;
   let unsubscribe: (() => void) | null = null;
+  let unsubscribeVisibility: (() => void) | null = null;
   let ticker: number | undefined;
 
   // ── Lyrics ──────────────────────────────────────────────────────────────────
   let lyricsOn = false;
   let lyricsTrack = ""; // trackKey the panel currently shows / is loading
   let lyricsView: LyricsView = { kind: "loading" };
+
+  // Synced state: one element per line (built once per song), the line being sung, and its words.
   let lineEls: HTMLElement[] = [];
-  let shownLine = -2;
+  let lineWords: (HTMLElement[] | null)[] = [];   // spans of a line, built the first time it is the current one
+  let curIdx = -2;                                 // -2 nothing painted yet, -1 before the first line
+  let curSpans: WordSpan[] = [];
+  let curWordEls: HTMLElement[] = [];
+  let fillWhole = -1;
+  let fillFrac = -1;
+
+  function setKind(kind: "synced" | "plain" | "msg") {
+    lyrics.dataset.kind = kind;
+  }
+
+  function resetSynced() {
+    track.replaceChildren();
+    track.style.transform = "";
+    lineEls = [];
+    lineWords = [];
+    curIdx = -2;
+    curSpans = [];
+    curWordEls = [];
+    fillWhole = -1;
+    fillFrac = -1;
+  }
 
   function paintLyrics() {
-    lyrInner.replaceChildren();
-    lineEls = [];
-    shownLine = -2;
-    lyrics.classList.toggle("plain", lyricsView.kind === "plain");
-    const s = SpotifyFeed.state;
-    lyrMetaTitle.textContent = s?.title ?? "Lyrics";
-    lyrMetaArtist.textContent = s?.artist ?? "";
-    if (SpotifyFeed.art) lyrArtImg.src = SpotifyFeed.art;
-    else lyrArtImg.removeAttribute("src");
+    resetSynced();
+    plainBox.textContent = "";
+    msgBox.textContent = "";
+    lyrics.scrollTop = 0;
     const v = lyricsView;
     if (v.kind === "synced") {
-      updateLyricsPosition(true);
+      setKind("synced");
+      const frag = document.createDocumentFragment();
+      for (const line of v.lines) {
+        const d = h("div", { class: "lm-line", text: line.text || "\u266a" });
+        lineEls.push(d);
+        lineWords.push(null);
+        frag.append(d);
+      }
+      track.append(frag);
+      syncLyricsLine(true);
     } else if (v.kind === "plain") {
-      const d = h("div", { class: "m-lyr-line cur", text: v.text });
-      lineEls.push(d);
-      lyrInner.append(d);
+      setKind("plain");
+      plainBox.textContent = v.text;
     } else {
-      const msg =
+      setKind("msg");
+      msgBox.textContent =
         v.kind === "loading" ? "Finding lyrics…"
         : v.kind === "instrumental" ? "Instrumental ♪"
         : v.kind === "offline" ? "Couldn't reach the lyrics service"
         : "No lyrics found for this song";
-      lyrInner.append(h("div", { class: "m-lyr-msg", text: msg }));
+    }
+    syncLoop();
+  }
+
+  /** Lines get a distance from the current one (data-d); CSS turns it into opacity + scale. */
+  function setDistances(idx: number, prev: number) {
+    const n = lineEls.length;
+    let from = 0;
+    let to = n - 1;
+    if (prev >= -1 && Math.abs(idx - prev) <= DIST_STEP) {
+      from = Math.max(0, Math.min(idx, prev) - DIST_CAP - 1);
+      to = Math.min(n - 1, Math.max(idx, prev) + DIST_CAP + 1);
+    }
+    for (let i = from; i <= to; i++) {
+      const v = String(Math.min(DIST_CAP, Math.abs(i - idx)));
+      if (lineEls[i].dataset.d !== v) lineEls[i].dataset.d = v;
     }
   }
 
-  function updateLyricsPosition(force = false) {
-    if (!lyricsOn || lyricsView.kind !== "synced") return;
+  /** Makes line `idx` the current one: words are split into spans the first time, and their even timing is set. */
+  function activateLine(lines: LyricLine[], idx: number) {
+    if (curIdx >= 0) lineEls[curIdx]?.classList.remove("cur");
+    curIdx = idx;
+    curSpans = [];
+    curWordEls = [];
+    fillWhole = -1;
+    fillFrac = -1;
+    if (idx < 0) return;
+    const lineEl = lineEls[idx];
+    const textOfLine = lines[idx].text || "\u266a";
+    const timed = lines[idx].words ?? null;       // real word timing (NetEase), else the estimate below
+    let words = lineWords[idx];
+    if (!words) {
+      lineEl.textContent = "";
+      if (timed) {
+        // One span per timed word (a word can be one syllable); its own trailing space stays as plain text.
+        words = timed.map((tw) => {
+          const body = tw.text.replace(/\s+$/, "");
+          const s = h("span", { class: "lm-w", text: body });
+          lineEl.append(s);
+          if (body.length !== tw.text.length) lineEl.append(" ");
+          return s;
+        });
+      } else {
+        const parts = splitWords(textOfLine);
+        words = parts.map((w, i) => {
+          if (i > 0 && !/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]/.test(w)) lineEl.append(" ");
+          const s = h("span", { class: "lm-w", text: w });
+          lineEl.append(s);
+          return s;
+        });
+      }
+      lineWords[idx] = words;
+    } else {
+      for (const w of words) { w.classList.remove("done"); w.style.removeProperty("--p"); }
+    }
+    curWordEls = words;
+    if (timed) {
+      curSpans = timedSpans(timed);                                   // real timing
+    } else {
+      const win = singWindow(lines[idx].t, lines[idx + 1]?.t ?? null);
+      curSpans = evenWordTimings(words.map((w) => w.textContent || ""), win.start, win.end);   // estimate
+    }
+    lineEl.classList.add("cur");
+  }
+
+  /** Moves the column so the line's centre sits at LYR_ANCHOR_Y. One layout read per LINE change, none per frame. */
+  function scrollToLine(idx: number, snap: boolean) {
+    const target = lineEls[Math.max(0, idx)];
+    if (!target) return;
+    const y = target.offsetTop + target.offsetHeight / 2 - LYR_ANCHOR_Y;
+    if (snap) track.classList.add("snap");
+    track.style.transform = `translate3d(0, ${-Math.round(y)}px, 0)`;
+    if (snap) requestAnimationFrame(() => requestAnimationFrame(() => track.classList.remove("snap")));
+  }
+
+  /** Word-by-word fill of the current line (estimated: see lyricsFill.ts). Writes only what changed; usually one style var. */
+  function paintFill(pos: number) {
+    if (curIdx < 0 || !curWordEls.length) return;
+    let { whole, frac } = fillAt(curSpans, pos);
+    // Reduced motion: a word lights up whole when its turn starts, no smooth fill.
+    if (reduceMotionQuery?.matches) { if (frac > 0) whole += 1; frac = 0; }
+    const n = curWordEls.length;
+    if (whole !== fillWhole) {
+      for (let i = 0; i < n; i++) {
+        curWordEls[i].classList.toggle("done", i < whole);
+        if (i !== whole) curWordEls[i].style.removeProperty("--p");
+      }
+      fillWhole = whole;
+      fillFrac = -1;
+    }
+    if (whole < n && Math.abs(frac - fillFrac) >= 0.004) {
+      curWordEls[whole].style.setProperty("--p", frac.toFixed(3));
+      fillFrac = frac;
+    }
+  }
+
+  function currentPos(): number | null {
     const s = SpotifyFeed.state;
-    const pos = s ? currentPosition(s, SpotifyFeed.receivedAt, performance.now()) : null;
-    if (pos == null) return;
+    return s ? currentPosition(s, SpotifyFeed.receivedAt, performance.now()) : null;
+  }
+
+  function syncLyricsLine(force = false) {
+    if (!lyricsOn || lyricsView.kind !== "synced") return;
+    const pos = currentPos();
     const lines = lyricsView.lines;
-    let idx = -1;
-    for (let i = 0; i < lines.length && lines[i].t <= pos + 150; i++) idx = i;
-    if (!force && idx === shownLine) return;
-    const direction = shownLine >= 0 && idx !== shownLine ? (idx > shownLine ? "up" : "down") : "in";
-    shownLine = idx;
-    lyrInner.replaceChildren();
-    lineEls = [];
-    for (let offset = -1; offset <= 1; offset++) {
-      const item = lines[idx + offset];
-      const d = h("div", { class: `m-lyr-line ${offset === 0 ? "cur" : "side"} lyric-${direction}`.trim(), text: item?.text || "" });
-      if (!item) d.classList.add("empty");
-      lineEls.push(d);
-      lyrInner.append(d);
+    if (pos == null) {
+      // The player reports no position: nothing to follow, but the lines must still be readable (first lines, top).
+      if (curIdx === -2) { activateLine(lines, -1); setDistances(-1, -2); scrollToLine(-1, true); }
+      return;
+    }
+    const idx = lineIndexAt(lines, pos);
+    if (force || idx !== curIdx) {
+      const prev = curIdx;
+      const first = prev === -2;
+      activateLine(lines, idx);
+      setDistances(idx, prev);
+      scrollToLine(idx, force || first);
+    }
+    paintFill(pos);
+  }
+
+  // The fill needs a steady clock; nothing else does. It runs ONLY while the lyrics are visible and the song plays.
+  let raf = 0;
+  function wantLoop(): boolean {
+    return active && lyricsOn && lyricsView.kind === "synced" && SpotifyFeed.state?.status === "playing" && isReallyVisible();
+  }
+  function loop() {
+    raf = 0;
+    if (!wantLoop()) return;
+    syncLyricsLine();
+    raf = requestAnimationFrame(loop);
+  }
+  function syncLoop() {
+    if (wantLoop()) {
+      if (!raf) raf = requestAnimationFrame(loop);
+    } else if (raf) {
+      cancelAnimationFrame(raf);
+      raf = 0;
     }
   }
 
@@ -254,8 +471,13 @@ export function buildMusic(): ViewHost {
       if (d.error) view = { kind: "offline" };
       else if (!d.found) view = { kind: "none" };
       else if (d.instrumental) view = { kind: "instrumental" };
-      else if (Array.isArray(d.synced) && d.synced.length) view = { kind: "synced", lines: d.synced };
-      else view = { kind: "plain", text: String(d.plain || "") };
+      else {
+        const lines = cleanLines(d.synced);
+        const plain = String(d.plain || "").trim();
+        if (lines.length) view = { kind: "synced", lines };
+        else if (plain) view = { kind: "plain", text: plain };
+        else view = { kind: "none" };
+      }
     } catch {
       view = { kind: "offline" };
     }
@@ -278,27 +500,31 @@ export function buildMusic(): ViewHost {
       { duration: 340, easing: "cubic-bezier(.2,.8,.2,1)" },
     );
     // Panel: lyrics rise in when opening; the player rises back in when closing.
-    const cls = on ? "m-anim-in" : "m-anim-out";
-    el.classList.remove("m-anim-in", "m-anim-out");
+    const cls = on ? "lm-anim-in" : "lm-anim-out";
+    el.classList.remove("lm-anim-in", "lm-anim-out");
     void el.offsetWidth; // restart the CSS animations
     el.classList.add(cls);
     window.clearTimeout(animTimer);
     animTimer = window.setTimeout(() => el.classList.remove(cls), 600);
   }
 
-  function setLyrics(on: boolean, animate = false) {
+  /** `relayout`: the island is open on this tab, so it must grow / shrink for the lyrics layout. */
+  function setLyrics(on: boolean, animate = false, relayout = false) {
     if (animate && on !== lyricsOn) playToggleAnimation(on);
+    const changed = on !== lyricsOn;
     lyricsOn = on;
     State.lyricsOpen = on;
-    el.classList.toggle("lyrics-on", on);
+    el.classList.toggle("lm-lyrics-on", on);
     lyrBtn.classList.toggle("on", on);
     lyrBtn.setAttribute("aria-pressed", String(on));
     lyrBtn.title = on ? "Hide lyrics" : "Lyrics";
+    if (changed && relayout && State.mode === "expanded") actions.relayout(!on);
     if (on) void loadLyrics();
+    else syncLoop();
   }
 
   function toggleLyrics() {
-    setLyrics(!lyricsOn, true);
+    setLyrics(!lyricsOn, true, true);
   }
 
   let lyricsPointer = false;
@@ -322,7 +548,7 @@ export function buildMusic(): ViewHost {
     (event as Event | undefined)?.stopImmediatePropagation?.();
     lyricsClosePointer = true;
     window.setTimeout(() => { lyricsClosePointer = false; }, 450);
-    setLyrics(false, true);
+    setLyrics(false, true, true);
   };
   // Capture the close interaction before any island drag/window handler can consume it.
   const onClosePointer = (event: Event) => {
@@ -340,13 +566,6 @@ export function buildMusic(): ViewHost {
     event.stopImmediatePropagation();
     if (!lyricsClosePointer) closeLyrics(event);
   }, true);
-  // Also catch taps on the expanded ::before hit pad via the top bar.
-  lyrTop.addEventListener("pointerdown", (event) => {
-    const t = event.target as HTMLElement | null;
-    if (t === lyrClose || lyrClose.contains(t as Node) || t?.closest?.(".m-lyr-close")) {
-      onClosePointer(event);
-    }
-  }, { passive: false, capture: true });
 
   function mode(): Mode {
     if (!IS_TAURI) return "preview";
@@ -355,22 +574,25 @@ export function buildMusic(): ViewHost {
     return s.running ? s.status : "closed";
   }
 
+  let shownCur = "";
+  let shownDur = "";
   function renderProgress() {
     const s = SpotifyFeed.state;
     const pos = s ? currentPosition(s, SpotifyFeed.receivedAt, performance.now()) : null;
     const total = s?.durationMs ?? null;
     progress.classList.toggle("none", pos == null || total == null);
+    let c = "";
+    let d = "";
     if (pos == null || total == null) {
       // Nothing to measure: don't leave the previous song's time behind.
-      cur.textContent = "";
-      dur.textContent = "";
       fill.style.transform = "scaleX(0)";
-      return;
+    } else {
+      fill.style.transform = `scaleX(${progressFraction(pos, total)})`;
+      c = formatTime(pos);
+      d = `-${formatTime(Math.max(0, total - pos))}`;   // time remaining ("-3:15"), like the Apple players
     }
-    fill.style.transform = `scaleX(${progressFraction(pos, total)})`;
-    cur.textContent = formatTime(pos);
-    // Frost shows time remaining ("-3:15") like the Apple players; other themes show the total.
-    dur.textContent = `-${formatTime(Math.max(0, total - pos))}`;
+    if (c !== shownCur) { shownCur = c; cur.textContent = c; }
+    if (d !== shownDur) { shownDur = d; dur.textContent = d; }
   }
 
   function render() {
@@ -387,18 +609,16 @@ export function buildMusic(): ViewHost {
       t = "Spotify isn't running";
       a = "Open it to control your music here";
     } else if (s) ({ title: t, artist: a } = labels(s));
-    title.textContent = t;
-    title.title = t;
-    artist.textContent = a;
-    artist.title = a;
+    if (title.textContent !== t) { title.textContent = t; title.title = t; }
+    if (artist.textContent !== a) { artist.textContent = a; artist.title = a; }
 
     const track = s?.trackKey ?? "";
     if (track !== lastTrack) {
       if (lastTrack !== "" && track !== "") {
-        // Apple Music-style track change: artwork pops in, the title slides up and settles.
+        // Apple Music-style track change: artwork pops in, the title slides up and settles (opacity + transform only).
         const spring = "cubic-bezier(.34,1.56,.64,1)";
         art.animate([{ scale: "0.84", opacity: 0.35 }, { scale: "1", opacity: 1 }], { duration: 560, easing: spring });
-        text.animate([{ opacity: 0, translate: "0 10px", filter: "blur(4px)" }, { opacity: 1, translate: "0 0", filter: "blur(0)" }], { duration: 480, easing: "cubic-bezier(.22,1,.36,1)" });
+        text.animate([{ opacity: 0, translate: "0 10px" }, { opacity: 1, translate: "0 0" }], { duration: 480, easing: "cubic-bezier(.22,1,.36,1)" });
       }
       lastTrack = track;
       if (lyricsOn) void loadLyrics();
@@ -406,23 +626,20 @@ export function buildMusic(): ViewHost {
 
     // The lyrics button only makes sense while a song is loaded.
     const hasSong = m === "playing" || m === "paused";
-    if (!hasSong && lyricsOn) setLyrics(false);
+    if (!hasSong && lyricsOn) setLyrics(false, false, true);
 
-    // Cover: only touch the <img> when the picture actually changed.
+    // Cover: only touch the <img> when the picture actually changed. The theme follows the cover.
     const wanted = m === "closed" || m === "loading" || m === "preview" ? null : SpotifyFeed.art;
     if (wanted !== shownArt) {
       shownArt = wanted;
       if (wanted) {
         img.src = wanted;
-        ambience.style.backgroundImage = `url("${wanted.replace(/"/g, '\\"')}")`;
         art.classList.add("has-art");
-        el.classList.add("has-ambience");
       } else {
         img.removeAttribute("src");
-        ambience.style.backgroundImage = "";
         art.classList.remove("has-art");
-        el.classList.remove("has-ambience");
       }
+      updateTheme(wanted);
     }
 
     // Transport
@@ -453,6 +670,9 @@ export function buildMusic(): ViewHost {
     shuffleBtn.setAttribute("aria-label", shuffleLabel);
 
     renderProgress();
+    // A new position report (seek, pause, track change) re-aims the lyrics at once, even while paused.
+    syncLyricsLine();
+    syncLoop();
   }
 
   // ── Lifecycle: only talk to Rust while the tab is really on screen ──────────
@@ -464,18 +684,22 @@ export function buildMusic(): ViewHost {
       active = on;
       if (on) {
         unsubscribe = SpotifyFeed.subscribe(render);
-        // Spotify reports on change only, so the bar is advanced locally.
+        unsubscribeVisibility = onVisibilityChange(() => syncLoop());
+        // Spotify reports on change only, so the bar is advanced locally (the lyric fill has its own rAF loop).
         ticker = window.setInterval(() => {
-          if (SpotifyFeed.state?.status === "playing") renderProgress();
-          updateLyricsPosition();
+          if (SpotifyFeed.state?.status === "playing" && isReallyVisible()) renderProgress();
         }, 250);
         render();
       } else {
         unsubscribe?.();
         unsubscribe = null;
+        unsubscribeVisibility?.();
+        unsubscribeVisibility = null;
         window.clearInterval(ticker);
         ticker = undefined;
-        if (lyricsOn) setLyrics(false); // always reopen on the normal controls
+        syncLoop();                                   // stops the fill loop
+        if (lyricsOn) setLyrics(false);               // always reopen on the normal controls (the island is closing / leaving the tab: it sizes itself)
+        window.clearTimeout(fadeTimer);
       }
       void SpotifyFeed.setActive(on);
     },

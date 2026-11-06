@@ -17,6 +17,9 @@ import { snapshotScene } from "./screenPreview";
 import type { LiveActivity } from "../../shared/core/state";
 import { APP_FX_COLOR, buildFx, type FxKind, type FxOpts } from "../../shared/activityFx/activityFx";
 import { Sound } from "../../shared/core/sound";
+import { createCharacter, type EmoteName } from "../../shared/mascot/character";
+import { getFeatures, onFeatures } from "../../shared/core/featuresCache";
+import { MOCHI_SLOT_W } from "../../shared/core/layout";
 
 /** One step of a preview's loop: show `kind` for `ms`. */
 type Step = [FxKind, number, FxOpts?];
@@ -35,6 +38,77 @@ const LOOPS: Partial<Record<LiveActivity, Step[]>> = {
   calls: [["call", 5200]],
   reminders: [["reminder", 4600]],
 };
+
+/** The Mochi's mood in each preview (the same moods notchMochi.ts gives it in the real notch). The Listening and Clipboard
+ *  previews have none: Lyra draws her own Mochi while listening and the clipboard is the open panel, not a compact activity. */
+const MOCHI_EMOTE: Partial<Record<LiveActivity, EmoteName>> = {
+  music: "idle", volume: "idle", brightness: "idle", devices: "idle", downloads: "munch", timer: "focus",
+  recognition: "happy", notifications: "surprised", calls: "ring", reminders: "wave",
+};
+
+/** Previews that currently carry a Mochi slot; each one is told when Settings -> Lyra mascot is switched on / off. */
+const mochiTargets = new Set<(on: boolean) => void>();
+let mascotFeature = false;     // Settings -> Mochi -> Show Mochi
+let mascotInActs = true;       // Settings -> Mochi -> Mochi in Live Activities (on unless switched off)
+let mochiOn = false;           // both: the previews carry the Mochi slot
+let mochiWired = false;
+const applyMochi = () => {
+  mochiOn = mascotFeature && mascotInActs;
+  for (const fn of mochiTargets) fn(mochiOn);
+};
+function wireMochiFeature(): void {
+  if (mochiWired) return;
+  mochiWired = true;
+  const apply = (f: Record<string, unknown> | null) => {
+    if (!f) return;
+    mascotFeature = f.feature_mascot === true;
+    mascotInActs = f.feature_mascot_activities !== false;
+    applyMochi();
+  };
+  onFeatures(apply);
+  void getFeatures().then(apply);
+}
+/** Settings calls this the moment a Mochi switch is flipped, so the previews follow at once (not on the next refresh). */
+export function setPreviewMochi(patch: { mascot?: boolean; activities?: boolean }): void {
+  if (patch.mascot !== undefined) mascotFeature = patch.mascot;
+  if (patch.activities !== undefined) mascotInActs = patch.activities;
+  applyMochi();
+}
+
+/** Gives a preview its Mochi slot: the real Mochi on the left, the notch 40px wider, the content moved over
+ *  (activityPreviews.css, scoped to .ap-mochi). Follows the "Lyra mascot" switch without rebuilding the tile. */
+function attachMochi(island: HTMLElement, id: LiveActivity, baseW: number): void {
+  const emote = MOCHI_EMOTE[id];
+  if (!emote) return;
+  const wrap = h("div", { class: "ap-mochi-slot" });
+  island.appendChild(wrap);
+  const ch = createCharacter(wrap, { tight: true, sharp: 2 });
+  ch.setShape?.("cloud");
+  ch.setEmote(emote);
+  ch.setVibing?.(id === "music");
+  // The timer shows its name between the ring and the time once the Mochi has taken the left edge (see mochiSlot.css).
+  if (id === "timer" && !island.querySelector('[data-r="timer-chip-label"]')) {
+    const chip = island.querySelector<HTMLElement>('[data-r="timer-chip"]');
+    const time = island.querySelector<HTMLElement>('[data-r="timer-chip-time"]');
+    if (chip && time) chip.insertBefore(h("span", { class: "ap-timer-label", "data-r": "timer-chip-label" }, "Focus"), time);
+  }
+  let visible = true;
+  let on = false;
+  const sync = () => ch.setActive?.(on && visible);
+  const set = (next: boolean) => {
+    on = next;
+    island.classList.toggle("ap-mochi", on);
+    island.style.width = `${baseW + (on ? MOCHI_SLOT_W : 0)}px`;
+    island.style.setProperty("margin-left", `${on ? 0 : MOCHI_SLOT_W / 2}px`, "important");   // stays centred in the wider slot
+    sync();
+  };
+  set(mochiOn);
+  mochiTargets.add(set);
+  if (typeof IntersectionObserver !== "undefined") {                  // no drawing while the tile is scrolled away
+    new IntersectionObserver((e) => { visible = e[e.length - 1]?.isIntersecting ?? true; sync(); }).observe(island);
+  }
+  wireMochiFeature();
+}
 
 function appOf(rgb: string): string {
   if (/37,\s*211,\s*102/.test(rgb)) return "whatsapp";
@@ -61,7 +135,9 @@ export function activityScene(id: LiveActivity): HTMLElement {
   island.style.height = `${snap.h}px`;
   island.style.pointerEvents = "none";
   attachFx(island, id);
-  return snapshotScene(island, snap.w, snap.h);
+  attachMochi(island, id, snap.w);
+  // The scene is always sized for the wider notch (the Mochi's slot); without the Mochi the island sits centred in it.
+  return snapshotScene(island, snap.w + (MOCHI_EMOTE[id] ? MOCHI_SLOT_W : 0), snap.h);
 }
 
 function attachFx(island: HTMLElement, id: LiveActivity): void {

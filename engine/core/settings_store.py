@@ -160,6 +160,7 @@ _DEFAULTS: dict[str, Any] = {
     "feature_mascot": False,
     "mascot_size": "medium",
     "feature_mascot_stay": False,
+    "feature_mascot_activities": True,   # the Mochi gets its own slot on the left of every Live Activity (off = it steps aside, as before)
     "mascot_shape": "cloud",
     "record_folder": "",              # where screen recordings are saved: "" = Videos\Lyra Recordings, else a folder the user chose (Settings -> Recording -> Save location)
     "obs_host": "127.0.0.1",          # screen recording goes through OBS Studio's WebSocket server (see obs_control.py)
@@ -271,7 +272,7 @@ PREF_GROUPS: dict[str, dict[str, tuple]] = {
         "feature_file_search": ("bool",), "feature_dev": ("bool",),
         "feature_translate": ("bool",), "feature_mascot": ("bool",),
         "mascot_size": ("choice", ("small", "medium", "large")),
-        "feature_mascot_stay": ("bool",),
+        "feature_mascot_stay": ("bool",), "feature_mascot_activities": ("bool",),
                 "mascot_shape": ("choice", ("cloud", "fox", "cat", "bunny", "panda", "knight", "hornet", "lantern", "grimm")),
         "feature_guide": ("bool",), "guide_level": ("choice", ("look", "step", "auto")), "feature_planner": ("bool",),
         "feature_google": ("bool",), "feature_smarthome": ("bool",),

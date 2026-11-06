@@ -148,10 +148,16 @@ def main():
             except Exception as e:
                 ui.log.error("Speech model unavailable (%s) - voice commands will not work.", e)
         try:
-            from engine.voice import streaming_stt
-            streaming_stt.load()
-        except Exception as e:
-            ui.log.warning("Streaming speech not started: %s", e)
+            from engine.core import settings_store as _ss
+            _light = _ss.feature_on("light_mode")      # on by default (Settings -> Features -> Light mode)
+        except Exception:
+            _light = True
+        if not _light:
+            try:
+                from engine.voice import streaming_stt
+                streaming_stt.load()
+            except Exception as e:
+                ui.log.warning("Streaming speech not started: %s", e)
         try:
             time.sleep(4)    # let the UI and the first hotkey presses settle
             import psutil
@@ -162,7 +168,8 @@ def main():
             pass
         try:
             from engine.voice import stt_engines
-            stt_engines.preload()
+            if not _light:        # light mode: the speech models load on first use, not at launch (they froze the mouse)
+                stt_engines.preload()
             stt_engines.start_idle_unloader()     # Parakeet and the streaming model give their RAM back after a few idle minutes
         except Exception as e:
             ui.log.warning("Parakeet preload not started: %s", e)

@@ -1,0 +1,71 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Lyra · Mochi slot
+   The Mochi lives in its own slot on the LEFT of every compact Live Activity (notchMochi.ts puts it at x=14..44,
+   islandGeometry.ts widens the notch by MOCHI_SLOT_W = 40px). This file moves every activity's content to start
+   at x=54px and gives each activity's icon the same 32px centred box, so icons line up across all of them.
+
+   Every rule is scoped with  #island[data-mode="compact"].mochi-ok  : `mochi-ok` is only on #island while the Mochi
+   is really shown, so with the Mochi off (or the island open) nothing in here applies.
+   Loaded LAST in main.ts so it wins over style.css / apple.css / pulse.css at equal specificity.
+   The small secondary side pills (record / secondary timer / download circle) are deliberately left alone.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#island[data-mode="compact"].mochi-ok {
+  --mochi-content-x: 54px;   /* where every activity's content starts (Mochi 14..44 + 10px air) */
+  --mochi-icon-w: 32px;      /* the shared icon box */
+}
+
+/* ── Music ─────────────────────────────────────────────────────────────── */
+#island[data-mode="compact"].mochi-ok #spotify-compact { padding-left: var(--mochi-content-x); gap: 10px; }
+/* the 28px cover sits centred in the same 32px box as every other icon */
+#island[data-mode="compact"].mochi-ok #spotify-compact-art { margin: 0 2px; }
+
+/* ── Notification / call / reminder toast ──────────────────────────────── */
+#island[data-mode="compact"].mochi-ok #notify-toast:not(.in-panel) { padding-left: var(--mochi-content-x); gap: 10px; }
+
+/* ── Volume HUD layer: volume, brightness, devices, battery, download card, recognition result ──
+   (the small download circle over another activity, data-download-compact="1", is a side pill: untouched) */
+#island[data-mode="compact"].mochi-ok #volume-hud:not([data-download-compact="1"]),
+#island[data-mode="compact"].mochi-ok #volume-hud:not(.activity):not(.nobar),
+#island[data-mode="compact"].mochi-ok #volume-hud.recognition-result,
+#island[data-mode="compact"].mochi-ok #volume-hud.activity[data-activity-kind="download"][data-download-compact="0"] {
+  padding-left: var(--mochi-content-x);
+}
+#island[data-mode="compact"].mochi-ok #volume-hud:not([data-download-compact="1"]) #volume-hud-icon,
+#island[data-mode="compact"].mochi-ok #volume-hud.activity[data-activity-kind="download"][data-download-compact="0"] #volume-hud-icon {
+  flex: 0 0 var(--mochi-icon-w); width: var(--mochi-icon-w); min-width: var(--mochi-icon-w);
+  display: flex; align-items: center; justify-content: center;
+}
+#island[data-mode="compact"].mochi-ok #volume-hud:not([data-download-compact="1"]) .activity-app-icon { margin: 0; }
+
+/* ── "Added" pulse (todo / note / song / timer / game ...) ─────────────── */
+#island[data-mode="compact"].mochi-ok #island-pulse { padding-left: var(--mochi-content-x); }
+#island[data-mode="compact"].mochi-ok .pl-flood { left: var(--mochi-content-x); width: var(--mochi-icon-w); height: var(--mochi-icon-w); margin-top: calc(var(--mochi-icon-w) / -2); }
+#island[data-mode="compact"].mochi-ok .pl-sparks { left: calc(var(--mochi-content-x) + var(--mochi-icon-w) / 2); }
+#island[data-mode="compact"].mochi-ok .pl-tile { width: var(--mochi-icon-w); height: var(--mochi-icon-w); }
+/* the song cover is a little bigger on purpose: it overhangs its 32px box evenly on both sides */
+#island[data-mode="compact"].mochi-ok #island-pulse[data-kind="song"] .pl-tile { width: 40px; height: 40px; margin: 0 -4px; }
+#island[data-mode="compact"].mochi-ok #island-pulse[data-kind="song"] .pl-flood { left: calc(var(--mochi-content-x) - 4px); width: 40px; height: 40px; margin-top: -20px; }
+#island[data-mode="compact"].mochi-ok #island-pulse[data-kind="song"] .pl-sparks { left: calc(var(--mochi-content-x) + var(--mochi-icon-w) / 2); }
+
+/* ── Timer: Mochi | ring | label ........ time ──────────────────────────
+   Without music the chip spans the notch from the slot to the right edge; the label (hidden by apple.css) fills the
+   gap that used to be empty. With music the chip keeps its place on the right (music owns the left) and no label. */
+#island[data-mode="compact"].mochi-ok #timer-chip:not(.with-music) { left: var(--mochi-content-x); right: 16px; gap: 10px; justify-content: flex-start; }
+#island[data-mode="compact"].mochi-ok #timer-chip:not(.with-music) #timer-chip-icon {
+  flex: 0 0 var(--mochi-icon-w); width: var(--mochi-icon-w); display: flex; align-items: center; justify-content: center;
+}
+#island[data-mode="compact"].mochi-ok #timer-chip:not(.with-music) #timer-chip-label {
+  display: block !important; flex: 1 1 0; min-width: 0; max-width: none; margin-left: -2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;
+  font: 600 13px var(--font); color: #aeb2ba;
+}
+#island[data-mode="compact"].mochi-ok #timer-chip:not(.with-music) #timer-chip-label:empty { display: none !important; }
+#island[data-mode="compact"].mochi-ok #timer-chip:not(.with-music) #timer-chip-time { flex: 0 0 auto; margin-left: auto; }
+
+/* ── Hover swell (invite.css) ──────────────────────────────────────────
+   While the pointer rests on the notch, invite.css moves the timer chip to left:22px, which is under the Mochi's slot.
+   Keep it at the slot edge (right margin still grows like invite.css wants), and scale the ring around its own centre
+   so the bigger ring grows evenly inside its 32px box instead of towards the label. */
+#island.hovering[data-mode="compact"].mochi-ok #timer-chip:not(.with-music) { left: var(--mochi-content-x); right: 22px; }
+#island[data-mode="compact"].mochi-ok #timer-chip:not(.with-music) #timer-chip-icon { transform-origin: 50% 50%; }

@@ -40,6 +40,7 @@ _OWN_ORIGINS = {
     "http://localhost:1420", "http://127.0.0.1:1420",
 }
 # >>> phase-8 begin
+_GUARDED = _GUARDED + ("/stop",)         # Esc: only Lyra's own windows may stop her
 _GUARDED = _GUARDED + ("/p8/",)      # updates: only Lyra's own windows may check, download or hand off an installer
 # <<< phase-8 end
 
@@ -423,6 +424,8 @@ def _handle_chat_message(text: str) -> None:
     with _chat_lock:
         _ctx.from_ui = True
         try:
+            from engine.core import turn_control
+            turn_control.begin_turn()            # Esc (cancel_turn) after this point silences this turn
             ui.set_state("thinking") 
             from engine.core import perf
             perf.begin("typed", text)
@@ -430,8 +433,7 @@ def _handle_chat_message(text: str) -> None:
             engine.process_command_chain(text, _history)
         except Exception as e:
             log.exception("UI chat failed: %s", e)
-            err = f"Sorry — something went wrong: {e}"
-            ui.print_chat("lyra", err)
+            ui.print_chat("lyra", "Something went wrong.")
         finally:
             _ctx.from_ui = False
             ui.set_state("idle")
@@ -1099,6 +1101,12 @@ class Handler(BaseHTTPRequestHandler):
             if not text:
                 self._json(400, {"error": "empty text"})
                 return
+            try:
+                from engine.core import turn_control
+                if turn_control.is_talking():
+                    turn_control.stop_speech()   # a new message while she is still reading: stop the old one, go on
+            except Exception:
+                pass
             threading.Thread(
                 target=_handle_chat_message,
                 args=(text,),
@@ -1106,6 +1114,12 @@ class Handler(BaseHTTPRequestHandler):
                 name="lyra-ui-chat",
             ).start()
             self._json(200, {"ok": True})
+            return
+
+        if parsed.path == "/stop":
+            # Esc: stop talking and drop the answer of the turn in progress (core/turn_control.py).
+            from engine.core import turn_control
+            self._json(200, {"ok": True, "stopped": bool(turn_control.cancel_turn())})
             return
 
         if parsed.path == "/notify":

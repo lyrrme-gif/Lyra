@@ -22,12 +22,14 @@ export interface UiExtras {
   keepClipboard: boolean;
   /** How you move between tabs: the tab wheel, a scroller (a capsule showing three tabs at a time), or both. */
   navStyle: "wheel" | "scroller" | "both";
+  /** Colours of the Music tab (player + lyrics): "music" = they follow the album cover, "island" = they follow the island theme. */
+  musicTheme: "music" | "island";
   /** Feature switches (Settings → Features). Missing key = on. See core/features.ts. */
   features: Partial<Record<string, boolean>>;
 }
 export const EXTRAS_KEY = "lyra-ui-extras";
 
-export const DEFAULT_EXTRAS: UiExtras = { shapeNotched: "notch", shapeNotchless: "island", activities: {}, glow: {}, compactStyle: "black", hideCompact: false, keepChat: false, keepClipboard: false, navStyle: "wheel", features: {} };
+export const DEFAULT_EXTRAS: UiExtras = { shapeNotched: "notch", shapeNotchless: "island", activities: {}, glow: {}, compactStyle: "black", hideCompact: false, keepChat: false, keepClipboard: false, navStyle: "wheel", musicTheme: "music", features: {} };
 
 export function readExtras(): UiExtras {
   try {
@@ -40,6 +42,7 @@ export function readExtras(): UiExtras {
       if (saved.navStyle === "scroller" && saved.keepWheel === true) saved.navStyle = "both";   // only an old explicit "keep the wheel" pair; a plain "scroller" saved now stays "scroller"
       delete saved.keepWheel;
       if (saved.navStyle !== "wheel" && saved.navStyle !== "scroller" && saved.navStyle !== "both") delete saved.navStyle;
+      if (saved.musicTheme !== "music" && saved.musicTheme !== "island") delete saved.musicTheme;
       return { ...DEFAULT_EXTRAS, ...saved };
     }
   } catch { /* hardened WebView */ }

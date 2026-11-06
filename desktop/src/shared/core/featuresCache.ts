@@ -9,6 +9,7 @@
 // There is no timer in here. A hidden window does not ask at all.
 
 import { invoke } from "@tauri-apps/api/core";
+import { emit, listen } from "@tauri-apps/api/event";
 
 const BASE = "http://127.0.0.1:8765";
 type Features = Record<string, unknown>;
@@ -24,10 +25,10 @@ export function invalidateFeatures(): void {
   cache = null;
 }
 
-export async function getFeatures(maxAgeMs = MIN_AGE_MS): Promise<Features | null> {
+export async function getFeatures(maxAgeMs = MIN_AGE_MS, force = false): Promise<Features | null> {
   const age = Math.max(maxAgeMs, MIN_AGE_MS);
   if (cache && Date.now() - cache.at < age) return cache.data;
-  if (document.hidden) return cache?.data ?? null;
+  if (document.hidden && !force) return cache?.data ?? null;
   if (inflight) return inflight;
   inflight = (async () => {
     try {
@@ -67,6 +68,16 @@ export async function postFeatures(patch: Record<string, unknown>): Promise<bool
   } catch {
     return false;                       // backend not up: the caller decides what to show
   }
+}
+
+/** Settings saved a feature switch: every window (the island too) re-reads at once instead of waiting for a focus event. */
+const CHANGED_EVENT = "lyra-features-changed";
+export function announceFeaturesChanged(): void {
+  if (!("__TAURI_INTERNALS__" in window)) return;
+  void emit(CHANGED_EVENT).catch(() => undefined);
+}
+if ("__TAURI_INTERNALS__" in window) {
+  void listen(CHANGED_EVENT, () => { invalidateFeatures(); void getFeatures(MIN_AGE_MS, true); }).catch(() => undefined);
 }
 
 /** Focus / visible: drop the cache, and when anything is listening fetch once so it shows at once. */

@@ -237,6 +237,11 @@ export class IslandHud {
       this.i.volumeRevealed = false;
       if (!this.i.wasInIsland && State.mode === "compact" && !this.i.toastQueue.length) this.i.fsm.forceHidden();
     }
+    // Re-read what is really alive and redraw the small islands, so nothing left over from this HUD (a download that
+    // is no longer there, a second music pill) stays on the notch.
+    this.i.refreshActivities();
+    this.i.paintSecondary();
+    this.i.syncSpotifyCompact();
     this.i.pumpToast();
   }
 

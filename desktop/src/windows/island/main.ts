@@ -10,6 +10,7 @@ import "./styles/wallpaper.css";
 import "./styles/homex.css";
 import "./styles/home-apple.css";
 import "./styles/messages-apple.css";
+import "./styles/mochiSlot.css";   // last: the Mochi's left slot (scoped to #island.mochi-ok)
 import { Bridge, IS_TAURI, onEvent } from "../../shared/core/bridge";
 import { Sound } from "../../shared/core/sound";
 import { State, type Settings } from "../../shared/core/state";

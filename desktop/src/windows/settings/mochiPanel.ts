@@ -22,6 +22,9 @@ export interface MochiDeps {
   setOn(on: boolean): void;
   isStay(): boolean;
   setStay(on: boolean): void;
+  /** "Mochi in Live Activities": the Mochi sits in its own slot on the left of every activity (off: it steps aside). */
+  isActs(): boolean;
+  setActs(on: boolean): void;
 }
 
 /** Body width (px) of the Mochi on screen for each size = the mascot's SIZE_PX × the body/box ratio. */
@@ -79,6 +82,10 @@ function hero(d: MochiDeps): HTMLElement {
   const power = d.toggle(d.isOn(), (v) => { d.setOn(v); paint(); });
   const onScreen = d.toggle(d.isOn() && d.isStay(), (v) => { d.setStay(v); paint(); });
   const screenRow = h("div", { class: "mc-power" }, h("label", { text: "Mochi on screen" }), onScreen);
+  // "Mochi in Live Activities": with it on, the Mochi keeps the left side of the notch during music, timers, volume,
+  // downloads, notifications ...; with it off it steps aside and the activities use the whole notch. Needs Show Mochi.
+  const inActs = d.toggle(d.isOn() && d.isActs(), (v) => { d.setActs(v); paint(); });
+  const actsRow = h("div", { class: "mc-power" }, h("label", { text: "Mochi in Live Activities" }), inActs);
   const paint = () => {
     const on = d.isOn();
     status.textContent = on ? "On" : "Off";
@@ -89,6 +96,10 @@ function hero(d: MochiDeps): HTMLElement {
     onScreen.toggleAttribute("disabled", !on);
     screenRow.classList.toggle("disabled", !on);
     screenRow.title = on ? "" : "Turn on Show Mochi first";
+    setSwitch(inActs, on && d.isActs());
+    inActs.toggleAttribute("disabled", !on);
+    actsRow.classList.toggle("disabled", !on);
+    actsRow.title = on ? "" : "Turn on Show Mochi first";
   };
 
   const chips = h("div", { class: "mc-chips", role: "group", "aria-label": "Try a mood" });
@@ -121,10 +132,11 @@ function hero(d: MochiDeps): HTMLElement {
     h("p", { text: "A little companion that lives in your notch, follows your cursor and reacts to what Lyra is doing." }),
     h("div", { class: "mc-power" }, h("label", { text: "Show Mochi" }), power),
     screenRow,
+    actsRow,
     h("div", { class: "mc-try" }, h("span", { text: "Try a mood" }), chips),
   );
   paint();
-  return searchable(h("div", { class: "mc-hero" }, stage, copy), "mochi mascot show enable on off on screen desktop overlay preview try mood");
+  return searchable(h("div", { class: "mc-hero" }, stage, copy), "mochi mascot show enable on off on screen desktop overlay preview try mood live activities island notch slot music timer volume");
 }
 
 // ── Size: three live tiles at their true relative sizes ──────────────────────

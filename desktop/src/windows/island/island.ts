@@ -427,6 +427,7 @@ export class Island {
         this.animateGeometry(on);
         State.notify();
       },
+      relayout: (shrinking: boolean) => this.animateGeometry(shrinking),
       blip: () => Sound.play("blip"),
     };
 
@@ -526,6 +527,8 @@ export class Island {
     // The dock grows and shrinks as temporary tabs come and go: keep its hit shape exact.
     new ResizeObserver(() => { this.dirty = true; this.ensureRunning(); }).observe(this.tabDock.el);
     window.addEventListener("lyra-collapse", () => this.collapse("Closed"));
+    // The Mochi became available / unavailable for the left slot of the activities (notchMochi.ts): the notch makes room or gives it back.
+    window.addEventListener("lyra:mochi-slot", () => { if (State.mode === "compact") this.animateGeometry(false); });
     // A search card in the conversation was tapped: show that deck again.
     window.addEventListener("lyra:reopen-search", (e) => { const r = (e as CustomEvent<SearchResult>).detail; if (r) this.showSearchResult(r); });
     for (const side of ["left", "right"] as const) {
@@ -1777,6 +1780,10 @@ export class Island {
     window.addEventListener("lyra:search-link-clicked", () => this.dismissSearchResults());
 
     window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && (this.lyraSpeaking || this.lyraStatusKind !== null)) {
+        // Esc while Lyra talks or thinks: stop her and drop the answer (engine/core/turn_control.py).
+        fetch("http://127.0.0.1:8765/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => undefined);
+      }
       if (e.key === "Escape" && State.mode === "expanded" && !State.isPinned) this.collapse("Escape key");
       State.lastActivity = performance.now();
     });
@@ -2566,6 +2573,18 @@ export class Island {
     this.activities.set("music", this.isSpotifyMediaActive());
     this.activities.set("timer", this.timerChip.active());
     this.activities.set("record", this.recordingSince !== null);
+    // Music, timer and record above are read from live state, so they can never get stuck. "download" is the only activity
+    // that is set by events, so it is the only one that can outlive its owner (another HUD replaced the download card,
+    // its end timer was cleared while it was being promoted ...). It then stayed "active" for ever: it kept the main slot,
+    // pushed the music to a second pill next to the real one, and showed a "Done" pill that never left.
+    // A download is only alive while something really owns it: its card is on, or its small-island end timer is pending
+    // (or the click that promotes it is in flight). Anything else is a leftover: drop it.
+    if (this.activities.isActive("download") && !this.promoting && this.dlSecTimer == null
+        && !(this.volumeHudOn && this.volumeHud.dataset.activityKind === "download")) {
+      this.activities.set("download", false);
+      this.dlMain = false;
+      this.dlLast = null;
+    }
   }
 
   /** The backend says a screen recording started / stopped (core: ui_bridge "record" event, or the boot check). */

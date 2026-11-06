@@ -63,10 +63,8 @@ class ParakeetEngine:
             if self._model is not None:
                 return
             import onnx_asr
-            import onnxruntime as ort
-            so = ort.SessionOptions()
-            so.intra_op_num_threads = self.threads
-            so.inter_op_num_threads = 1
+            from engine.voice import polite_load
+            so = polite_load.session_options(self.threads)    # idle ONNX threads sleep instead of spinning on a core
             t0 = time.monotonic()
             try:
                 self._model = onnx_asr.load_model(MODEL_NAME, self.model_dir, quantization="int8",

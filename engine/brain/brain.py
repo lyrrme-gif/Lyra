@@ -197,6 +197,30 @@ def _is_unsupported_action(prompt: str, intent: str) -> bool:
     return bool(rest) and not _QUESTION_LEAD.match(rest)
 
 
+def _short_llm_error(e: Exception) -> str:
+    """One very short sentence for a failed LLM request. The provider's own long text goes to the log, not to the user."""
+    msg = str(e)
+    low = msg.lower()
+    code = getattr(e, "status_code", None)
+    try:
+        code = int(code) if code is not None else None
+    except (TypeError, ValueError):
+        code = None
+    if code == 402 or "402" in msg or "credits" in low or "insufficient" in low or "quota" in low:
+        return "Out of LLM credits."
+    if code == 404 or "404" in msg or "not found" in low:
+        return "That model isn't available."
+    if code == 429 or "429" in msg or "rate limit" in low:
+        return "The LLM is busy. Try again soon."
+    if (code is not None and code >= 500) or any(x in msg for x in ("500", "502", "503", "504")):
+        return "The LLM service is down."
+    if code in (401, 403) or "api key" in low or "authentication" in low or "401" in msg or "403" in msg:
+        return "LLM key rejected."
+    if "timeout" in low or "timed out" in low or "connection" in low:
+        return "Can't reach the LLM."
+    return "The LLM request failed."
+
+
 def _is_rate_limit(e: Exception) -> bool:
     return getattr(e, "status_code", None) == 429 or "429" in str(e) or "rate limit" in str(e).lower()
 
@@ -239,6 +263,13 @@ def _stream_reply(client, model_name, messages, on_text, max_tokens=None, max_se
     limiter = reply_style.SentenceLimiter(max_sentences) if max_sentences else None
     try:
         for chunk in stream:
+            from engine.core import turn_control
+            if turn_control.turn_cancelled():            # Esc: stop reading the answer
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+                break
             try:
                 delta = chunk.choices[0].delta.content or ""
             except (AttributeError, IndexError):
@@ -329,7 +360,7 @@ def ask_brain(prompt: str, history: list, intent: str = "unknown", on_text=None)
             if _local_msg:
                 return _local_msg
             trace("error: LLM API key not set (OPENROUTER_API_KEY / GEMINI_API_KEY / GROQ_API_KEY)")
-            return "I don't have a API key configured yet, sir — set OPENROUTER_API_KEY (or GEMINI_API_KEY / GROQ_API_KEY) and restart me."
+            return "No LLM set up. Add a key in Settings."
 
         # ------------------------------------------------------------------
         # 3. Decide whether to spend a web-search round-trip
@@ -473,14 +504,4 @@ def ask_brain(prompt: str, history: list, intent: str = "unknown", on_text=None)
             _local_err = None
         if _local_err:
             return _local_err
-        msg=str(e)
-        code=getattr(e,"status_code",None)
-        if code == 404 or "404" in msg or "not found" in msg.lower():
-            return f"The selected model isn't available: {model_name}. Check Settings and choose another model."
-        if code == 429 or "429" in msg or "rate limit" in msg.lower():
-            return "The LLM provider is rate-limiting me right now. I couldn't complete that request."
-        if code and int(code) >= 500 or any(x in msg for x in ("500","502","503","504")):
-            return "The LLM provider is having a server error right now. I couldn't complete that request."
-        if "api key" in msg.lower() or "authentication" in msg.lower() or "401" in msg or "403" in msg:
-            return "The LLM provider rejected the saved API key. Check the provider and key in Settings."
-        return f"I couldn't process that because the LLM request failed: {msg[:180]}"
+        return _short_llm_error(e)

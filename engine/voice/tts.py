@@ -254,8 +254,16 @@ _edge_resolver = _CachedResolver()
 
 
 def _edge_connector():
-    """aiohttp connector using the shared DNS cache (falls back to the default connector if anything is odd)."""
+    """None = edge-tts uses its own default aiohttp connection (the safe default).
+
+    The shared DNS cache above used to be handed to edge-tts through a custom aiohttp connector. On some
+    aiohttp / edge-tts version combinations that makes EVERY request fail with "Session is closed", and Lyra then
+    speaks with the Windows fallback voice (which ignores the voice chosen in Settings). The DNS cache is only a small
+    speed-up, so it is now opt-in: set the hidden setting `edge_dns_cache` to true to use it again."""
     try:
+        from engine.core import settings_store
+        if settings_store.get("edge_dns_cache") is not True:
+            return None
         import aiohttp
         return aiohttp.TCPConnector(resolver=_edge_resolver)
     except Exception:
@@ -455,15 +463,17 @@ def _get_kokoro():
             except Exception as e:
                 _vlog(f"kokoro gpu setup failed {e!r}; using CPU")
                 k = None
-            if k is None and _light_mode():
-                # Fewer CPU threads: the default (every core) makes a short reply spike the whole CPU.
+            if k is None:
+                # Our own CPU session: ONNX Runtime's idle threads sleep instead of spinning on a core (that, together with
+                # loading right after the download, froze the mouse), and in light mode fewer threads: the default (every
+                # core) makes a short reply spike the whole CPU.
                 try:
                     import onnxruntime as ort
-                    so = ort.SessionOptions()
-                    so.intra_op_num_threads = max(1, min(4, (os.cpu_count() or 4) // 2))
-                    so.inter_op_num_threads = 1
+                    from engine.voice import polite_load
+                    light = _light_mode()
+                    so = polite_load.session_options(max(1, min(4, (os.cpu_count() or 4) // 2)) if light else None)
                     sess = ort.InferenceSession(paths[0], sess_options=so, providers=["CPUExecutionProvider"])
-                    k, how = Kokoro.from_session(sess, paths[1]), "CPU, %d threads" % so.intra_op_num_threads
+                    k, how = Kokoro.from_session(sess, paths[1]), ("CPU, %d threads" % so.intra_op_num_threads if light else "CPU")
                 except Exception as e:
                     _vlog(f"kokoro limited-thread setup failed {e!r}; default CPU session")
                     k = None
@@ -547,7 +557,9 @@ def _preload_kokoro() -> None:
     start-up in light mode (see _light_mode); only when Microsoft's voice turns out to be unavailable."""
     try:
         if _kokoro_model_paths() and _kokoro_allowed():
-            _get_kokoro()
+            from engine.voice import polite_load
+            with polite_load.gentle():        # background: one model load at a time, quiet PC, below-normal priority
+                _get_kokoro()
     except Exception as e:
         _vlog(f"kokoro preload failed {e!r}")
 
@@ -604,6 +616,8 @@ def _speak_kokoro_stream(text: str) -> bool:
     if len(chunks) < 2:
         return False
     _vlog(f"kokoro stream: {len(chunks)} chunks")
+    from engine.core import turn_control
+    _gen = turn_control.speech_gen()
     q: "queue.Queue" = queue.Queue()
 
     def worker():
@@ -622,6 +636,12 @@ def _speak_kokoro_stream(text: str) -> bool:
             if path is _END:
                 break
             if path is None:
+                continue
+            if turn_control.speech_stopped_since(_gen) or turn_control.turn_cancelled():
+                try:
+                    os.remove(path)          # stopped: the rest of the reply is not said
+                except OSError:
+                    pass
                 continue
             try:
                 pygame.mixer.music.load(path)
@@ -822,9 +842,18 @@ def _speak_offline(text: str) -> None:
         ps = ("Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
               "try { $s.SelectVoiceByHints([System.Speech.Synthesis.VoiceGender]::Female) } catch {}; "
               f"$s.Speak((Get-Content -Raw -Encoding UTF8 -LiteralPath '{path}'))")
-        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-                           capture_output=True, text=True, timeout=120, creationflags=0x08000000)
-        _vlog(f"offline voice done rc={r.returncode} err={r.stderr.strip()[:200]!r}")
+        from engine.core import turn_control
+        p = subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=0x08000000)
+        turn_control.set_offline_proc(p)         # so Esc / a new message can kill it
+        try:
+            _out, _err = p.communicate(timeout=120)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            _out, _err = p.communicate()
+        finally:
+            turn_control.set_offline_proc(None)
+        _vlog(f"offline voice done rc={p.returncode} err={(_err or '').strip()[:200]!r}")
     except Exception as e:
         log.error("offline speech failed: %r", e)
         _vlog(f"offline voice FAILED {e!r}")
@@ -846,6 +875,8 @@ def _speak_impl(text: str, recognizer=None, source=None):
     except Exception:
         pass
     _speak_t0 = time.monotonic()
+    from engine.core import turn_control
+    _gen = turn_control.speech_gen()    # stop_speech() / Esc after this point: do not start playing
     text = _speakable(text) or "I don't have a response to read aloud."
     log.info("Lyra: %s", text)
     _vlog(f"speak {len(text)} chars: {text[:80]!r}")
@@ -877,6 +908,9 @@ def _speak_impl(text: str, recognizer=None, source=None):
     if audio_path is None:
         audio_path = _synthesize_piper(text)  # offline neural voice, if installed
     if audio_path is None:
+        if turn_control.speech_stopped_since(_gen) or turn_control.turn_cancelled():
+            ui.set_state("idle")
+            return None
         ui.set_state("speaking")
         perf.mark("tts_first_audio")
         _speak_offline(text)  # last resort: the Windows built-in voice
@@ -885,6 +919,13 @@ def _speak_impl(text: str, recognizer=None, source=None):
 
     wave_thread = None
     spotify_ducked = []
+    if turn_control.speech_stopped_since(_gen) or turn_control.turn_cancelled():
+        try:
+            os.remove(audio_path)
+        except OSError:
+            pass
+        ui.set_state("idle")
+        return None
     try:
         _ensure_mixer()
         pygame.mixer.music.load(audio_path)
@@ -962,6 +1003,9 @@ def speak(text: str, recognizer=None, source=None, force: bool = False):
             return None
     except Exception as e:
         log.warning("mochi sound check failed, speaking instead: %s", e)
+    from engine.core import turn_control
+    if turn_control.turn_cancelled():
+        return None                      # Esc: this turn's answer is dropped
     perf.mark("tts_request")
     try:
         return _speak_impl(text, recognizer, source)
@@ -1024,10 +1068,16 @@ class SpeechStream:
         self._to_play: "queue.Queue" = queue.Queue()
         self._threads: list = []
         self._closed = False
+        from engine.core import turn_control
+        self._gen = turn_control.speech_gen()      # stop_speech() / Esc later: nothing more is said
 
     # -- text in ------------------------------------------------------------
+    def _stopped(self) -> bool:
+        from engine.core import turn_control
+        return turn_control.speech_stopped_since(self._gen) or turn_control.turn_cancelled()
+
     def feed(self, delta: str) -> None:
-        if not delta or self._closed:
+        if not delta or self._closed or self._stopped():
             return
         self._fed = True
         self._buf += delta
@@ -1090,6 +1140,13 @@ class SpeechStream:
                 if item is _END:
                     return
                 text, path = item
+                if self._stopped():
+                    if path:
+                        try:
+                            os.remove(path)
+                        except OSError:
+                            pass
+                    continue                      # stopped: drain the queue without saying it
                 if first:
                     ducked = _duck_spotify()
                     ui.set_state("speaking")
